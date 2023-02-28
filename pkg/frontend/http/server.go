@@ -139,16 +139,20 @@ func (server *server) handleGet(ctx *gin.Context, metric *requestMetric) (code i
 		return 400, fmt.Errorf("invalid timestamp for ts param %w", err)
 	}
 
+	tags := map[string]string{
+		"resource": resource,
+		"name":     name,
+	}
+	if namespace != "" {
+		tags["namespace"] = namespace
+	}
+
 	parameters := &spanstore.TraceQueryParameters{
 		ServiceName:   server.transformConfigs.DefaultName(),
 		OperationName: cluster,
-		Tags: map[string]string{
-			"resource":  resource,
-			"namespace": namespace,
-			"name":      name,
-		},
-		StartTimeMin: timestamp.Truncate(time.Minute * 30),
-		StartTimeMax: timestamp.Truncate(time.Minute * 30).Add(time.Minute * 30),
+		Tags:          tags,
+		StartTimeMin:  timestamp.Truncate(time.Minute * 30),
+		StartTimeMax:  timestamp.Truncate(time.Minute * 30).Add(time.Minute * 30),
 	}
 	traceIDs, err := server.spanReader.FindTraceIDs(context.Background(), parameters)
 	if err != nil {
