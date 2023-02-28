@@ -208,7 +208,7 @@ func (ctrl *controller) runLeader(stopCh <-chan struct{}) {
 
 	factory := ctrl.clients.TargetCluster().NewInformerFactory()
 	eventInformer := factory.Core().V1().Events()
-	eventInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := eventInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			event := obj.(*corev1.Event)
 			queue.Add(eventKey{namespace: event.Namespace, name: event.Name})
@@ -222,6 +222,10 @@ func (ctrl *controller) runLeader(stopCh <-chan struct{}) {
 			queue.Add(eventKey{namespace: newEvent.Namespace, name: newEvent.Name})
 		},
 	})
+	if err != nil {
+		ctrl.logger.WithError(err).Error("cannot add Event event handler") // should not happen during startup
+		return                                                             // probably lost leader lease?
+	}
 	factory.Start(stopCh)
 
 	for workerId := 0; workerId < ctrl.options.workerCount; workerId++ {

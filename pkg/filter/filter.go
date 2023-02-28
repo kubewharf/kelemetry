@@ -136,11 +136,15 @@ func (filter *filter) Init(ctx context.Context) error {
 			options.FieldSelector = fields.OneTermEqualSelector("metadata.name", configMapName).String()
 		}),
 	)
-	filter.configMapInformer.Core().V1().ConfigMaps().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := filter.configMapInformer.Core().V1().ConfigMaps().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    func(obj interface{}) { filter.setConfig(obj.(*corev1.ConfigMap)) },
 		UpdateFunc: func(oldObj, newObj interface{}) { filter.setConfig(newObj.(*corev1.ConfigMap)) },
 		DeleteFunc: func(obj interface{}) { filter.setConfig(nil) },
 	})
+	if err != nil {
+		// should not happen during startup
+		return fmt.Errorf("cannot add ConfigMap event handler: %w", err)
+	}
 
 	filter.recorder = filter.clients.TargetCluster().EventRecorder("kelemetry-filter")
 

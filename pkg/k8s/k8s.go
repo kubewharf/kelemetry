@@ -22,6 +22,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/go-logr/logr"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
@@ -32,7 +33,7 @@ import (
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	k8sconfig "github.com/kubewharf/kelemetry/pkg/k8s/config"
 	"github.com/kubewharf/kelemetry/pkg/manager"
@@ -116,7 +117,7 @@ func (clients *clusterClients) Options() manager.Options {
 func (clients *clusterClients) Init(ctx context.Context) error {
 	clients.ctx = ctx
 
-	// klog.SetLogger(logWrapper(clients.logger))
+	klog.SetLogger(logWrapper(clients.logger))
 
 	var err error
 	clients.targetClient, err = clients.Cluster(clients.config.TargetName())
@@ -244,7 +245,6 @@ func (client *client) EventRecorder(name string) record.EventRecorder {
 	return client.eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: name})
 }
 
-/*
 type logrusSink struct{ delegate logrus.FieldLogger }
 
 func (s logrusSink) Init(info logr.RuntimeInfo) {}
@@ -283,4 +283,3 @@ func (s logrusSink) WithName(name string) logr.LogSink {
 func logWrapper(delegate logrus.FieldLogger) logr.Logger {
 	return logr.New(logrusSink{delegate: delegate})
 }
-*/

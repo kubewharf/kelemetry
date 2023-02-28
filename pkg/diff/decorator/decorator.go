@@ -195,6 +195,11 @@ func (decorator *decorator) Decorate(message *audit.Message, event *aggregator.E
 		}
 	}
 
+	responseRv := ""
+	if respObj != nil {
+		responseRv = respObj.ResourceVersion
+	}
+
 	hasDiff := message.Verb == audit.VerbUpdate || message.Verb == audit.VerbPatch
 	if hasDiff && respObj != nil && message.ObjectRef.ResourceVersion == respObj.ResourceVersion {
 		event.Log(zconstants.LogTypeRealVerbose, "No-op update")
@@ -216,8 +221,8 @@ func (decorator *decorator) Decorate(message *audit.Message, event *aggregator.E
 		oldRv := message.ObjectRef.ResourceVersion
 
 		var newRv *string
-		if respObj != nil && respObj.ResourceVersion != "" {
-			newRv = pointer.String(respObj.ResourceVersion)
+		if responseRv != "" {
+			newRv = pointer.String(responseRv)
 		}
 
 		if newRv != nil && oldRv == *newRv {
