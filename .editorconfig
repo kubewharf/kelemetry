@@ -1,0 +1,30 @@
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+charset = utf-8
+
+[*.go]
+indent_style = tab
+indent_size = 4
+
+[*.{yaml,tpl}]
+indent_style = space
+indent_size = 2
+
+[*.sh]
+indent_style = tab
+indent_size = 2
+
+[*.dot]
+indent_style = tab
+indent_size = 2
+
+[*.md]
+indent_style = space
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+indent_size = 2

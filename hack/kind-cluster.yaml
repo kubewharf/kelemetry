@@ -1,0 +1,26 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: tracetest
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.25.3
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            audit-webhook-config-file: /mnt/audit/audit-kubeconfig.local.yaml
+            audit-policy-file: /mnt/audit/audit-policy.yaml
+            feature-gates: ServerSideApply=false
+          extraVolumes:
+            - name: audit-config
+              hostPath: /mnt/audit
+              mountPath: /mnt/audit
+              readOnly: true
+              pathType: Directory
+    extraMounts:
+      - hostPath: .
+        containerPath: /mnt/audit
+        readOnly: true
+  - role: worker
+    image: kindest/node:v1.25.3

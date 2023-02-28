@@ -1,0 +1,7 @@
+.idea
+output
+log
+*.log
+coverage.out
+*.local.yaml
+dump*.json

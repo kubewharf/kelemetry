@@ -1,0 +1,46 @@
+name: Bug Report
+description: Report incorrect behavior from Kelemetry
+labels: bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If you believe this is a security vulnerability,
+        do **not** submit a bug report.
+        Refer to our [security policy](https://github.com/kubewharf/kelemetry/blob/main/SECURITY.md) instead.
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: |
+        Please provide the minimal full steps to reproduce the bug.
+  - type: textarea
+    id: expect
+    attributes:
+      label: Expected behavior
+      description: |
+        What did you expect to happen?
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: |
+        What actually happened?
+  - type: input
+    id: kelemetry-version
+    attributes:
+      label: Kelemetry version
+      description: |
+        "latest" is *not* a valid version name.
+        Please provide the git commit, git tag or docker image tag.
+      options:
+        required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: |
+        If relevant, please provide information about relevant environment and components:
+          - Kubernetes version and cloud provider
+          - Jaeger version
+          - Choice of cache and storage backends, and their relevant version info

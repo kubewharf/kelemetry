@@ -1,0 +1,313 @@
+# Default values for kelemetry.
+# This is a YAML-formatted file.
+
+# Informers is a service that runs leader-elected Kubernetes controllers.
+informers:
+  # Number of informers pods to create.
+  replicaCount: 3
+
+  # Diff controller watches for changes in objects to identify the diff across versions.
+  diff:
+    enable: true
+
+    # Regex for objects of which the diff controller should not trace the contents.
+    # The pattern is matched against `group/version/resource/namespace/name`.
+    redactPattern: '$this matches nothing^'
+
+    # Number of worker goroutines to compute the diff of objects.
+    workerCount: 8
+    # The timeout for diff controller writing to diff cache.
+    storeTimeout: 10s
+
+    snapshots:
+      # Whether to take deletion snapshots.
+      # They take up more space, but help with detecting owner references of short-lived objects.
+      deletion: true
+
+    # The duration for which a snapshot/patch is persisted since observation.
+    # This should be sufficiently long so that
+    # the audit consumer can fetch it when the audit event is received,
+    # but a long duration may increase storage size requirement.
+    persistDuration:
+      # A patch describes the differences of an object from one state to another.
+      patch: 1h
+      # A snapshot is the object states when it gets created/deleted. It usually take up more space
+      snapshot: 1h
+
+    # Number of active leaders.
+    # When multiple leaders run concurrently, they overwrite the diff recorded by each other.
+    # This ensures higher availability and minimizes diff misses,
+    # at the cost of extra overhead for the apiserver and diff cache.
+    leaders: 2
+    # Leader election configuration
+    leaderElection:
+      name: kelemetry-diff-controller
+      namespace: kelemetry
+      leaseDuration: 15s
+      renewDeadline: 10s
+      retryPeriod: 2s
+
+  # Event controller creates trace spans by watching the Kubernetes events API.
+  event:
+    # Number of worker goroutines to process event updates.
+    workerCount: 8
+
+    # Path to a configmap that persists the state of an event controller to avoid repeated consumption when restarting.
+    stateConfig:
+      name: kelemetry-event-controller-state
+      namespace: kelemetry
+      # The interval at which the event controller stores its state
+      syncInterval: 5s
+
+    # Leader election configuration
+    leaderElection:
+      name: kelemetry-event-controller
+      leaseDuration: 15s
+      renewDeadline: 10s
+      retryPeriod: 2s
+
+  # The Informers process needs to list-watch and cache all Kubernetes objects.
+  # For large clusters, this may require a lot of memory.
+  # The memory usage is comparable to that of kube-controller-manager.
+  resources: {}
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+  podSecurityContext: {}
+  containerSecurityContext: {}
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+
+  # QPS and burst for accessing the target cluster
+  clusterQps: 10.0
+  clusterBurst: 10
+  # QPS and burst for accessing other clusters (due to cross-cluster linkers)
+  otherClusterQps: 10.0
+  otherClusterBurst: 10
+  # Whether to expose pprof server
+  pprof: true
+  # Log verbosity level (`debug`, `info`, `warn`, `error`)
+  logLevel: info
+  # klog verbosity level for Kubernetes SDK calls
+  klogLevel: "4"
+
+# Audit consumer is a service that converts audit logs into trace spans.
+consumer:
+  # Source of audit logs.
+  # For cloud-hosted Kubernetes clusters, use the vendor-specific source.
+  # For self-hosted clusters, use "memory" for a simpler setup or
+  # use a message queue for higher fault isolation.
+  source:
+    # Supported types: 'webhook'
+    type: webhook
+    # `webhook` runs an audit webhook server together with the consumer,
+    # and directly passes the events to the consumer in an in-memory channel.
+    # This is the simplest setup if you run your own K8S cluster.
+    # Manual configuration of kube-apiserver audit webhook is still REQUIRED;
+    # see <https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/#webhook-backend> for details.
+    webhook:
+      # Number of webhook servers to run
+      replicaCount: 3
+      # Number of workers on each webhook server
+      workerCount: 8
+
+      # TLS is recommended but not required to connect from apiserver to the webhook server.
+      tls:
+        enabled: false
+        cert: "" # base64-encoded, starting with `LS0tLS`
+        key: ""
+
+      # If there are other audit webhooks, kelemetry can help duplicate the requests to them.
+      forward: {}
+        # upstream-name: https://domain/path
+
+      # The service for webhook servers.
+      # NOTE: Service cluster IP does not work in audit webhook config;
+      # please create the service discovery/ingress setup yourself.
+      # It is possible to point apiservers of different clusters to the same audit webhook,
+      # as long as the cluster name is provided properly.
+      service:
+        type: ClusterIP
+        nodePort: ~
+        otherConfig: {}
+          # clusterIP: xxx, externalIP: xxx, etc.
+
+  # The audit consumer is primarily CPU-bound.
+  resources: {}
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+  podSecurityContext: {}
+  containerSecurityContext: {}
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+
+  # QPS and burst for accessing the target cluster
+  clusterQps: 10.0
+  clusterBurst: 10
+  # QPS and burst for accessing other clusters (due to cross-cluster linkers)
+  otherClusterQps: 10.0
+  otherClusterBurst: 10
+  # Whether to expose pprof server
+  pprof: true
+  # Log verbosity level (`debug`, `info`, `warn`, `error`)
+  logLevel: info
+  # klog verbosity level for Kubernetes SDK calls
+  klogLevel: "4"
+
+# Configuration related to span generation.
+aggregator:
+  globalTags:
+    # Tags applied to all object spans (i.e. not actual events, just the parent placeholder)
+    pseudoSpan:
+      cluster: foo # one recommended use is to write the cluster name here.
+    # Tags applied to all actual spans (e.g. events, audit logs)
+    eventSpan: {}
+
+  # The duration of each object trace.
+  # A new trace is generated if activities in the same object intersect with multiples of this duration.
+  spanTtl: 30m
+  # If activity is detected within this duration after the previous span,
+  # the two spans get merged into the same trace.
+  spanFollowTtl: "0"
+  # The duration for which a span remains in span cache after its follow period has expired.
+  spanExtraTtl: "1m"
+
+  # The span cache is a shared key-value store used by different processes
+  # to ensure that spans of the same object are written to the same trace.
+  spanCache:
+    # The timeout for span cache mutex locking.
+    reserveTtl: 10s
+
+    # Span cache implementation.
+    # Supported types: 'etcd'
+    type: etcd
+    etcd:
+      # If externalEndpoint is false, the sharedEtcd database will be used.
+      # Otherwise, this should be the URL to connect to the etcd database.
+      externalEndpoint: false
+      # The prefix prepended to diff cache keys.
+      prefix: /span/
+      # Timeout for creating etcd connection
+      dialTimeout: 10s
+
+# Linkers associated objects together.
+linkers:
+  # Enable the owner linker, which links objects based on native owner references.
+  ownerReference: true
+  # Enable the annotation linker, which links objects based on the `kelemetry.kubewharf.io/parent-link` annotation.
+  annotation: true
+
+# Object cache is an LRU cache for reusing lazily-fetched objects.
+objectCache:
+  # Number of bytes allocated to cache the object.
+  size: 67108864
+  # Duration for a cached object to stay in the cache.
+  # Note that there is no other cache invalidation mechanism,
+  # although object cache is typically used for fetching rarely-modified data like ownerReferences.
+  storeTtl: 1m
+  # Duration for which an object is locked for fetching.
+  fetchTimeout: 5s
+
+# Diff cache stores the object diff from informers so that audit consumer can use it.
+diffCache:
+  # Whether to index by the resourceVersion `Before` or `After` a diff.
+  # `After` is more accurate, but it requires audit logs to be sent at RequestResponse level,
+  # which may result in more expensive audit logging costs.
+  # Use `Before` if you cannot use RequestResponse-level audit logging,
+  # but it may suffer from accuracy bugs such as duplicate events.
+  # See <https://github.com/kubernetes/kubernetes/issues/115791>.
+  resourceVersionIndex: Before
+
+  # Whether to persist a layer of read cache in memory to reduce etcd load.
+  memoryWrapper: true
+
+  # Diff cache implementation.
+  # Supported types: 'etcd'
+  type: etcd
+  etcd:
+    # If externalEndpoint is false, the sharedEtcd database will be used.
+    externalEndpoint: false
+    # The prefix prepended to diff cache keys.
+    prefix: /diff/
+
+# Configuration for Kelemetry to integrate with other clusters.
+multiCluster:
+  # List of known clusters.
+  # If `currentClusterName` is not specified, the first cluster is assumed to be the current cluster.
+  currentClusterName: cluster1
+  clusters:
+      # Cluster name, used for both display and cross-cluster references in linkers.
+      # Only A-Za-z0-9 and hyphens are allowed.
+    - name: cluster1
+      # Cluster kubeconfig.
+      kubeconfig:
+        # Type of kubeconfig source.
+        # Supported types: 'in-cluster', 'literal', 'secret'
+        type: in-cluster
+        # If type is `literal`, this should be the literal string containing the kubeconfig.
+        literal: ""
+        secret:
+          # If type is `secret`, this should be the name of a secret.
+          # The secret must exist in the same namespace that the chart is deployed in.
+          name: ""
+          # Key of the kubeconfig in the secret
+          key: ""
+      # Overrides the kubeconfig server endpoint if nonempty.
+      master: ""
+      # Only required if you use audit webhook and did not configure the cluster name behind `/audit/`:
+      # This is the list of addresses that audit webhook requests from the apiserver may be sent from.
+      peerAddresses: [127.0.0.1]
+
+traceCache:
+  # Trace cache implementation.
+  # Supported types: 'etcd'
+  type: etcd
+  etcd:
+    # If externalEndpoint is false, the sharedEtcd database will be used.
+    externalEndpoint: false
+    # The prefix prepended to diff cache keys.
+    prefix: /trace/
+
+kelemetryImage:
+  repository: kubewharf/kelemetry
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+  pullSecrets: []
+
+# The shared etcd database.
+# It is only deployed if at least one of diffCache/spanCache/traceCache uses etcd with externalEndpoint=false.
+sharedEtcd:
+  # Number of etcd replicas to run. This must be an odd number.
+  replicaCount: 3
+  image:
+    repository: quay.io/coreos/etcd
+    pullPolicy: IfNotPresent
+    tag: v3.5.7
+    pullSecrets: []
+  resources: {}
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+  podSecurityContext: {}
+  containerSecurityContext: {}
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  storageAccessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  storageResources:
+    requests:
+      storage: 1Gi

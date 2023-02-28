@@ -1,0 +1,69 @@
+# docker-compose setup for development setup.
+# Use quickstart.docker-compose.yaml if you just want to try out Kelemetry.
+# Use the helm chart if you want to deploy in production.
+version: "2.2"
+services:
+  # ETCD cache storage, only required if etcd cache is used
+  etcd:
+    image: quay.io/coreos/etcd:v3.2
+    entrypoint: [etcd]
+    command:
+      - -name=main
+      - -advertise-client-urls=http://etcd:2379
+      - -listen-client-urls=http://0.0.0.0:2379
+      - -initial-advertise-peer-urls=http://etcd:2380
+      - -listen-peer-urls=http://0.0.0.0:2380
+      - -initial-cluster-state=new
+      - -initial-cluster=main=http://etcd:2380
+      - -initial-cluster-token=etcd-cluster-1
+      - -data-dir=/var/run/etcd/default.etcd
+    volumes:
+      - etcd:/var/run/etcd/
+    ports:
+      - 2379:2379
+    restart: always
+  # Backend ES storage
+  es:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.9
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms128m -Xmx128m"
+    mem_limit: 536870912
+    ports:
+      - 9200:9200
+    volumes:
+      - es:/usr/share/elasticsearch/data
+    restart: always
+  # Web frontend for trace view.
+  jaeger-query:
+    image: jaegertracing/jaeger-query:1.42
+    environment:
+      GRPC_STORAGE_SERVER: host.docker.internal:17271 # run on host directly
+      SPAN_STORAGE_TYPE: grpc-plugin
+    ports:
+      - 0.0.0.0:16686:16686
+    restart: always
+  # OTLP collector that writes to ES
+  jaeger-collector:
+    image: jaegertracing/jaeger-collector:1.42
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      SPAN_STORAGE_TYPE: elasticsearch
+      ES_SERVER_URLS: http://es:9200
+      ES_INDEX_PREFIX: kelemetry
+    ports:
+      - 4317:4317
+    restart: always
+  # kibana frontend for debugging ES
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.9
+    environment:
+      ELASTICSEARCH_HOSTS: http://es:9200
+    ports:
+      - 5601:5601
+    restart: always
+
+volumes:
+  etcd: {}
+  es: {}

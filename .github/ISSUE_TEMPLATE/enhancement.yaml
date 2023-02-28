@@ -1,0 +1,16 @@
+name: Featue request
+description: Propose new features
+labels: enhancement
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: |
+        What would you like to be added?
+  - type: textarea
+    id: justification
+    attributes:
+      label: User story
+      description: |
+        Why is this needed?

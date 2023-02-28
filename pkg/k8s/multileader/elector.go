@@ -1,0 +1,288 @@
+// Copyright 2023 The Kelemetry Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Cooperative leader election, where a fixed number of controllers can act as the leaders simultaneously.
+package multileader
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
+
+	"github.com/kubewharf/kelemetry/pkg/k8s"
+	"github.com/kubewharf/kelemetry/pkg/metrics"
+	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
+)
+
+type Config struct {
+	Enable        bool
+	Namespace     string
+	Name          string
+	LeaseDuration time.Duration
+	RenewDeadline time.Duration
+	RetryPeriod   time.Duration
+	NumLeaders    int
+}
+
+func (config *Config) SetupOptions(fs *pflag.FlagSet, prefix string, component string, defaultNumLeaders int) {
+	prefix += "-leader-election"
+
+	fs.BoolVar(&config.Enable, prefix+"-enable", true, fmt.Sprintf("enable leader election for %s", component))
+	fs.StringVar(&config.Namespace, prefix+"-namespace", "default", fmt.Sprintf("namespace for %s leader election", component))
+	fs.StringVar(&config.Name, prefix+"-name", fmt.Sprintf("kelemetry-%s", prefix),
+		fmt.Sprintf("lease object name prefix for %s leader election, to be prepended with a leader number", component))
+	fs.DurationVar(&config.LeaseDuration, prefix+"-lease-duration", time.Second*15,
+		fmt.Sprintf("duration for which %s non-leader candidates wait before force acquiring leadership", component))
+	fs.DurationVar(&config.RenewDeadline, prefix+"-renew-deadline", time.Second*10,
+		fmt.Sprintf("duration for which %s leaders renew their own leadership", component))
+	fs.DurationVar(&config.RetryPeriod, prefix+"-retry-period", time.Second*2,
+		fmt.Sprintf("duration for which %s leader electors wait between tries of actions", component))
+	fs.IntVar(&config.NumLeaders, prefix+"-num-leaders", defaultNumLeaders,
+		fmt.Sprintf("number of leaders elected for %s", component))
+}
+
+type Elector struct {
+	enable         bool
+	name           string
+	logger         logrus.FieldLogger
+	configs        []*leaderelection.LeaderElectionConfig
+	isLeaderMetric metrics.Metric
+	isLeaderFlag   []uint32
+}
+
+type isLeaderMetric struct {
+	Component string
+	LeaderId  int
+}
+
+func NewElector(
+	component string,
+	logger logrus.FieldLogger,
+	config *Config,
+	client k8s.Client,
+	metrics metrics.Client,
+) (*Elector, error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, fmt.Errorf("cannot get hostname for leader election: %w", err)
+	}
+	identity := hostname + "_" + string(uuid.NewUUID())
+
+	elector := &Elector{
+		enable:         config.Enable,
+		name:           component,
+		logger:         logger,
+		configs:        make([]*leaderelection.LeaderElectionConfig, 0, config.NumLeaders),
+		isLeaderMetric: metrics.New("is_leader", &isLeaderMetric{}),
+		isLeaderFlag:   make([]uint32, config.NumLeaders),
+	}
+
+	for i := int(0); i < config.NumLeaders; i++ {
+		rl, err := resourcelock.New(
+			resourcelock.LeasesResourceLock,
+			config.Namespace,
+			fmt.Sprintf("%s-%d", config.Name, i),
+			client.KubernetesClient().CoreV1(),
+			client.KubernetesClient().CoordinationV1(),
+			resourcelock.ResourceLockConfig{
+				Identity:      identity,
+				EventRecorder: client.EventRecorder(component),
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("cannot initialize %s leader election resource lock: %w", component, err)
+		}
+
+		leaderElectionConfig := leaderelection.LeaderElectionConfig{
+			Lock:            rl,
+			LeaseDuration:   config.LeaseDuration,
+			RenewDeadline:   config.RenewDeadline,
+			RetryPeriod:     config.RetryPeriod,
+			ReleaseOnCancel: true,
+		}
+		elector.configs = append(elector.configs, &leaderElectionConfig)
+	}
+
+	return elector, nil
+}
+
+func configureCallbacks(configs []*leaderelection.LeaderElectionConfig) <-chan event {
+	ch := make(chan event, 1)
+
+	for i := range configs {
+		i := i
+
+		configs[i].Callbacks.OnStartedLeading = func(ctx context.Context) {
+			// only the first event needs to get sent
+			// other goroutines should exit immediately to avoid leak
+			select {
+			case ch <- event{i: i, doneCh: ctx.Done()}:
+			default:
+			}
+		}
+		configs[i].Callbacks.OnStoppedLeading = func() {
+		}
+	}
+
+	return ch
+}
+
+func (elector *Elector) Run(run func(doneCh <-chan struct{}), stopCh <-chan struct{}) {
+	defer shutdown.RecoverPanic(elector.logger)
+
+	if !elector.enable {
+		wg := &sync.WaitGroup{}
+		wg.Add(len(elector.isLeaderFlag))
+
+		for i := range elector.isLeaderFlag {
+			go func(i int) {
+				atomic.StoreUint32(&elector.isLeaderFlag[i], 1)
+				defer atomic.StoreUint32(&elector.isLeaderFlag[i], 0)
+				defer wg.Done()
+				run(stopCh)
+			}(i)
+		}
+
+		wg.Wait()
+
+		return
+	}
+
+	for {
+		if !elector.spinOnce(run, stopCh) {
+			return
+		}
+	}
+}
+
+func (elector *Elector) RunLeaderMetricLoop(stopCh <-chan struct{}) {
+	defer shutdown.RecoverPanic(elector.logger)
+
+	for {
+		select {
+		case <-time.After(time.Second * 30):
+			for leaderId := range elector.isLeaderFlag {
+				flag := atomic.LoadUint32(&elector.isLeaderFlag[leaderId])
+				elector.isLeaderMetric.With(&isLeaderMetric{
+					Component: elector.name,
+					LeaderId:  leaderId,
+				}).Gauge(int64(flag))
+			}
+		case <-stopCh:
+			for leaderId := range elector.isLeaderFlag {
+				elector.isLeaderMetric.With(&isLeaderMetric{
+					Component: elector.name,
+					LeaderId:  leaderId,
+				}).Gauge(0)
+			}
+			return
+		}
+	}
+}
+
+func (elector *Elector) spinOnce(run func(doneCh <-chan struct{}), stopCh <-chan struct{}) (shouldContinue bool) {
+	baseCtx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
+	leaderId, doneCh, err := elector.waitForLeader(baseCtx, stopCh)
+	if err != nil {
+		elector.logger.WithError(err).Error("leader election error")
+		return true
+	}
+
+	if doneCh == nil {
+		return false
+	}
+
+	go func() {
+		defer shutdown.RecoverPanic(elector.logger)
+		atomic.StoreUint32(&elector.isLeaderFlag[leaderId], 1)
+		defer atomic.StoreUint32(&elector.isLeaderFlag[leaderId], 0)
+		defer cancelFunc() // if leader panics, release the lease
+
+		run(doneCh)
+	}()
+
+	select {
+	case <-doneCh:
+		elector.logger.Warn("lost leader lease")
+		return true
+	case <-stopCh:
+		return false
+	}
+}
+
+func (elector *Elector) waitForLeader(baseCtx context.Context, stopCh <-chan struct{}) (leaderId int, doneCh <-chan struct{}, err error) {
+	eventCh := configureCallbacks(elector.configs)
+
+	cancelFuncs := []func(){}
+	defer func() {
+		for _, fn := range cancelFuncs {
+			fn()
+		}
+	}()
+
+	wg := &sync.WaitGroup{}
+	wg.Add(len(elector.configs))
+
+	for _, config := range elector.configs {
+		ctx, cancelFunc := context.WithCancel(baseCtx)
+		cancelFuncs = append(cancelFuncs, cancelFunc)
+
+		sub, err := leaderelection.NewLeaderElector(*config)
+		if err != nil {
+			return -1, nil, fmt.Errorf("cannot initialize elector: %w", err)
+		}
+
+		go func() {
+			defer shutdown.RecoverPanic(elector.logger)
+			defer wg.Done()
+
+			sub.Run(ctx)
+		}()
+	}
+
+	var event event
+	select {
+	case <-stopCh:
+		return -1, nil, nil
+
+	case event = <-eventCh:
+	}
+
+	for i, cancelFunc := range cancelFuncs {
+		if i != event.i {
+			cancelFunc()
+		}
+	}
+	cancelFuncs = nil // do not cancel the leader context
+
+	elector.logger.WithField("elector", event.i).Info("acquired leader lease")
+
+	return event.i, event.doneCh, nil
+}
+
+type event struct {
+	i      int
+	doneCh <-chan struct{}
+}

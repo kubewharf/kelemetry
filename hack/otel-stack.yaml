@@ -1,0 +1,128 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger-query
+  labels:
+    name: kubetrace
+    component: jaeger-query
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: kubetrace
+      component: jaeger-query
+  template:
+    metadata:
+      labels:
+        name: kubetrace
+        component: jaeger-query
+    spec:
+      containers:
+        - name: main
+          image: jaegertracing/jaeger-query:1.41
+          command: [
+            "/go/bin/query-linux",
+            "--grpc-storage.server=172.17.0.1:17271", # kind host address
+          ]
+          env:
+            - name: SPAN_STORAGE_TYPE
+              value: grpc-plugin
+          ports:
+            - containerPort: 16686
+              name: frontend
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-query
+spec:
+  selector:
+    name: kubetrace
+    component: jaeger-query
+  ports:
+    - port: 16686
+      name: frontend
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: otel-collector
+  labels:
+    name: kubetrace
+    component: final-collector
+spec:
+  replicas: 1
+  serviceName: otel-collector
+  selector:
+    matchLabels:
+      name: kubetrace
+      component: final-collector
+  template:
+    metadata:
+      labels:
+        name: kubetrace
+        component: final-collector
+    spec:
+      containers:
+        - name: main
+          command: ["/otelcol", "--config=/etc/otel-collector/config.yaml"]
+          image: otel/opentelemetry-collector:0.60.0
+          ports:
+            - containerPort: 13133
+              name: healthck
+            - containerPort: 4317
+              name: otlp-grpc
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel-collector
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+    exporters:
+      logging:
+        loglevel: debug
+      otlp:
+        endpoint: jaeger.default.svc:4317
+        tls:
+          insecure: true
+    processors:
+      batch:
+    extensions:
+      health_check:
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [logging, otlp]
+        logs:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [logging]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+spec:
+  selector:
+    name: kubetrace
+    component: final-collector
+  ports:
+    - port: 13133
+      name: healthck
+    - port: 4317
+      name: otlp

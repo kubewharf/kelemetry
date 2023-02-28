@@ -1,0 +1,53 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{.Release.Name}}-informers
+  labels: {{ include "kelemetry.informers-labels" . }}
+spec:
+  replicas: {{.Values.informers.replicaCount}}
+  selector:
+    matchLabels: {{ include "kelemetry.informers-labels" . }}
+  template:
+    metadata:
+      labels: {{ include "kelemetry.informers-labels" . }}
+    spec:
+      imagePullSecrets: [
+        {{- range .Values.kelemetryImage.pullSecrets }}
+        {{ . | toJson }},
+        {{- end }}
+      ]
+      serviceAccountName: {{.Release.Name}}-informers
+      {{ include "kelemetry.pod-boilerplate" .Values.informers | nindent 6 }}
+      containers:
+        - name: main
+          {{ include "kelemetry.container-boilerplate" .Values.informers | nindent 10 }}
+          image: {{ printf "%s:%s" .Values.kelemetryImage.repository (.Values.kelemetryImage.tag | default .Chart.AppVersion) | toJson }}
+          imagePullPolicy: {{ toJson .Values.kelemetryImage.pullPolicy }}
+          # TODO: add readiness probe
+          command: [
+            "/usr/local/bin/kelemetry",
+            {{ include "kelemetry.aggregator-options" . }}
+            {{ include "kelemetry.object-cache-options" . }}
+            {{ include "kelemetry.in-cluster-config-options" . }}
+            {{ include "kelemetry.logging-options" .Values.informers }}
+            {{- if .Values.informers.diff.enable }}
+            {{ include "kelemetry.diff-cache-options" . }}
+            {{ include "kelemetry.diff-controller-options" . }}
+            {{ include "kelemetry.event-informer-options" . }}
+            {{- end }}
+          ]
+          ports: [
+            {{- if .Values.informers.pprof }}
+            {
+              containerPort: 6060,
+              name: pprof,
+            },
+            {{- end }}
+          ]
+          volumeMounts: [
+            {{ include "kelemetry.kubeconfig-volume-mounts" . }}
+          ]
+      volumes: [
+        {{ include "kelemetry.kubeconfig-volumes" . }}
+      ]

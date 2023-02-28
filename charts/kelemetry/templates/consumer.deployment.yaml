@@ -1,0 +1,80 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{.Release.Name}}-consumer
+  labels: {{ include "kelemetry.consumer-labels" . }}
+spec:
+  replicas: {{.Values.consumer.replicaCount}}
+  selector:
+    matchLabels: {{ include "kelemetry.consumer-labels" . }}
+  template:
+    metadata:
+      labels: {{ include "kelemetry.consumer-labels" . }}
+    spec:
+      imagePullSecrets: [
+        {{- range .Values.kelemetryImage.pullSecrets }}
+        {{ . | toJson }},
+        {{- end }}
+      ]
+      serviceAccountName: {{.Release.Name}}-consumer
+      {{- include "kelemetry.pod-boilerplate" .Values.consumer | nindent 6 }}
+      containers:
+        - name: main
+          {{- include "kelemetry.container-boilerplate" .Values.consumer | nindent 10 }}
+          image: {{ printf "%s:%s" .Values.kelemetryImage.repository (.Values.kelemetryImage.tag | default .Chart.AppVersion) | toJson }}
+          imagePullPolicy: {{ toJson .Values.kelemetryImage.pullPolicy }}
+          # TODO: add readiness probe
+          command: [
+            "/usr/local/bin/kelemetry",
+            {{ include "kelemetry.aggregator-options" . }}
+            {{ include "kelemetry.object-cache-options" . }}
+            {{ include "kelemetry.in-cluster-config-options" . }}
+            {{ include "kelemetry.logging-options" .Values.consumer }}
+            {{ include "kelemetry.audit-options" . }}
+          ]
+          ports: [
+            {{- if .Values.consumer.pprof }}
+            {
+              containerPort: 6060,
+              name: pprof,
+            },
+            {{- end }}
+            {{- if .Values.consumer.source.type | eq "webhook"}}
+            {
+              containerPort: 8080,
+              name: webhook,
+            }
+            {{- end }}
+          ]
+          volumeMounts: [
+            {{ include "kelemetry.kubeconfig-volume-mounts" . }}
+            {{ include "kelemetry.audit-volume-mounts" . }}
+          ]
+      volumes: [
+        {{ include "kelemetry.kubeconfig-volumes" . }}
+        {{ include "kelemetry.audit-volumes" . }}
+      ]
+{{- if .Values.consumer.source.type | eq "webhook" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{.Release.Name}}-webhook
+  labels: {{ include "kelemetry.consumer-labels" . }}
+{{- with .Values.consumer.source.webhook.service}}
+spec:
+  type: {{toJson .type}}
+  {{- if .otherConfig }}
+  {{- toYaml .otherConfig | nindent 2 }}
+  {{- end }}
+  selector: {{ include "kelemetry.consumer-labels" $ }}
+  ports:
+    - name: webhook
+      port: 8080
+      targetPort: webhook
+      {{- if .nodePort }}
+      nodePort: {{toJson .nodePort}}
+      {{- end }}
+{{- end }}
+{{- end }}

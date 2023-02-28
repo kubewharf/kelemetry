@@ -1,0 +1,88 @@
+{{- if
+  .Values.diffCache.type | eq "etcd" | and (not .Values.diffCache.etcd.externalEndpoint)
+  | or (.Values.aggregator.spanCache.type | eq "etcd" | and (not .Values.aggregator.spanCache.etcd.externalEndpoint))
+  | or (.Values.traceCache.type | eq "etcd" | and (not .Values.traceCache.etcd.externalEndpoint))
+}}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{.Release.Name}}-etcd
+  labels: {{ include "kelemetry.etcd-labels" . }}
+spec:
+  serviceName: {{.Release.Name}}-etcd
+  replicas: {{.Values.sharedEtcd.replicaCount}}
+  selector:
+    matchLabels: {{ include "kelemetry.etcd-labels" . }}
+  template:
+    metadata:
+      labels: {{ include "kelemetry.etcd-labels" . }}
+    spec:
+      imagePullSecrets: [
+        {{- range .Values.sharedEtcd.image.pullSecrets }}
+        {{ . | toJson }},
+        {{- end }}
+      ]
+      {{- include "kelemetry.pod-boilerplate" .Values.sharedEtcd | nindent 6 }}
+      containers:
+        - name: main
+          {{- include "kelemetry.container-boilerplate" .Values.sharedEtcd | nindent 10 }}
+          image: {{ printf "%s:%s" .Values.sharedEtcd.image.repository .Values.sharedEtcd.image.tag | toJson }}
+          imagePullPolicy: {{ toJson .Values.kelemetryImage.pullPolicy }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef: {fieldPath: metadata.name}
+          command:
+            - ash
+            - -c
+            - |
+              etcd \
+                -name ${POD_NAME} \
+                -advertise-client-urls=http://${POD_NAME}:2379 \
+                -listen-client-urls=http://0.0.0.0:2379 \
+                -initial-advertise-peer-urls=http://${POD_NAME}:2380 \
+                -listen-peer-urls=http://0.0.0.0:2380 \
+                -initial-cluster-token=etcd-cluster-1 \
+                -initial-cluster={{.Release.Name}}-etcd-0=http://{{.Release.Name}}-etcd-0.{{.Release.Name}}-etcd.{{.Release.Namespace}}.svc:2380
+                  {{- if gt (int .Values.sharedEtcd.replicaCount) 1 }}
+                  {{- range untilStep 1 (int .Values.sharedEtcd.replicaCount) 1 }}
+                  {{- printf ",etcd%d=http://%s-etcd-%d.%s-etcd.%s.svc:2380" . $.Release.Name . $.Release.Name $.Release.Namespace }}
+                  {{- end }}
+                  {{- end }} \
+                -initial-cluster-state=new \
+                -data-dir=/var/run/etcd/default.etcd
+          ports:
+            - containerPort: 2379
+              name: client
+            - containerPort: 2380
+              name: peer
+          volumeMounts:
+            - name: data
+              mountPath: /var/run/etcd
+  volumeClaimTemplates:
+    - metadata:
+        name: {{.Release.Name}}-data
+        labels: {{ include "kelemetry.etcd-labels" . }}
+      spec:
+        accessModes: {{toJson .Values.sharedEtcd.storageAccessModes}}
+        storageClassName: {{toJson .Values.sharedEtcd.storageClassName}}
+        resources: {{toJson .Values.sharedEtcd.storageResources}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{.Release.Name}}-etcd
+  labels: {{ include "kelemetry.etcd-labels" . }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: client
+      port: 2379
+      targetPort: client
+    - name: peer
+      port: 2380
+      targetPort: peer
+  selector: {{ include "kelemetry.etcd-labels" . }}
+{{- end }}
