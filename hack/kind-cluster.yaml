@@ -1,6 +1,10 @@
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: tracetest
+networking:
+  # This is to allow docker containers to connect to it on quickstart.
+  # Feel free to delete this line if you have any security cocnerns.
+  apiServerAddress: "0.0.0.0"
 nodes:
   - role: control-plane
     image: kindest/node:v1.25.3

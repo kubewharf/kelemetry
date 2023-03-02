@@ -134,7 +134,7 @@ kind:
 	)/g" hack/audit-kubeconfig.yaml >hack/audit-kubeconfig.local.yaml
 	cd hack && kind create cluster --config kind-cluster.yaml
 
-COMPOSE_COMMAND ?= up -d
+COMPOSE_COMMAND ?= up --build -d --remove-orphans
 
 stack:
 	docker-compose -f dev.docker-compose.yaml up --no-recreate --no-build --no-start # create network only
@@ -145,6 +145,13 @@ stack:
 			'.version = "2.2" | .services["jaeger-query"].environment.GRPC_STORAGE_SERVER = $$GATEWAY_ADDR + ":17271"' \
 		) \
 		$(COMPOSE_COMMAND)
+
+quickstart:
+	docker-compose -f quickstart.docker-compose.yaml up --no-recreate --no-build --no-start
+	kubectl config view --raw --minify --flatten --merge >hack/client-kubeconfig.local.yaml
+	sed -i "s/0\.0\.0\.0/$$(docker network inspect kelemetry_default -f '{{(index .IPAM.Config 0).Gateway}}')/g" hack/client-kubeconfig.local.yaml
+	sed -i 's/certificate-authority-data: .*$$/insecure-skip-tls-verify: true/' hack/client-kubeconfig.local.yaml
+	docker-compose -f quickstart.docker-compose.yaml $(COMPOSE_COMMAND)
 
 pre-commit: dot usage test
 	golangci-lint run

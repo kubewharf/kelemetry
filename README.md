@@ -7,7 +7,7 @@ Kubernetes events, audit log, informers
 into the form of traditional tracing,
 enabling visualization through Jaeger UI and automatic analysis.
 
-![](images/screenshot.png)
+![](images/trace-view.png)
 
 ## Motivation
 
@@ -58,6 +58,7 @@ graph TB
 - [Contributing guidelines](CONTRIBUTING.md)
 - [Developer manual](DEV.md)
 - [Security policy](SECURITY.md)
+- [User guide](USER_GUIDE.md)
 
 ## Code of Conduct
 

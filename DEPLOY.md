@@ -58,4 +58,8 @@ graph LR
 ```
 
 This setup is bundled into a Helm chart.
-TODO
+
+## Steps
+
+1. Download [`values.yaml`](charts/kelemetry/values.yaml) and configure the settings.
+2. Install the chart: `helm install kelemetry charts/kelemetry`

@@ -18,6 +18,7 @@ services:
       - -data-dir=/var/run/etcd/default.etcd
     volumes:
       - etcd:/var/run/etcd/default.etcd
+    restart: always
   es:
     image: docker.elastic.co/elasticsearch/elasticsearch:7.17.9
     environment:
@@ -27,6 +28,7 @@ services:
     mem_limit: 536870912
     volumes:
       - es:/usr/share/elasticsearch/data
+    restart: always
   jaeger-query:
     image: jaegertracing/jaeger-query:1.42
     environment:
@@ -34,6 +36,7 @@ services:
       SPAN_STORAGE_TYPE: grpc-plugin
     ports:
       - 0.0.0.0:16686:16686
+    restart: always
   jaeger-collector:
     image: jaegertracing/jaeger-collector:1.42
     environment:
@@ -41,8 +44,50 @@ services:
       SPAN_STORAGE_TYPE: elasticsearch
       ES_SERVER_URLS: http://es:9200
       ES_INDEX_PREFIX: kelemetry
+    restart: always
   kelemetry:
     build: .
+    command: [
+      "kelemetry",
+      "--audit-consumer-enable",
+      "--audit-producer-enable",
+      "--audit-webhook-enable",
+      "--event-informer-enable",
+      "--annotation-linker-enable",
+      "--owner-linker-enable",
+      "--diff-decorator-enable",
+      "--diff-controller-enable",
+      "--diff-api-enable",
+      "--jaeger-storage-plugin-enable",
+      "--mq=local",
+      "--audit-consumer-partition=0,1,2,3,4,5,6,7",
+      "--http-address=0.0.0.0",
+      "--http-port=8080",
+      "--kube-target-cluster=tracetest",
+      "--kube-target-rest-burst=100",
+      "--kube-target-rest-qps=100",
+      "--kube-config-paths=tracetest=/mnt/kubeconfig",
+      "--diff-cache=etcd",
+      "--diff-cache-etcd-endpoints=etcd:2379",
+      "--diff-cache-wrapper-enable",
+      "--diff-controller-leader-election-enable=false",
+      "--event-informer-leader-election-enable=false",
+      "--span-cache=etcd",
+      "--span-cache-etcd-endpoints=etcd:2379",
+      "--tracer-otel-endpoint=jaeger-collector:4317",
+      "--tracer-otel-insecure",
+      "--jaeger-cluster-names=tracetest",
+      "--jaeger-storage-plugin-address=0.0.0.0:17271",
+      "--jaeger-backend=jaeger-storage",
+      "--jaeger-storage.span-storage.type=elasticsearch",
+      "--jaeger-storage.es.server-urls=http://es:9200",
+      "--jaeger-storage.es.index-prefix=kelemetry",
+    ]
+    ports:
+      - 0.0.0.0:8080:8080
+    volumes:
+      - ./hack/client-kubeconfig.local.yaml:/mnt/kubeconfig
+    restart: always
 
 volumes:
   etcd: {}
