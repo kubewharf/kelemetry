@@ -113,18 +113,24 @@ func (metric TaggedMetric) DeferCount(start time.Time) {
 
 type mux struct {
 	*manager.Mux
-	logger   logrus.FieldLogger
-	monitors []func(stopCh <-chan struct{})
+	logger     logrus.FieldLogger
+	monitors   []func(stopCh <-chan struct{})
+	metricPool map[string]Metric
 }
 
 func newMux(logger logrus.FieldLogger) Client {
 	return &mux{
-		Mux:    manager.NewMux("metrics", false),
-		logger: logger,
+		Mux:        manager.NewMux("metrics", false),
+		logger:     logger,
+		metricPool: map[string]Metric{},
 	}
 }
 
 func (mux *mux) New(name string, tagsType interface{}) Metric {
+	if metric, exists := mux.metricPool[name]; exists {
+		return metric
+	}
+
 	tagNames := []string{}
 	ty := reflect.TypeOf(tagsType).Elem()
 	for i := 0; i < ty.NumField(); i++ {
@@ -138,20 +144,22 @@ func (mux *mux) New(name string, tagsType interface{}) Metric {
 	}
 
 	impl := mux.Impl().(Impl).New(name, tagNames)
-	return Metric{
+	metric := Metric{
 		impl:    impl,
 		tagType: ty,
 	}
+	mux.metricPool[name] = metric
+	return metric
 }
 
 func (mux *mux) NewMonitor(name string, tags interface{}, getter func() int64) {
-	metric := mux.New(name, tags).With(tags)
+	tagged := mux.New(name, tags).With(tags)
 	loop := func(stopCh <-chan struct{}) {
 		defer shutdown.RecoverPanic(mux.logger)
 
 		wait.Until(func() {
 			value := getter()
-			metric.Gauge(value)
+			tagged.Gauge(value)
 		}, MonitorPeriod, stopCh)
 	}
 

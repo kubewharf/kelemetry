@@ -271,7 +271,11 @@
       --log-file string                                                      logrus log output file (leave empty for stdout)
       --log-format string                                                    logrus log format (default "text")
       --log-level string                                                     logrus log level (default "debug")
-      --metrics string                                                       implementation of metrics. Possible values are ["noop"]. (default "noop")
+      --metrics string                                                       implementation of metrics. Possible values are ["noop" "prom"]. (default "noop")
+      --metrics-address string                                               HTTP server bind address
+      --metrics-port uint16                                                  HTTP server port (default 9090)
+      --metrics-read-header-timeout duration                                 HTTP server timeout for reading request headers
+      --metrics-read-timeout duration                                        HTTP server timeout for reading requests
       --mq string                                                            implementation of mq. Possible values are ["local"]. (default "local")
       --mq-local-partition-by-object                                         Whether to partition events of the same object to the same worker
       --object-cache-fetch-timeout duration                                  duration that an object is locked for fetching (default 5s)

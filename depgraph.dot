@@ -44,13 +44,14 @@ digraph G {
 		n39 [label="kube\nobject\ncache", style="", fillcolor="white"]
 		n40 [label="metrics", style="filled", fillcolor="#2288ff"]
 		n41 [label="metrics\nnoop", style="", fillcolor="white"]
-		n42 [label="mq", style="filled", fillcolor="#2288ff"]
-		n43 [label="mq\nlocal", style="", fillcolor="white"]
-		n44 [label="spancache", style="filled", fillcolor="#2288ff"]
-		n45 [label="spancache\netcd", style="", fillcolor="white"]
-		n46 [label="spancache\nlocal", style="", fillcolor="white"]
-		n47 [label="tracer", style="filled", fillcolor="#2288ff"]
-		n48 [label="tracer\notel", style="", fillcolor="white"]
+		n42 [label="metrics\nprom", style="", fillcolor="white"]
+		n43 [label="mq", style="filled", fillcolor="#2288ff"]
+		n44 [label="mq\nlocal", style="", fillcolor="white"]
+		n45 [label="spancache", style="filled", fillcolor="#2288ff"]
+		n46 [label="spancache\netcd", style="", fillcolor="white"]
+		n47 [label="spancache\nlocal", style="", fillcolor="white"]
+		n48 [label="tracer", style="filled", fillcolor="#2288ff"]
+		n49 [label="tracer\notel", style="", fillcolor="white"]
 	n0 -> n14
 	n0 -> n22
 	n0 -> n36
@@ -59,13 +60,13 @@ digraph G {
 	n1 -> n15
 	n1 -> n23
 	n1 -> n40
-	n1 -> n42
+	n1 -> n43
 	n2 -> n16
 	n3 -> n16
 	n3 -> n40
 	n4 -> n16
 	n4 -> n40
-	n4 -> n42
+	n4 -> n43
 	n5 -> n19
 	n5 -> n24
 	n5 -> n36
@@ -96,8 +97,8 @@ digraph G {
 	n11 -> n39
 	n13 -> n14
 	n13 -> n40
-	n13 -> n44
-	n13 -> n47
+	n13 -> n45
+	n13 -> n48
 	n16 -> n17
 	n16 -> n24
 	n16 -> n40
@@ -127,10 +128,11 @@ digraph G {
 	n39 -> n36
 	n39 -> n40
 	n40 -> n41
-	n42 -> n43
-	n43 -> n40
+	n40 -> n42
+	n43 -> n44
 	n44 -> n40
-	n44 -> n45
-	n44 -> n46
-	n47 -> n48
+	n45 -> n40
+	n45 -> n46
+	n45 -> n47
+	n48 -> n49
 }

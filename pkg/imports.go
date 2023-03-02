@@ -44,5 +44,6 @@ import (
 	_ "github.com/kubewharf/kelemetry/pkg/frontend/tracecache/local"
 	_ "github.com/kubewharf/kelemetry/pkg/k8s/config/mapoption"
 	_ "github.com/kubewharf/kelemetry/pkg/metrics/noop"
+	_ "github.com/kubewharf/kelemetry/pkg/metrics/prometheus"
 	_ "github.com/kubewharf/kelemetry/pkg/ownerlinker"
 )
