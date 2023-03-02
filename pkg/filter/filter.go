@@ -50,7 +50,7 @@ func init() {
 type Filter interface {
 	manager.Component
 
-	TestGvk(gvk schema.GroupVersionKind) bool
+	TestGvk(cluster string, gvk schema.GroupVersionKind) bool
 	TestGvr(gvr schema.GroupVersionResource) bool
 
 	TestAuditEvent(event *auditv1.Event) bool
@@ -192,8 +192,18 @@ func (filter *filter) getConfig() *config {
 	return filter.config
 }
 
-func (filter *filter) TestGvk(gvk schema.GroupVersionKind) bool {
-	gvr, hasCache := filter.discovery.LookupResource(gvk)
+func (filter *filter) TestGvk(cluster string, gvk schema.GroupVersionKind) bool {
+	cdc, err := filter.discovery.ForCluster(cluster)
+	if err != nil {
+		filter.logger.
+			WithError(err).
+			WithField("cluster", cluster).
+			WithField("gvk", gvk).
+			Error("assuming positive filter result in unsupported cluster")
+		return true
+	}
+
+	gvr, hasCache := cdc.LookupResource(gvk)
 	if !hasCache {
 		filter.logger.WithField("gvk", gvk).Warn("Received object with unknown GVK")
 		return true

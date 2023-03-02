@@ -315,7 +315,9 @@ func (ctrl *controller) handleEvent(event *corev1.Event) {
 		}
 	}
 
-	if !ctrl.filter.TestGvk(event.InvolvedObject.GroupVersionKind()) {
+	clusterName := ctrl.clients.TargetCluster().ClusterName()
+
+	if !ctrl.filter.TestGvk(clusterName, event.InvolvedObject.GroupVersionKind()) {
 		metric.Error = metrics.MakeLabeledError("Filtered")
 		return
 	}
@@ -325,7 +327,13 @@ func (ctrl *controller) handleEvent(event *corev1.Event) {
 		WithTag("action", event.Action).
 		Log(zconstants.LogTypeEventMessage, event.Message)
 
-	gvr, found := ctrl.discoveryCache.LookupResource(event.InvolvedObject.GroupVersionKind())
+	cdc, err := ctrl.discoveryCache.ForCluster(clusterName)
+	if err != nil {
+		logger.WithError(err).Error("cannot init discovery cache for target cluster")
+		metric.Error = metrics.MakeLabeledError("invalid cluster")
+		return
+	}
+	gvr, found := cdc.LookupResource(event.InvolvedObject.GroupVersionKind())
 	if !found {
 		logger.WithField("gvk", event.InvolvedObject.GroupVersionKind()).Error("unknown gvk")
 		metric.Error = metrics.MakeLabeledError("UnknownGVK")
@@ -343,14 +351,13 @@ func (ctrl *controller) handleEvent(event *corev1.Event) {
 	ctx, cancelFunc := context.WithCancel(ctrl.ctx)
 	defer cancelFunc()
 
-	err := ctrl.aggregator.Send(ctx, util.ObjectRef{
-		Cluster:              ctrl.clients.TargetCluster().ClusterName(),
+	if err := ctrl.aggregator.Send(ctx, util.ObjectRef{
+		Cluster:              clusterName,
 		GroupVersionResource: gvr,
 		Namespace:            event.InvolvedObject.Namespace,
 		Name:                 event.InvolvedObject.Name,
 		Uid:                  event.InvolvedObject.UID,
-	}, aggregatorEvent, nil)
-	if err != nil {
+	}, aggregatorEvent, nil); err != nil {
 		logger.WithError(err).Error("Cannot send trace")
 		metric.Error = metrics.LabelError(err, "SendTrace")
 		return

@@ -122,14 +122,20 @@ func (ctrl *Controller) Lookup(ctx context.Context, object util.ObjectRef) *util
 			}
 
 			gvk := groupVersion.WithKind(owner.Kind)
-			gvr, exists := ctrl.discoveryCache.LookupResource(gvk)
+			cdc, err := ctrl.discoveryCache.ForCluster(object.Cluster)
+			if err != nil {
+				logger.WithError(err).Error("cannot access cluster from object reference")
+				continue
+			}
+
+			gvr, exists := cdc.LookupResource(gvk)
 			if !exists {
 				logger.WithField("gvk", gvk).Warn("Object contains owner reference of unknown GVK")
 				continue
 			}
 
 			ret := &util.ObjectRef{
-				Cluster:              ctrl.clients.TargetCluster().ClusterName(),
+				Cluster:              object.Cluster, // inherited from the same cluster
 				GroupVersionResource: gvr,
 				Namespace:            object.Namespace,
 				Name:                 owner.Name,

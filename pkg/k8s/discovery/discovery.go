@@ -54,8 +54,12 @@ type (
 )
 
 type DiscoveryCache interface {
-	manager.Component
+	// Gets the discovery cache for a specific cluster.
+	// Lazily initializes the cache if it is not present.
+	ForCluster(name string) (ClusterDiscoveryCache, error)
+}
 
+type ClusterDiscoveryCache interface {
 	GetAll() GvrDetails
 	LookupKind(gvr schema.GroupVersionResource) (schema.GroupVersionKind, bool)
 	LookupResource(gvk schema.GroupVersionKind) (schema.GroupVersionResource, bool)
@@ -72,8 +76,21 @@ type discoveryCache struct {
 	clients k8s.Clients
 	metrics metrics.Client
 
-	ctx          context.Context
+	stopCh       <-chan struct{}
 	resyncMetric metrics.Metric
+
+	clusters sync.Map
+}
+
+type clusterDiscoveryCache struct {
+	initLock sync.Once
+	initErr  error
+
+	options      *discoveryOptions
+	logger       logrus.FieldLogger
+	clock        clock.Clock
+	resyncMetric metrics.TaggedMetric
+	client       k8s.Client
 
 	resyncRequestCh chan struct{}
 	onResyncCh      []chan<- struct{}
@@ -84,7 +101,9 @@ type discoveryCache struct {
 	gvkToGvr   GvkToGvr
 }
 
-type resyncMetric struct{}
+type resyncMetric struct {
+	Cluster string
+}
 
 func NewDiscoveryCache(
 	logger logrus.FieldLogger,
@@ -93,56 +112,72 @@ func NewDiscoveryCache(
 	metrics metrics.Client,
 ) DiscoveryCache {
 	return &discoveryCache{
-		logger:          logger,
-		clock:           clock,
-		clients:         clients,
-		metrics:         metrics,
-		resyncRequestCh: make(chan struct{}, 1),
+		logger:  logger,
+		clock:   clock,
+		clients: clients,
+		metrics: metrics,
 	}
 }
 
-func (dc *discoveryCache) Options() manager.Options {
-	return &dc.options
-}
+func (dc *discoveryCache) Options() manager.Options { return &dc.options }
 
 func (dc *discoveryCache) Init(ctx context.Context) error {
-	dc.ctx = ctx
 	dc.resyncMetric = dc.metrics.New("discovery_resync", &resyncMetric{})
 	return nil
 }
 
 func (dc *discoveryCache) Start(stopCh <-chan struct{}) error {
-	go dc.run(stopCh)
+	dc.stopCh = stopCh
 	return nil
 }
 
-func (dc *discoveryCache) Close() error {
-	return nil
+func (dc *discoveryCache) Close() error { return nil }
+
+func (dc *discoveryCache) ForCluster(cluster string) (ClusterDiscoveryCache, error) {
+	cacheAny, _ := dc.clusters.LoadOrStore(cluster, &clusterDiscoveryCache{})
+	cdc := cacheAny.(*clusterDiscoveryCache)
+	// no matter we loaded or stored, someone has to initialize it the first time.
+	cdc.initLock.Do(func() {
+		cdc.logger = dc.logger.WithField("cluster", cluster)
+		cdc.clock = dc.clock
+		cdc.options = &dc.options
+		cdc.resyncMetric = dc.resyncMetric.With(&resyncMetric{
+			Cluster: cluster,
+		})
+		cdc.resyncRequestCh = make(chan struct{}, 1)
+		cdc.client, cdc.initErr = dc.clients.Cluster(cluster)
+		if cdc.initErr != nil {
+			return
+		}
+
+		cdc.logger.Info("initialized cluster discovery cache")
+		go cdc.run(dc.stopCh)
+	})
+	return cdc, cdc.initErr
 }
 
-func (dc *discoveryCache) run(stopCh <-chan struct{}) {
-	defer shutdown.RecoverPanic(dc.logger)
+func (cdc *clusterDiscoveryCache) run(stopCh <-chan struct{}) {
+	defer shutdown.RecoverPanic(cdc.logger)
 
 	for {
-		if err := dc.doResync(); err != nil {
-			dc.logger.Error(err)
+		if err := cdc.doResync(); err != nil {
+			cdc.logger.Error(err)
 		}
 
 		select {
 		case <-stopCh:
 			return
-		case <-dc.clock.After(dc.options.resyncInterval):
-		case <-dc.resyncRequestCh:
+		case <-cdc.clock.After(cdc.options.resyncInterval):
+		case <-cdc.resyncRequestCh:
 		}
 	}
 }
 
-func (dc *discoveryCache) doResync() error {
-	metric := &resyncMetric{}
-	defer dc.resyncMetric.DeferCount(dc.clock.Now(), metric)
+func (cdc *clusterDiscoveryCache) doResync() error {
+	defer cdc.resyncMetric.DeferCount(cdc.clock.Now())
 
 	// TODO also sync non-target clusters
-	lists, err := dc.clients.TargetCluster().KubernetesClient().Discovery().ServerPreferredResources()
+	lists, err := cdc.client.KubernetesClient().Discovery().ServerPreferredResources()
 	if err != nil {
 		return fmt.Errorf("query discovery API failed: %w", err)
 	}
@@ -186,16 +221,16 @@ func (dc *discoveryCache) doResync() error {
 		}
 	}
 
-	dc.dataLock.Lock()
-	oldGvrToGvk := dc.gvrToGvk
-	dc.gvrToGvk = gvrToGvk
-	dc.gvkToGvr = gvkToGvr
-	dc.gvrDetails = gvrDetails
-	dc.dataLock.Unlock()
+	cdc.dataLock.Lock()
+	oldGvrToGvk := cdc.gvrToGvk
+	cdc.gvrToGvk = gvrToGvk
+	cdc.gvkToGvr = gvkToGvr
+	cdc.gvrDetails = gvrDetails
+	cdc.dataLock.Unlock()
 
 	if !haveSameKeys(oldGvrToGvk, gvrToGvk) {
-		dc.logger.WithField("resourceCount", len(gvrDetails)).Info("Discovery API response changed, triggering resync")
-		for _, onResyncCh := range dc.onResyncCh {
+		cdc.logger.WithField("resourceCount", len(gvrDetails)).Info("Discovery API response changed, triggering resync")
+		for _, onResyncCh := range cdc.onResyncCh {
 			select {
 			case onResyncCh <- struct{}{}:
 			default:
@@ -220,61 +255,61 @@ func haveSameKeys(m1, m2 GvrToGvk) bool {
 	return true
 }
 
-func (dc *discoveryCache) GetAll() GvrDetails {
-	dc.dataLock.RLock()
-	defer dc.dataLock.RUnlock()
+func (cdc *clusterDiscoveryCache) GetAll() GvrDetails {
+	cdc.dataLock.RLock()
+	defer cdc.dataLock.RUnlock()
 
-	return dc.gvrDetails
+	return cdc.gvrDetails
 }
 
-func (dc *discoveryCache) LookupKind(gvr schema.GroupVersionResource) (schema.GroupVersionKind, bool) {
-	dc.dataLock.RLock()
-	gvk, exists := dc.gvrToGvk[gvr]
-	dc.dataLock.RUnlock()
+func (cdc *clusterDiscoveryCache) LookupKind(gvr schema.GroupVersionResource) (schema.GroupVersionKind, bool) {
+	cdc.dataLock.RLock()
+	gvk, exists := cdc.gvrToGvk[gvr]
+	cdc.dataLock.RUnlock()
 
 	if !exists {
-		dc.RequestAndWaitResync()
+		cdc.RequestAndWaitResync()
 
-		dc.dataLock.RLock()
-		gvk, exists = dc.gvrToGvk[gvr]
-		dc.dataLock.RUnlock()
+		cdc.dataLock.RLock()
+		gvk, exists = cdc.gvrToGvk[gvr]
+		cdc.dataLock.RUnlock()
 	}
 
 	return gvk, exists
 }
 
-func (dc *discoveryCache) LookupResource(gvk schema.GroupVersionKind) (schema.GroupVersionResource, bool) {
+func (cdc *clusterDiscoveryCache) LookupResource(gvk schema.GroupVersionKind) (schema.GroupVersionResource, bool) {
 	if gvk.Group == "" && gvk.Version == "" {
 		gvk.Version = "v1"
 	}
 
-	dc.dataLock.RLock()
-	gvr, exists := dc.gvkToGvr[gvk]
-	dc.dataLock.RUnlock()
+	cdc.dataLock.RLock()
+	gvr, exists := cdc.gvkToGvr[gvk]
+	cdc.dataLock.RUnlock()
 
 	if !exists {
-		dc.RequestAndWaitResync()
+		cdc.RequestAndWaitResync()
 
-		dc.dataLock.RLock()
-		gvr, exists = dc.gvkToGvr[gvk]
-		dc.dataLock.RUnlock()
+		cdc.dataLock.RLock()
+		gvr, exists = cdc.gvkToGvr[gvk]
+		cdc.dataLock.RUnlock()
 	}
 
 	return gvr, exists
 }
 
-func (dc *discoveryCache) RequestAndWaitResync() {
+func (cdc *clusterDiscoveryCache) RequestAndWaitResync() {
 	select {
-	case dc.resyncRequestCh <- struct{}{}:
+	case cdc.resyncRequestCh <- struct{}{}:
 	default:
 	}
 
-	dc.clock.Sleep(time.Second * 5) // FIXME: notify resync completion from doResync
+	cdc.clock.Sleep(time.Second * 5) // FIXME: notify resync completion from doResync
 }
 
-func (dc *discoveryCache) AddResyncHandler() <-chan struct{} {
+func (cdc *clusterDiscoveryCache) AddResyncHandler() <-chan struct{} {
 	ch := make(chan struct{}, 1)
-	dc.onResyncCh = append(dc.onResyncCh, ch)
+	cdc.onResyncCh = append(cdc.onResyncCh, ch)
 	return ch
 }
 

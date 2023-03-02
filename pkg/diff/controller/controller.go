@@ -144,15 +144,17 @@ func (ctrl *controller) Options() manager.Options {
 func (ctrl *controller) Init(ctx context.Context) (err error) {
 	ctrl.ctx = ctx
 
-	{
-		var err error
-		ctrl.redactRegex, err = regexp.Compile(ctrl.options.redact)
-		if err != nil {
-			return fmt.Errorf("cannot compile --diff-controller-redact-pattern value: %w", err)
-		}
+	ctrl.redactRegex, err = regexp.Compile(ctrl.options.redact)
+	if err != nil {
+		return fmt.Errorf("cannot compile --diff-controller-redact-pattern value: %w", err)
 	}
 
-	ctrl.discoveryResyncCh = ctrl.discovery.AddResyncHandler()
+	cdc, err := ctrl.discovery.ForCluster(ctrl.clients.TargetCluster().ClusterName())
+	if err != nil {
+		return fmt.Errorf("cannot initialize discovery cache for target cluster: %w", err)
+	}
+
+	ctrl.discoveryResyncCh = cdc.AddResyncHandler()
 	ctrl.onUpdateMetric = ctrl.metrics.New("diff_controller_on_update", &onUpdateMetric{})
 	ctrl.onDeleteMetric = ctrl.metrics.New("diff_controller_on_delete", &onDeleteMetric{})
 
@@ -266,7 +268,11 @@ func (ctrl *controller) shouldMonitorObject(gvr schema.GroupVersionResource, nam
 }
 
 func (ctrl *controller) resyncMonitors() error {
-	expected := ctrl.discovery.GetAll()
+	cdc, err := ctrl.discovery.ForCluster(ctrl.clients.TargetCluster().ClusterName())
+	if err != nil {
+		return fmt.Errorf("cannot get discovery cache for target cluster: %w", err)
+	}
+	expected := cdc.GetAll()
 	ctrl.logger.WithField("expectedLength", len(expected)).Info("resync monitors")
 
 	toStart, toStop := ctrl.compareMonitors(expected)

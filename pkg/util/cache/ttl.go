@@ -52,6 +52,9 @@ func NewTtlOnce(ttl time.Duration, clock clock.Clock) *TtlOnce {
 }
 
 func (cache *TtlOnce) Add(key string, value interface{}) {
+	cache.lock.Lock()
+	defer cache.lock.Unlock()
+
 	if _, exists := cache.data[key]; !exists {
 		cache.data[key] = value
 		expiry := cache.clock.Now().Add(cache.ttl)
