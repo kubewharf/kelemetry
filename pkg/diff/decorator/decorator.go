@@ -25,7 +25,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
-	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
 	"k8s.io/utils/clock"
 	"k8s.io/utils/pointer"
 
@@ -235,7 +234,7 @@ func (decorator *decorator) tryDecorate(
 		return cacheHitTypeNoop, nil
 	}
 
-	if !decoratesResource(message.ObjectRef) {
+	if !decoratesResource(message) {
 		return cacheHitTypeFiltered, nil
 	}
 
@@ -315,7 +314,9 @@ func (decorator *decorator) tryDecorate(
 	}
 }
 
-func decoratesResource(objectRef *auditv1.ObjectReference) bool { return true } // TODO
+func decoratesResource(message *audit.Message) bool {
+	return message.Verb != audit.VerbPatch
+}
 
 func (decorator *decorator) tryUpdateOnce(
 	ctx context.Context,
