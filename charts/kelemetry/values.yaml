@@ -49,6 +49,8 @@ informers:
 
   # Event controller creates trace spans by watching the Kubernetes events API.
   event:
+    enable: true
+
     # Number of worker goroutines to process event updates.
     workerCount: 8
 
@@ -267,15 +269,51 @@ multiCluster:
       # This is the list of addresses that audit webhook requests from the apiserver may be sent from.
       peerAddresses: [127.0.0.1]
 
-traceCache:
-  # Trace cache implementation.
-  # Supported types: 'etcd'
-  type: etcd
-  etcd:
-    # If externalEndpoint is false, the sharedEtcd database will be used.
-    externalEndpoint: false
-    # The prefix prepended to diff cache keys.
-    prefix: /trace/
+# Storage plugin serves the transformation layer between Jaeger UI and the storage backend.
+frontend:
+  replicaCount: 3
+  podSecurityContext: {}
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+
+  storagePlugin:
+    resources: {}
+      # limits:
+      #   cpu: 100m
+      #   memory: 128Mi
+      # requests:
+      #   cpu: 100m
+      #   memory: 128Mi
+    containerSecurityContext: {}
+
+  jaegerQuery:
+    resources: {}
+      # limits:
+      #   cpu: 100m
+      #   memory: 128Mi
+      # requests:
+      #   cpu: 100m
+      #   memory: 128Mi
+    containerSecurityContext: {}
+    service:
+      type: ClusterIP
+      nodePort: ~
+      otherConfig: {}
+        # clusterIP: xxx, externalIP: xxx, etc.
+
+  # The trace cache identifies search queries.
+  traceCache:
+    # Trace cache implementation.
+    # Supported types: 'local', 'etcd'
+    type: etcd
+    # The local trace cache can be used if the same user always connects to the same frontend instance.
+    local: {}
+    etcd:
+      # If externalEndpoint is false, the sharedEtcd database will be used.
+      externalEndpoint: false
+      # The prefix prepended to diff cache keys.
+      prefix: /trace/
 
 kelemetryImage:
   repository: kubewharf/kelemetry
@@ -283,6 +321,13 @@ kelemetryImage:
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   pullSecrets: []
+
+jaegerImages:
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+  query:
+    repository: kubewharf/kelemetry
+    tag: ""
 
 # The shared etcd database.
 # It is only deployed if at least one of diffCache/spanCache/traceCache uses etcd with externalEndpoint=false.
@@ -311,3 +356,4 @@ sharedEtcd:
   storageResources:
     requests:
       storage: 1Gi
+

@@ -34,6 +34,8 @@ spec:
             {{- if .Values.informers.diff.enable }}
             {{ include "kelemetry.diff-cache-options" . }}
             {{ include "kelemetry.diff-controller-options" . }}
+            {{- end }}
+            {{- if .Values.informers.event.enable }}
             {{ include "kelemetry.event-informer-options" . }}
             {{- end }}
           ]

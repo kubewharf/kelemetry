@@ -10,6 +10,10 @@
 {{- include "kelemetry.default-labels-raw" . | fromYaml | merge (dict "app.kubernetes.io/component" "consumer") | toJson }}
 {{- end }}
 
+{{- define "kelemetry.frontend-labels" }}
+{{- include "kelemetry.default-labels-raw" . | fromYaml | merge (dict "app.kubernetes.io/component" "frontend") | toJson }}
+{{- end }}
+
 {{- define "kelemetry.default-labels-raw" }}
 app.kubernetes.io/name: kelemetry
 app.kubernetes.io/instance: {{.Release.Name}}
@@ -220,6 +224,39 @@ audit-consumer-partition: {{until (int .Values.consumer.source.webhook.workerCou
 http-tls-cert: /mnt/tls/tls.crt
 http-tls-key: /mnt/tls/tls.key
 {{- end }}
+{{- end }}
+{{- end }}
+
+{{- define "kelemetry.storage-plugin-options" }}
+{{- include "kelemetry.storage-plugin-options-raw" . | include "kelemetry.yaml-to-args" }}
+{{- end }}
+{{- define "kelemetry.storage-plugin-options-raw" }}
+jaeger-backend: jaeger-storage
+jaeger-cluster-names: [
+  {{- range .Values.multiCluster.clusters}}
+  {{toJson .name}},
+  {{- end }}
+]
+jaeger-redirect-server-enable: true
+jaeger-storage-plugin-enable: true
+jaeger-storage-plugin-address: :17271
+jaeger-storage.span-storage.type: elasticsearch
+jaeger-storage.es.server-urls: http://elasticsearch.{{.Release.Namespace}}.svc:9200
+jaeger-storage.es.index-prefix: kelemetry
+# TODO extra ES options
+{{- if .Values.frontend.traceCache.type | eq "local" }}
+jaeger-trace-cache: local
+{{- else if .Values.frontend.traceCache.type | eq "etcd" }}
+jaeger-trace-cache: etcd
+jaeger-trace-cache-etcd-dial-timeout: {{ .Values.frontend.traceCache.etcd.dialTimeout | toJson }}
+{{- if .Values.frontend.traceCache.etcd.externalEndpoint }}
+jaeger-trace-cache-etcd-endpoints: {{ .Values.frontend.traceCache.etcd.externalEndpoint | toJson }}
+{{- else }}
+jaeger-trace-cache-etcd-endpoints: {{.Release.Name}}-etcd.{{.Release.Namespace}}.svc:2379
+{{- end }}
+jaeger-trace-cache-etcd-prefix: {{ .Values.frontend.traceCache.etcd.prefix | toJson }}
+{{- else }}
+{{ printf "Unsupported span cache type %q" .Values.frontend.traceCache.type | fail }}
 {{- end }}
 {{- end }}
 

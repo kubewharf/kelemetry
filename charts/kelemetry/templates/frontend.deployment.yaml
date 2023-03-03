@@ -1,0 +1,91 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{.Release.Name}}-frontend
+  labels: {{ include "kelemetry.frontend-labels" . }}
+spec:
+  replicas: {{.Values.frontend.replicaCount}}
+  selector:
+    matchLabels: {{ include "kelemetry.frontend-labels" . }}
+  template:
+    metadata:
+      labels: {{ include "kelemetry.frontend-labels" . }}
+    spec:
+      imagePullSecrets: [
+        {{- range .Values.kelemetryImage.pullSecrets }}
+        {{ . | toJson }},
+        {{- end }}
+        {{- range .Values.jaegerImages.pullSecrets }}
+        {{ . | toJson }},
+        {{- end }}
+      ]
+      serviceAccountName: {{.Release.Name}}-frontend
+      {{ include "kelemetry.pod-boilerplate" .Values.frontend | nindent 6 }}
+      containers:
+        - name: jaeger-query
+          {{ include "kelemetry.container-boilerplate" .Values.frontend.jaegerQuery | nindent 10 }}
+          image: {{ printf "%s:%s" .Values.jaegerImages.query.repository .Values.jaegerImages.query.tag | toJson }}
+          imagePullPolicy: {{ toJson .Values.jaegerImages.pullPolicy }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: admin
+          readinessProbe:
+            httpGet:
+              path: /
+              port: admin
+          ports:
+            - name: query
+              containerPort: 16686
+            - name: grpc
+              containerPort: 16685
+          env:
+            - name: GRPC_STORAGE_SERVER
+              value: localhost:17271
+            - name: SPAN_STORAGE_TYPE
+              value: grpc-plugin
+        - name: storage-plugin
+          {{ include "kelemetry.container-boilerplate" .Values.frontend.storagePlugin | nindent 10 }}
+          image: {{ printf "%s:%s" .Values.kelemetryImage.repository (.Values.kelemetryImage.tag | default .Chart.AppVersion) | toJson }}
+          imagePullPolicy: {{ toJson .Values.kelemetryImage.pullPolicy }}
+          # TODO: add readiness probe
+          command: [
+            "/usr/local/bin/kelemetry",
+            {{ include "kelemetry.logging-options" .Values.frontend }}
+            {{ include "kelemetry.storage-plugin-options" . }}
+          ]
+          ports: [
+            {
+              containerPort: 17271,
+              name: storage-grpc,
+            },
+            {{- if .Values.frontend.storagePlugin.pprof }}
+            {
+              containerPort: 6060,
+              name: pprof,
+            },
+            {{- end }}
+          ]
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{.Release.Name}}-query
+  labels: {{ include "kelemetry.frontend-labels" . }}
+{{- with .Values.frontend.jaegerQuery.service}}
+spec:
+  type: {{toJson .type}}
+  {{- if .otherConfig }}
+  {{- toYaml .otherConfig | nindent 2 }}
+  {{- end }}
+  selector: {{ include "kelemetry.frontend-labels" $ }}
+  ports:
+    - name: query
+      port: 16686
+      targetPort: query
+      {{- if .nodePort }}
+      nodePort: {{toJson .nodePort}}
+      {{- end }}
+{{- end }}

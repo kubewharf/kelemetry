@@ -62,8 +62,6 @@ type Etcd struct {
 	logger    logrus.FieldLogger
 	client    *etcdv3.Client
 	deferList *shutdown.DeferList
-
-	ctx context.Context
 }
 
 var _ diffcache.Cache = &Etcd{}
@@ -80,10 +78,8 @@ func (_ *Etcd) MuxImplName() (name string, isDefault bool) { return "etcd", fals
 func (cache *Etcd) Options() manager.Options { return &cache.options }
 
 func (cache *Etcd) Init(ctx context.Context) error {
-	cache.ctx = ctx
-
 	if len(cache.options.endpoints) == 0 {
-		return fmt.Errorf("No etcd endpoints provided")
+		return fmt.Errorf("no etcd endpoints provided")
 	}
 
 	client, err := etcdv3.New(etcdv3.Config{

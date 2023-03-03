@@ -1,7 +1,7 @@
 {{- if
   .Values.diffCache.type | eq "etcd" | and (not .Values.diffCache.etcd.externalEndpoint)
   | or (.Values.aggregator.spanCache.type | eq "etcd" | and (not .Values.aggregator.spanCache.etcd.externalEndpoint))
-  | or (.Values.traceCache.type | eq "etcd" | and (not .Values.traceCache.etcd.externalEndpoint))
+  | or (.Values.frontend.traceCache.type | eq "etcd" | and (not .Values.frontend.traceCache.etcd.externalEndpoint))
 }}
 ---
 apiVersion: apps/v1

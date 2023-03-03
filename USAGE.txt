@@ -242,7 +242,10 @@
       --jaeger-storage.kafka.producer.tls.skip-host-verify                   (insecure) Skip server's certificate chain and host name verification
       --jaeger-storage.kafka.producer.topic string                           The name of the kafka topic (default "jaeger-spans")
       --jaeger-storage.span-storage.type string                              The type of backend used for service dependencies storage. Possible values are [elasticsearch, cassandra, opensearch, kafka, badger, grpc-plugin]
-      --jaeger-trace-cache string                                            implementation of jaeger-trace-cache. Possible values are ["local"]. (default "local")
+      --jaeger-trace-cache string                                            implementation of jaeger-trace-cache. Possible values are ["etcd" "local"]. (default "local")
+      --jaeger-trace-cache-etcd-dial-timeout duration                        dial timeout for trace cache etcd connection (default 10s)
+      --jaeger-trace-cache-etcd-endpoints strings                            etcd endpoints
+      --jaeger-trace-cache-etcd-prefix string                                etcd prefix (default "/trace/")
       --jaeger-transform-config string                                       implementation of jaeger-transform-config. Possible values are ["default"]. (default "default")
       --klog-add-dir-header                                                  If true, adds the file directory to the header of the log messages
       --klog-alsologtostderr                                                 log to standard error as well as files (no effect when -logtostderr=true)

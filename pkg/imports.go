@@ -40,6 +40,7 @@ import (
 	_ "github.com/kubewharf/kelemetry/pkg/frontend/clusterlist/options"
 	_ "github.com/kubewharf/kelemetry/pkg/frontend/http"
 	_ "github.com/kubewharf/kelemetry/pkg/frontend/tf/config/default"
+	_ "github.com/kubewharf/kelemetry/pkg/frontend/tracecache/etcd"
 	_ "github.com/kubewharf/kelemetry/pkg/frontend/tracecache/local"
 	_ "github.com/kubewharf/kelemetry/pkg/k8s/config/mapoption"
 	_ "github.com/kubewharf/kelemetry/pkg/metrics/noop"

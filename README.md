@@ -66,5 +66,7 @@ See [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Community
 
+- [Discussions](https://github.com/kubewharf/kelemetry/discussions)
+
 ## License
 Kelemetry is licensed under [Apache License 2.0](LICENSE).

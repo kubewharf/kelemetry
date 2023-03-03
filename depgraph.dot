@@ -33,102 +33,104 @@ digraph G {
 		n28 [label="jaeger\ncluster\nlist\noptions", style="", fillcolor="white"]
 		n29 [label="jaeger\nspan\nreader", style="", fillcolor="white"]
 		n30 [label="jaeger\ntrace\ncache", style="filled", fillcolor="#2288ff"]
-		n31 [label="jaeger\ntrace\ncache\nlocal", style="", fillcolor="white"]
-		n32 [label="jaeger\ntransform", style="", fillcolor="white"]
-		n33 [label="jaeger\ntransform\nconfig", style="filled", fillcolor="#2288ff"]
-		n34 [label="jaeger\ntransform\nconfig\ndefault", style="", fillcolor="white"]
-		n35 [label="kube", style="", fillcolor="white"]
-		n36 [label="kube\nconfig", style="filled", fillcolor="#2288ff"]
-		n37 [label="kube\nconfig\nmapoption", style="", fillcolor="white"]
-		n38 [label="kube\nobject\ncache", style="", fillcolor="white"]
-		n39 [label="metrics", style="filled", fillcolor="#2288ff"]
-		n40 [label="metrics\nnoop", style="", fillcolor="white"]
-		n41 [label="mq", style="filled", fillcolor="#2288ff"]
-		n42 [label="mq\nlocal", style="", fillcolor="white"]
-		n43 [label="spancache", style="filled", fillcolor="#2288ff"]
-		n44 [label="spancache\netcd", style="", fillcolor="white"]
-		n45 [label="spancache\nlocal", style="", fillcolor="white"]
-		n46 [label="tracer", style="filled", fillcolor="#2288ff"]
-		n47 [label="tracer\notel", style="", fillcolor="white"]
+		n31 [label="jaeger\ntrace\ncache\netcd", style="", fillcolor="white"]
+		n32 [label="jaeger\ntrace\ncache\nlocal", style="", fillcolor="white"]
+		n33 [label="jaeger\ntransform", style="", fillcolor="white"]
+		n34 [label="jaeger\ntransform\nconfig", style="filled", fillcolor="#2288ff"]
+		n35 [label="jaeger\ntransform\nconfig\ndefault", style="", fillcolor="white"]
+		n36 [label="kube", style="", fillcolor="white"]
+		n37 [label="kube\nconfig", style="filled", fillcolor="#2288ff"]
+		n38 [label="kube\nconfig\nmapoption", style="", fillcolor="white"]
+		n39 [label="kube\nobject\ncache", style="", fillcolor="white"]
+		n40 [label="metrics", style="filled", fillcolor="#2288ff"]
+		n41 [label="metrics\nnoop", style="", fillcolor="white"]
+		n42 [label="mq", style="filled", fillcolor="#2288ff"]
+		n43 [label="mq\nlocal", style="", fillcolor="white"]
+		n44 [label="spancache", style="filled", fillcolor="#2288ff"]
+		n45 [label="spancache\netcd", style="", fillcolor="white"]
+		n46 [label="spancache\nlocal", style="", fillcolor="white"]
+		n47 [label="tracer", style="filled", fillcolor="#2288ff"]
+		n48 [label="tracer\notel", style="", fillcolor="white"]
 	n0 -> n14
 	n0 -> n22
-	n0 -> n35
-	n0 -> n38
+	n0 -> n36
+	n0 -> n39
 	n1 -> n13
 	n1 -> n15
 	n1 -> n23
-	n1 -> n39
-	n1 -> n41
+	n1 -> n40
+	n1 -> n42
 	n2 -> n16
 	n3 -> n16
-	n3 -> n39
+	n3 -> n40
 	n4 -> n16
-	n4 -> n39
-	n4 -> n41
+	n4 -> n40
+	n4 -> n42
 	n5 -> n19
 	n5 -> n24
-	n5 -> n35
-	n5 -> n38
+	n5 -> n36
 	n5 -> n39
+	n5 -> n40
 	n6 -> n19
 	n6 -> n22
 	n6 -> n23
-	n6 -> n35
-	n6 -> n39
+	n6 -> n36
+	n6 -> n40
 	n7 -> n15
 	n7 -> n19
-	n7 -> n39
+	n7 -> n40
 	n8 -> n13
 	n8 -> n22
 	n8 -> n23
-	n8 -> n35
-	n8 -> n39
+	n8 -> n36
+	n8 -> n40
 	n9 -> n24
 	n9 -> n27
 	n9 -> n29
-	n9 -> n33
-	n9 -> n39
+	n9 -> n34
+	n9 -> n40
 	n10 -> n29
 	n11 -> n14
 	n11 -> n22
-	n11 -> n35
-	n11 -> n38
+	n11 -> n36
+	n11 -> n39
 	n13 -> n14
-	n13 -> n39
-	n13 -> n43
-	n13 -> n46
+	n13 -> n40
+	n13 -> n44
+	n13 -> n47
 	n16 -> n17
 	n16 -> n24
-	n16 -> n39
+	n16 -> n40
 	n17 -> n18
 	n19 -> n20
 	n19 -> n21
-	n19 -> n39
-	n22 -> n35
-	n22 -> n39
+	n19 -> n40
+	n22 -> n36
+	n22 -> n40
 	n23 -> n22
-	n23 -> n35
+	n23 -> n36
 	n25 -> n26
-	n25 -> n39
+	n25 -> n40
 	n27 -> n28
 	n29 -> n25
 	n29 -> n27
 	n29 -> n30
-	n29 -> n32
 	n29 -> n33
+	n29 -> n34
 	n30 -> n31
-	n32 -> n33
+	n30 -> n32
 	n33 -> n34
-	n35 -> n36
+	n34 -> n35
 	n36 -> n37
-	n38 -> n19
-	n38 -> n35
-	n38 -> n39
+	n37 -> n38
+	n39 -> n19
+	n39 -> n36
 	n39 -> n40
-	n41 -> n42
-	n42 -> n39
-	n43 -> n39
-	n43 -> n44
-	n43 -> n45
-	n46 -> n47
+	n40 -> n41
+	n42 -> n43
+	n43 -> n40
+	n44 -> n40
+	n44 -> n45
+	n44 -> n46
+	n47 -> n48
 }

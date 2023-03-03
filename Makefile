@@ -99,6 +99,8 @@ run: output/kelemetry $(DUMP_ROTATE_DEP)
 		--jaeger-storage-plugin-enable \
 		--jaeger-storage-plugin-address=0.0.0.0:17271 \
 		--jaeger-backend=jaeger-storage \
+		--jaeger-trace-cache=$(ETCD_OR_LOCAL) \
+		--jaeger-trace-cache-etcd-endpoints=127.0.0.1:2379 \
 		--jaeger-storage.span-storage.type=elasticsearch \
 		--jaeger-storage.es.server-urls=http://127.0.0.1:9200 \
 		--jaeger-storage.es.index-prefix=kelemetry \
