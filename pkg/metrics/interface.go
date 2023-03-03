@@ -182,33 +182,6 @@ type MetricImpl interface {
 	Gauge(value int64, tags []string)
 }
 
-func NewMock() Client {
-	return &mux{
-		Mux: manager.NewMockMux("metrics", "mock", &mock{}),
-	}
-}
-
-type mock struct {
-	manager.MuxImplBase
-	manager.BaseComponent
-}
-
-var _ Impl = &mock{}
-
-func (mock *mock) MuxImplName() (name string, isDefault bool) { panic("unreachable") }
-
-func (mock *mock) New(name string, tagNames []string) MetricImpl {
-	return &mockImpl{}
-}
-
-type mockImpl struct{}
-
-var _ MetricImpl = &mockImpl{}
-
-func (*mockImpl) Count(value int64, tags []string)     {}
-func (*mockImpl) Histogram(value int64, tags []string) {}
-func (*mockImpl) Gauge(value int64, tags []string)     {}
-
 type LabeledError interface {
 	error
 }

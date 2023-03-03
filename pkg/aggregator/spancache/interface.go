@@ -21,6 +21,7 @@ import (
 
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
+	"github.com/kubewharf/kelemetry/pkg/util/clock"
 	"github.com/kubewharf/kelemetry/pkg/util/errors"
 )
 
@@ -77,16 +78,19 @@ type Cache interface {
 
 type mux struct {
 	*manager.Mux
+	clock   clock.Clock
 	metrics metrics.Client
 
 	fetchOrReserveMetric, fetchMetric, unsetAndReserveMetric, setReservedMetric metrics.Metric
 }
 
 func newMux(
+	clock clock.Clock,
 	metrics metrics.Client,
 ) Cache {
 	return &mux{
 		Mux:     manager.NewMux("span-cache", false),
+		clock:   clock,
 		metrics: metrics,
 	}
 }
@@ -108,16 +112,16 @@ func (mux *mux) Init(ctx context.Context) error {
 }
 
 func (mux *mux) FetchOrReserve(ctx context.Context, key string, ttl time.Duration) (*Entry, error) {
-	defer mux.fetchOrReserveMetric.DeferCount(time.Now(), &fetchOrReserveMetric{})
+	defer mux.fetchOrReserveMetric.DeferCount(mux.clock.Now(), &fetchOrReserveMetric{})
 	return mux.Impl().(Cache).FetchOrReserve(ctx, key, ttl)
 }
 
 func (mux *mux) Fetch(ctx context.Context, key string) (*Entry, error) {
-	defer mux.fetchMetric.DeferCount(time.Now(), &fetchMetric{})
+	defer mux.fetchMetric.DeferCount(mux.clock.Now(), &fetchMetric{})
 	return mux.Impl().(Cache).Fetch(ctx, key)
 }
 
 func (mux *mux) SetReserved(ctx context.Context, key string, value []byte, lastUid Uid, ttl time.Duration) error {
-	defer mux.setReservedMetric.DeferCount(time.Now(), &setReservedMetric{})
+	defer mux.setReservedMetric.DeferCount(mux.clock.Now(), &setReservedMetric{})
 	return mux.Impl().(Cache).SetReserved(ctx, key, value, lastUid, ttl)
 }

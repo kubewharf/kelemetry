@@ -28,6 +28,7 @@ import (
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator/spancache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	"github.com/kubewharf/kelemetry/pkg/util/clock"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
 )
 
@@ -54,15 +55,20 @@ type Etcd struct {
 
 	options   etcdOptions
 	logger    logrus.FieldLogger
+	clock     clock.Clock
 	client    *etcdv3.Client
 	deferList *shutdown.DeferList
 }
 
 var _ spancache.Cache = &Etcd{}
 
-func NewEtcd(logger logrus.FieldLogger) *Etcd {
+func NewEtcd(
+	logger logrus.FieldLogger,
+	clock clock.Clock,
+) *Etcd {
 	return &Etcd{
 		logger:    logger,
+		clock:     clock,
 		deferList: shutdown.NewDeferList(),
 	}
 }
@@ -104,7 +110,7 @@ func (cache *Etcd) Close() error {
 
 func (cache *Etcd) FetchOrReserve(ctx context.Context, key string, ttl time.Duration) (*spancache.Entry, error) {
 	key = cache.options.prefix + key
-	buf := ReservedVarintTime()
+	buf := cache.ReservedVarintTime()
 
 	reserveLease, err := cache.client.Lease.Grant(ctx, int64(ttl.Seconds()))
 	if err != nil {
@@ -139,7 +145,7 @@ func (cache *Etcd) FetchOrReserve(ctx context.Context, key string, ttl time.Dura
 			}
 			reserveTime := time.UnixMilli(reserveTimeUnix)
 
-			return nil, fmt.Errorf("%w for %s", spancache.ErrAlreadyReserved, time.Since(reserveTime))
+			return nil, fmt.Errorf("%w for %s", spancache.ErrAlreadyReserved, cache.clock.Since(reserveTime))
 		case 1:
 			// already initialized
 
@@ -258,7 +264,7 @@ func DecodeInt64(b [8]byte) int64 {
 	return int64(binary.LittleEndian.Uint64(b[:]))
 }
 
-func ReservedVarintTime() []byte {
-	now := EncodeInt64(time.Now().UnixMilli())
+func (cache *Etcd) ReservedVarintTime() []byte {
+	now := EncodeInt64(cache.clock.Now().UnixMilli())
 	return append([]byte{0}, now[:]...)
 }

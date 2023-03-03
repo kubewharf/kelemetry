@@ -43,7 +43,7 @@ func (options *options) Setup(fs *pflag.FlagSet) {
 
 func (options *options) EnableFlag() *bool { return &options.enable }
 
-type controller struct {
+type Controller struct {
 	options        options
 	logger         logrus.FieldLogger
 	linkers        linker.LinkerList
@@ -53,7 +53,7 @@ type controller struct {
 	ctx            context.Context
 }
 
-var _ manager.Component = &controller{}
+var _ manager.Component = &Controller{}
 
 func New(
 	logger logrus.FieldLogger,
@@ -61,8 +61,8 @@ func New(
 	clients k8s.Clients,
 	discoveryCache discovery.DiscoveryCache,
 	objectCache objectcache.ObjectCache,
-) *controller {
-	ctrl := &controller{
+) *Controller {
+	ctrl := &Controller{
 		logger:         logger,
 		linkers:        linkers,
 		clients:        clients,
@@ -72,26 +72,26 @@ func New(
 	return ctrl
 }
 
-func (ctrl *controller) Options() manager.Options {
+func (ctrl *Controller) Options() manager.Options {
 	return &ctrl.options
 }
 
-func (ctrl *controller) Init(ctx context.Context) error {
+func (ctrl *Controller) Init(ctx context.Context) error {
 	ctrl.linkers.AddLinker(ctrl)
 	ctrl.ctx = ctx
 
 	return nil
 }
 
-func (ctrl *controller) Start(stopCh <-chan struct{}) error {
+func (ctrl *Controller) Start(stopCh <-chan struct{}) error {
 	return nil
 }
 
-func (ctrl *controller) Close() error {
+func (ctrl *Controller) Close() error {
 	return nil
 }
 
-func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) *util.ObjectRef {
+func (ctrl *Controller) Lookup(ctx context.Context, object util.ObjectRef) *util.ObjectRef {
 	raw := object.Raw
 
 	logger := ctrl.logger.WithField("object", object)

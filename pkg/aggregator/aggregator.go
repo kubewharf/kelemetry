@@ -30,6 +30,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
 	"github.com/kubewharf/kelemetry/pkg/util"
+	"github.com/kubewharf/kelemetry/pkg/util/clock"
 	"github.com/kubewharf/kelemetry/pkg/util/errors"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
@@ -118,6 +119,7 @@ type SubObjectId struct {
 
 type aggregator struct {
 	options   options
+	clock     clock.Clock
 	linkers   linker.LinkerList
 	logger    logrus.FieldLogger
 	spanCache spancache.Cache
@@ -130,13 +132,16 @@ type aggregator struct {
 	lazySpanRetryCountMetric metrics.Metric
 }
 
-func New(logger logrus.FieldLogger,
+func New(
+	logger logrus.FieldLogger,
+	clock clock.Clock,
 	spanCache spancache.Cache,
 	linkers linker.LinkerList,
 	tracer tracer.Tracer,
 	metrics metrics.Client,
 ) Aggregator {
 	return &aggregator{
+		clock:     clock,
 		linkers:   linkers,
 		logger:    logger,
 		spanCache: spanCache,
@@ -189,11 +194,11 @@ func (aggregator *aggregator) Close() error { return nil }
 
 func (aggregator *aggregator) Send(ctx context.Context, object util.ObjectRef, event *Event, subObjectId *SubObjectId) (err error) {
 	sendMetric := &sendMetric{Cluster: object.Cluster, TraceSource: event.TraceSource}
-	defer aggregator.sendMetric.DeferCount(time.Now(), sendMetric)
+	defer aggregator.sendMetric.DeferCount(aggregator.clock.Now(), sendMetric)
 
 	aggregator.sinceEventMetric.
 		With(&sinceEventMetric{Cluster: object.Cluster, TraceSource: event.TraceSource}).
-		Histogram(time.Since(event.Time).Nanoseconds())
+		Histogram(aggregator.clock.Since(event.Time).Nanoseconds())
 
 	var parentSpan tracer.SpanContext
 
@@ -410,7 +415,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 		Field:   field,
 		Result:  "error",
 	}
-	defer aggregator.lazySpanMetric.DeferCount(time.Now(), lazySpanMetric)
+	defer aggregator.lazySpanMetric.DeferCount(aggregator.clock.Now(), lazySpanMetric)
 
 	cacheKey := aggregator.expiringSpanCacheKey(object, field, eventTime)
 
@@ -499,7 +504,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 	}
 
 	// we have a new reservation, need to initialize it now
-	startTime := time.Now()
+	startTime := aggregator.clock.Now()
 
 	parent, err := parentGetter()
 	if err != nil {
@@ -522,7 +527,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 		return nil, metrics.LabelError(fmt.Errorf("cannot persist reserved value: %w", err), "PersistCarrier")
 	}
 
-	logger.WithField("duration", time.Since(startTime)).Debug("Created new span")
+	logger.WithField("duration", aggregator.clock.Since(startTime)).Debug("Created new span")
 
 	if followsFrom != nil {
 		lazySpanMetric.Result = "renew"

@@ -67,7 +67,6 @@ type objectCache struct {
 	metrics   metrics.Client
 	diffCache diffcache.Cache
 
-	ctx                context.Context
 	cacheRequestMetric metrics.Metric
 
 	cache *freecache.Cache
@@ -99,7 +98,6 @@ func NewObjectCache(
 func (oc *objectCache) Options() manager.Options { return &oc.options }
 
 func (oc *objectCache) Init(ctx context.Context) error {
-	oc.ctx = ctx
 	oc.cacheRequestMetric = oc.metrics.New("object_cache_request", &cacheRequestMetric{})
 	oc.cache = freecache.NewCache(oc.options.cacheSize)
 	oc.metrics.NewMonitor("object_cache_size", &cacheSizeMetric{}, func() int64 { return oc.cache.EntryCount() })

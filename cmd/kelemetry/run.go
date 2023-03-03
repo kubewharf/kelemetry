@@ -37,16 +37,10 @@ func Main() {
 }
 
 func Run(rootLogger *logrus.Logger) error {
-	manager.Global.ProvideUtil(func(ctx manager.UtilContext) (logrus.FieldLogger, error) {
-		return rootLogger.WithField("mod", ctx.ComponentName), nil
-	})
-
-	shutdownTrigger, stopCh := shutdown.NewShutdownTrigger()
-	manager.Global.ProvideUtil(func(ctx manager.UtilContext) (*shutdown.ShutdownTrigger, error) {
-		return shutdownTrigger, nil
-	})
-
 	manager := manager.Global
+	shutdownTrigger, stopCh := shutdown.NewShutdownTrigger()
+	provideUtils(manager, rootLogger, shutdownTrigger)
+
 	err := manager.Build()
 	if err != nil {
 		return fmt.Errorf("cannot initialize components: %w", err)
@@ -94,4 +88,13 @@ func Run(rootLogger *logrus.Logger) error {
 	rootLogger.Info("Received shutdown signal")
 
 	return manager.Close(rootLogger)
+}
+
+func provideUtils(m *manager.Manager, logger logrus.FieldLogger, shutdownTrigger *shutdown.ShutdownTrigger) {
+	m.ProvideUtil(func(ctx manager.UtilContext) (logrus.FieldLogger, error) {
+		return logger.WithField("mod", ctx.ComponentName), nil
+	})
+	manager.Global.ProvideUtil(func(ctx manager.UtilContext) (*shutdown.ShutdownTrigger, error) {
+		return shutdownTrigger, nil
+	})
 }
