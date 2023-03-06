@@ -27,6 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/utils/clock"
 
 	diffcache "github.com/kubewharf/kelemetry/pkg/diff/cache"
 	"github.com/kubewharf/kelemetry/pkg/k8s"
@@ -63,6 +64,7 @@ type ObjectCache interface {
 type objectCache struct {
 	options   objectCacheOptions
 	logger    logrus.FieldLogger
+	clock     clock.Clock
 	clients   k8s.Clients
 	metrics   metrics.Client
 	diffCache diffcache.Cache
@@ -83,12 +85,14 @@ type cacheRequestMetric struct {
 
 func NewObjectCache(
 	logger logrus.FieldLogger,
+	clock clock.Clock,
 	clients k8s.Clients,
 	metrics metrics.Client,
 	diffCache diffcache.Cache,
 ) ObjectCache {
 	return &objectCache{
 		logger:    logger,
+		clock:     clock,
 		clients:   clients,
 		metrics:   metrics,
 		diffCache: diffCache,
@@ -111,7 +115,7 @@ func (oc *objectCache) Close() error { return nil }
 
 func (oc *objectCache) Get(ctx context.Context, object util.ObjectRef) (*unstructured.Unstructured, error) {
 	metric := &cacheRequestMetric{Error: "Unknown"}
-	defer oc.cacheRequestMetric.DeferCount(time.Now(), metric)
+	defer oc.cacheRequestMetric.DeferCount(oc.clock.Now(), metric)
 
 	key := objectKey(object)
 	randomId := [5]byte{0, 0, 0, 0, 0}
@@ -125,7 +129,7 @@ func (oc *objectCache) Get(ctx context.Context, object util.ObjectRef) (*unstruc
 
 			if cached[0] == 0 {
 				// pending; JSON never starts with a NUL byte
-				time.Sleep(time.Millisecond * 100) // constant backoff, up to 50 times by default
+				oc.clock.Sleep(time.Millisecond * 100) // constant backoff, up to 50 times by default
 				continue
 			}
 

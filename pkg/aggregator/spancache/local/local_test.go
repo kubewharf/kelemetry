@@ -17,8 +17,10 @@ package local_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	clocktesting "k8s.io/utils/clock/testing"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator/spancache"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/spancache/local"
@@ -27,14 +29,15 @@ import (
 func TestLocalReserve(t *testing.T) {
 	assert := assert.New(t)
 
-	cache, clock := local.NewMockLocal()
+	clock := clocktesting.NewFakeClock(time.Time{})
+	cache := local.NewMockLocal(clock)
 
 	entry1, err := cache.FetchOrReserve(context.Background(), "foo", 10)
 	assert.Nil(err)
 	assert.NotNil(entry1)
 	assert.Nil(entry1.Value)
 
-	*clock = clock.Add(5)
+	clock.Step(5)
 
 	_, err = cache.FetchOrReserve(context.Background(), "foo", 10)
 	assert.NotNil(err)
@@ -55,14 +58,15 @@ func TestLocalReserve(t *testing.T) {
 func TestLocalReserveExpired(t *testing.T) {
 	assert := assert.New(t)
 
-	cache, clock := local.NewMockLocal()
+	clock := clocktesting.NewFakeClock(time.Time{})
+	cache := local.NewMockLocal(clock)
 
 	entry1, err := cache.FetchOrReserve(context.Background(), "foo", 10)
 	assert.Nil(err)
 	assert.NotNil(entry1)
 	assert.Nil(entry1.Value)
 
-	*clock = clock.Add(15)
+	clock.Step(15)
 
 	err = cache.SetReserved(context.Background(), "foo", []byte("bar"), entry1.LastUid, 10)
 	assert.NotNil(err)

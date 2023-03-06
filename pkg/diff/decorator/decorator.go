@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
+	"k8s.io/utils/clock"
 	"k8s.io/utils/pointer"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator"
@@ -80,6 +81,7 @@ func (options *decoratorOptions) EnableFlag() *bool { return &options.enable }
 type decorator struct {
 	options decoratorOptions
 	logger  logrus.FieldLogger
+	clock   clock.Clock
 	cache   diffcache.Cache
 	list    audit.DecoratorList
 	metrics metrics.Client
@@ -116,12 +118,14 @@ type retryCountMetric struct {
 
 func newDecorator(
 	logger logrus.FieldLogger,
+	clock clock.Clock,
 	cache diffcache.Cache,
 	list audit.DecoratorList,
 	metrics metrics.Client,
 ) *decorator {
 	return &decorator{
 		logger:  logger,
+		clock:   clock,
 		cache:   cache,
 		list:    list,
 		metrics: metrics,
@@ -165,7 +169,7 @@ func (decorator *decorator) Decorate(message *audit.Message, event *aggregator.E
 		},
 		Resource: message.ObjectRef.Resource,
 	}
-	defer decorator.diffMetric.DeferCount(time.Now(), metric)
+	defer decorator.diffMetric.DeferCount(decorator.clock.Now(), metric)
 
 	if message.ResponseStatus != nil && message.ResponseStatus.Code >= 300 {
 		event.Log(zconstants.LogTypeRealError, fmt.Sprintf("%s: %s", message.ResponseStatus.Reason, message.ResponseStatus.Message))

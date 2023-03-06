@@ -29,6 +29,7 @@ import (
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator"
 	"github.com/kubewharf/kelemetry/pkg/filter"
@@ -104,6 +105,7 @@ func (options *options) EnableFlag() *bool { return &options.enable }
 type controller struct {
 	options        options
 	logger         logrus.FieldLogger
+	clock          clock.Clock
 	aggregator     aggregator.Aggregator
 	clients        k8s.Clients
 	filter         filter.Filter
@@ -125,6 +127,7 @@ var _ manager.Component = &controller{}
 
 func New(
 	logger logrus.FieldLogger,
+	clock clock.Clock,
 	aggregator aggregator.Aggregator,
 	clients k8s.Clients,
 	discoveryCache discovery.DiscoveryCache,
@@ -133,6 +136,7 @@ func New(
 ) *controller {
 	return &controller{
 		logger:            logger,
+		clock:             clock,
 		aggregator:        aggregator,
 		clients:           clients,
 		discoveryCache:    discoveryCache,
@@ -171,6 +175,7 @@ func (ctrl *controller) Init(ctx context.Context) (err error) {
 	ctrl.elector, err = multileader.NewElector(
 		"kelemetry-event-controller",
 		ctrl.logger.WithField("submod", "leader-elector"),
+		ctrl.clock,
 		&ctrl.options.electorOptions,
 		client,
 		ctrl.metrics,
@@ -275,7 +280,7 @@ func (ctrl *controller) handleEvent(event *corev1.Event) {
 		Version: event.InvolvedObject.GroupVersionKind().Version,
 		Kind:    event.InvolvedObject.Kind,
 	}
-	defer ctrl.eventHandleMetric.DeferCount(time.Now(), metric)
+	defer ctrl.eventHandleMetric.DeferCount(ctrl.clock.Now(), metric)
 
 	logger := ctrl.logger.WithField("event", event.Name).WithField("subject", event.InvolvedObject)
 
@@ -297,7 +302,7 @@ func (ctrl *controller) handleEvent(event *corev1.Event) {
 		return
 	}
 
-	if time.Since(eventTime) > 5*time.Minute {
+	if ctrl.clock.Since(eventTime) > 5*time.Minute {
 		metric.Error = metrics.MakeLabeledError("EventTooOld")
 		return
 	}
@@ -333,7 +338,7 @@ func (ctrl *controller) handleEvent(event *corev1.Event) {
 		Group:    gvr.Group,
 		Version:  gvr.Version,
 		Resource: gvr.Resource,
-	}).Histogram(time.Since(eventTime).Nanoseconds())
+	}).Histogram(ctrl.clock.Since(eventTime).Nanoseconds())
 
 	ctx, cancelFunc := context.WithCancel(ctrl.ctx)
 	defer cancelFunc()
@@ -373,7 +378,7 @@ func (ctrl *controller) syncConfigMap(startReadyCh chan<- struct{}, stopCh <-cha
 				Name:      ctrl.options.configMapName,
 			},
 			Data: map[string]string{
-				configMapLastEventKey: time.Now().Format(time.RFC3339),
+				configMapLastEventKey: ctrl.clock.Now().Format(time.RFC3339),
 			},
 		}
 		configMap, err = ctrl.configMapClient.Create(ctx, configMap, metav1.CreateOptions{})
@@ -389,21 +394,21 @@ func (ctrl *controller) syncConfigMap(startReadyCh chan<- struct{}, stopCh <-cha
 	ctrl.lastEventTime, err = time.Parse(time.RFC3339, configMap.Data[configMapLastEventKey])
 	if err != nil {
 		logger.WithError(err).Error("Previous event time was invalid, resetting to current timestamp")
-		ctrl.lastEventTime = time.Now()
+		ctrl.lastEventTime = ctrl.clock.Now()
 	}
 	logger.WithField("startEventTime", ctrl.lastEventTime).Info("Start tracing events")
 
 	close(startReadyCh) // worker queue can start running now
 
 	for {
-		changed, shutdown := pollConfigLoop(stopCh, ctrl.options.configMapSyncInterval, configMap, ctrl.configMapUpdateCh)
+		changed, shutdown := ctrl.pollConfigLoop(stopCh, ctrl.options.configMapSyncInterval, configMap, ctrl.configMapUpdateCh)
 
 		if shutdown {
 			break
 		}
 
 		if changed { // TODO delete this, only for testing
-			configMap.Data[configMapLastUpdatedKey] = time.Now().Format(time.RFC3339)
+			configMap.Data[configMapLastUpdatedKey] = ctrl.clock.Now().Format(time.RFC3339)
 			newConfigMap, err := ctrl.configMapClient.Update(ctx, configMap, metav1.UpdateOptions{})
 			if err != nil {
 				logger.WithField("resourceVersion", configMap.ResourceVersion).WithError(err).Error("Cannot update ConfigMap")
@@ -428,13 +433,13 @@ func (ctrl *controller) syncConfigMap(startReadyCh chan<- struct{}, stopCh <-cha
 	}
 }
 
-func pollConfigLoop(
+func (ctrl *controller) pollConfigLoop(
 	stopCh <-chan struct{},
 	interval time.Duration,
 	configMap *corev1.ConfigMap,
 	updateCh <-chan func(*corev1.ConfigMap),
 ) (changed, shutdown bool) {
-	until := time.After(interval)
+	until := ctrl.clock.After(interval)
 
 	for {
 		// stopCh and until have higher priority than updateCh

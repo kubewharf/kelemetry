@@ -17,10 +17,10 @@ package jaegerbackend
 import (
 	"context"
 	"encoding/json"
-	"time"
 
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
+	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
@@ -55,15 +55,17 @@ type TraceThumbnail struct {
 
 type mux struct {
 	*manager.Mux
+	clock   clock.Clock
 	metrics metrics.Client
 
 	listMetric metrics.Metric
 	getMetric  metrics.Metric
 }
 
-func newBackend(metrics metrics.Client) Backend {
+func newBackend(metrics metrics.Client, clock clock.Clock) Backend {
 	return &mux{
 		Mux:     manager.NewMux("jaeger-backend", false),
+		clock:   clock,
 		metrics: metrics,
 	}
 }
@@ -81,7 +83,7 @@ func (mux *mux) Init(ctx context.Context) error {
 }
 
 func (mux *mux) List(ctx context.Context, query *spanstore.TraceQueryParameters) ([]*TraceThumbnail, error) {
-	defer mux.listMetric.DeferCount(time.Now(), &listMetric{})
+	defer mux.listMetric.DeferCount(mux.clock.Now(), &listMetric{})
 	return mux.Impl().(Backend).List(ctx, query)
 }
 
@@ -90,6 +92,6 @@ func (mux *mux) Get(
 	identifier json.RawMessage,
 	traceId model.TraceID,
 ) (*model.Trace, model.SpanID, error) {
-	defer mux.getMetric.DeferCount(time.Now(), &getMetric{})
+	defer mux.getMetric.DeferCount(mux.clock.Now(), &getMetric{})
 	return mux.Impl().(Backend).Get(ctx, identifier, traceId)
 }

@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
+	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/k8s"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
@@ -65,6 +66,7 @@ type Elector struct {
 	enable         bool
 	name           string
 	logger         logrus.FieldLogger
+	clock          clock.Clock
 	configs        []*leaderelection.LeaderElectionConfig
 	isLeaderMetric metrics.Metric
 	isLeaderFlag   []uint32
@@ -78,6 +80,7 @@ type isLeaderMetric struct {
 func NewElector(
 	component string,
 	logger logrus.FieldLogger,
+	clock clock.Clock,
 	config *Config,
 	client k8s.Client,
 	metrics metrics.Client,
@@ -92,6 +95,7 @@ func NewElector(
 		enable:         config.Enable,
 		name:           component,
 		logger:         logger.WithField("identity", identity),
+		clock:          clock,
 		configs:        make([]*leaderelection.LeaderElectionConfig, 0, config.NumLeaders),
 		isLeaderMetric: metrics.New("is_leader", &isLeaderMetric{}),
 		isLeaderFlag:   make([]uint32, config.NumLeaders),
@@ -180,7 +184,7 @@ func (elector *Elector) RunLeaderMetricLoop(stopCh <-chan struct{}) {
 
 	for {
 		select {
-		case <-time.After(time.Second * 30):
+		case <-elector.clock.After(time.Second * 30):
 			for leaderId := range elector.isLeaderFlag {
 				flag := atomic.LoadUint32(&elector.isLeaderFlag[leaderId])
 				elector.isLeaderMetric.With(&isLeaderMetric{

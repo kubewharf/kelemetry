@@ -103,8 +103,7 @@ func (metric TaggedMetric) Gauge(value int64) {
 }
 
 func (metric TaggedMetric) Defer(start time.Time) {
-	delta := time.Since(start)
-	metric.Histogram(delta.Nanoseconds())
+	metric.impl.Defer(start, metric.tagValues)
 }
 
 func (metric TaggedMetric) DeferCount(start time.Time) {
@@ -180,6 +179,7 @@ type MetricImpl interface {
 	Count(value int64, tags []string)
 	Histogram(value int64, tags []string)
 	Gauge(value int64, tags []string)
+	Defer(start time.Time, tags []string)
 }
 
 type LabeledError interface {

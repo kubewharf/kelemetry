@@ -157,3 +157,8 @@ quickstart:
 
 pre-commit: dot usage test
 	golangci-lint run
+
+fmt:
+	git add -A
+	gofumpt -l -w .
+	gci write -s standard -s default -s 'prefix(github.com/kubewharf/kelemetry)' .

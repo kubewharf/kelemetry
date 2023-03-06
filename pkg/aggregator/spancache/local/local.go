@@ -24,6 +24,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator/spancache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
@@ -56,27 +57,28 @@ type Local struct {
 	options options
 
 	logger      logrus.FieldLogger
+	clock       clock.Clock
 	entriesLock sync.Mutex
 	entries     map[string]*localEntry
-	timeNow     func() time.Time
 }
 
-func NewLocal(logger logrus.FieldLogger) *Local {
+func NewLocal(
+	logger logrus.FieldLogger,
+	clock clock.Clock,
+) *Local {
 	return &Local{
 		logger:  logger,
+		clock:   clock,
 		entries: map[string]*localEntry{},
-		timeNow: time.Now,
 	}
 }
 
-func NewMockLocal() (spancache.Cache, *time.Time) {
-	clock := &time.Time{}
-
+func NewMockLocal(clock clock.Clock) spancache.Cache {
 	return &Local{
 		logger:  logrus.New(),
+		clock:   clock,
 		entries: map[string]*localEntry{},
-		timeNow: func() time.Time { return *clock },
-	}, clock
+	}
 }
 
 func (_ *Local) MuxImplName() (name string, isDefault bool) { return "local", true }
@@ -90,7 +92,7 @@ func (cache *Local) Start(stopCh <-chan struct{}) error {
 		defer shutdown.RecoverPanic(cache.logger)
 		for {
 			select {
-			case <-time.After(cache.options.trimFrequency):
+			case <-cache.clock.After(cache.options.trimFrequency):
 				cache.Trim()
 			case <-stopCh:
 				return
@@ -107,7 +109,7 @@ func (cache *Local) Trim() {
 	defer cache.entriesLock.Unlock()
 
 	for key, ent := range cache.entries {
-		if ent.expired(cache.timeNow) {
+		if ent.expired(cache.clock) {
 			delete(cache.entries, key)
 		}
 	}
@@ -121,10 +123,10 @@ type localEntry struct {
 	uid      spancache.Uid
 }
 
-func (entry *localEntry) expired(timeNow func() time.Time) bool {
+func (entry *localEntry) expired(clock clock.Clock) bool {
 	entry.lock.RLock()
 	defer entry.lock.RUnlock()
-	return entry.expiry.Before(timeNow())
+	return entry.expiry.Before(clock.Now())
 }
 
 func (cache *Local) getEntry(key string) *localEntry {
@@ -140,7 +142,7 @@ func (cache *Local) getOrInsertEntry(key string, expiry time.Time) (*localEntry,
 
 	isNew := false
 	if ent := cache.entries[key]; ent == nil {
-		cache.entries[key] = &localEntry{creation: cache.timeNow(), expiry: expiry, uid: randUid()}
+		cache.entries[key] = &localEntry{creation: cache.clock.Now(), expiry: expiry, uid: randUid()}
 		isNew = true
 	}
 
@@ -148,7 +150,7 @@ func (cache *Local) getOrInsertEntry(key string, expiry time.Time) (*localEntry,
 }
 
 func (cache *Local) FetchOrReserve(ctx context.Context, key string, ttl time.Duration) (*spancache.Entry, error) {
-	expiry := cache.timeNow().Add(ttl)
+	expiry := cache.clock.Now().Add(ttl)
 	ent, isInsert := cache.getOrInsertEntry(key, expiry)
 
 	ent.lock.RLock()
@@ -163,7 +165,7 @@ func (cache *Local) FetchOrReserve(ctx context.Context, key string, ttl time.Dur
 	}
 
 	if !isInsert {
-		return nil, fmt.Errorf("%w for %s", spancache.ErrAlreadyReserved, cache.timeNow().Sub(ent.creation))
+		return nil, fmt.Errorf("%w for %s", spancache.ErrAlreadyReserved, cache.clock.Now().Sub(ent.creation))
 	}
 
 	return &spancache.Entry{
@@ -198,7 +200,7 @@ func (cache *Local) SetReserved(ctx context.Context, key string, value []byte, l
 	ent.lock.Lock()
 	defer ent.lock.Unlock()
 
-	if ent.value != nil || ent.expiry.Before(cache.timeNow()) {
+	if ent.value != nil || ent.expiry.Before(cache.clock.Now()) {
 		return spancache.ErrInvalidKey
 	}
 
@@ -206,7 +208,7 @@ func (cache *Local) SetReserved(ctx context.Context, key string, value []byte, l
 		return spancache.ErrUidMismatch
 	}
 
-	ent.expiry = cache.timeNow().Add(ttl)
+	ent.expiry = cache.clock.Now().Add(ttl)
 	ent.value = value
 	ent.uid = randUid() // new version
 

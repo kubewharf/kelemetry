@@ -18,12 +18,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
+	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/audit"
 	"github.com/kubewharf/kelemetry/pkg/audit/webhook/clustername"
@@ -63,6 +63,7 @@ type Webhook interface {
 type webhook struct {
 	options             options
 	logger              logrus.FieldLogger
+	clock               clock.Clock
 	metrics             metrics.Client
 	clusterNameResolver clustername.Resolver
 	server              http.Server
@@ -89,12 +90,14 @@ type queueMetricTags struct {
 
 func New(
 	logger logrus.FieldLogger,
+	clock clock.Clock,
 	metrics metrics.Client,
 	clusterNameResolver clustername.Resolver,
 	server http.Server,
 ) Webhook {
 	return &webhook{
 		logger:              logger,
+		clock:               clock,
 		metrics:             metrics,
 		clusterNameResolver: clusterNameResolver,
 		server:              server,
@@ -120,7 +123,7 @@ func (webhook *webhook) handleRequest(ctx *gin.Context) {
 	logger := webhook.logger.WithField("source", ctx.Request.RemoteAddr)
 	defer shutdown.RecoverPanic(logger)
 	metric := &requestMetric{}
-	defer webhook.requestMetric.DeferCount(time.Now(), metric)
+	defer webhook.requestMetric.DeferCount(webhook.clock.Now(), metric)
 
 	if err := webhook.handle(ctx, logger, metric); err != nil {
 		logger.WithError(err).Error()

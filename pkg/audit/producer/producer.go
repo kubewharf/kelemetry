@@ -18,10 +18,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/audit"
 	"github.com/kubewharf/kelemetry/pkg/audit/mq"
@@ -50,6 +50,7 @@ func (options *options) EnableFlag() *bool { return &options.enable }
 type producer struct {
 	options       options
 	logger        logrus.FieldLogger
+	clock         clock.Clock
 	webhook       auditwebhook.Webhook
 	queue         mq.Queue
 	metrics       metrics.Client
@@ -65,12 +66,14 @@ type produceMetric struct {
 
 func New(
 	logger logrus.FieldLogger,
+	clock clock.Clock,
 	webhook auditwebhook.Webhook,
 	queue mq.Queue,
 	metrics metrics.Client,
 ) *producer {
 	return &producer{
 		logger:  logger,
+		clock:   clock,
 		webhook: webhook,
 		queue:   queue,
 		metrics: metrics,
@@ -125,7 +128,7 @@ func (producer *producer) workerLoop(stopCh <-chan struct{}, workerId int) {
 }
 
 func (producer *producer) handleEvent(message *audit.Message) error {
-	defer producer.produceMetric.DeferCount(time.Now(), &produceMetric{
+	defer producer.produceMetric.DeferCount(producer.clock.Now(), &produceMetric{
 		Cluster: message.Cluster,
 	})
 

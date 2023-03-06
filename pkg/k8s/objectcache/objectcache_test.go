@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/k8s"
 	"github.com/kubewharf/kelemetry/pkg/k8s/objectcache"
@@ -34,10 +35,12 @@ import (
 func TestGet(t *testing.T) {
 	assert := assert.New(t)
 
-	metricsClient, metricsOutput := metrics.NewMock()
+	clock := clock.RealClock{} // the clock is unused
+	metricsClient, metricsOutput := metrics.NewMock(clock)
 
 	cache := objectcache.NewObjectCache(
 		logrus.New(),
+		clock,
 		&k8s.MockClients{
 			TargetClusterName: "test-cluster",
 			Clients: map[string]*k8s.MockClient{

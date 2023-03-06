@@ -23,6 +23,7 @@ import (
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator/linker"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/spancache"
@@ -30,7 +31,6 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
 	"github.com/kubewharf/kelemetry/pkg/util"
-	"github.com/kubewharf/kelemetry/pkg/util/clock"
 	"github.com/kubewharf/kelemetry/pkg/util/errors"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )

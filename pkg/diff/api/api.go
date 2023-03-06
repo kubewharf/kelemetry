@@ -18,12 +18,12 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/utils/clock"
 
 	diffcache "github.com/kubewharf/kelemetry/pkg/diff/cache"
 	"github.com/kubewharf/kelemetry/pkg/http"
@@ -52,6 +52,7 @@ func (options *apiOptions) EnableFlag() *bool { return &options.enable }
 type api struct {
 	options     apiOptions
 	logger      logrus.FieldLogger
+	clock       clock.Clock
 	diffCache   diffcache.Cache
 	objectCache objectcache.ObjectCache
 	metrics     metrics.Client
@@ -70,6 +71,7 @@ type (
 
 func NewApi(
 	logger logrus.FieldLogger,
+	clock clock.Clock,
 	diffCache diffcache.Cache,
 	objectCache objectcache.ObjectCache,
 	metrics metrics.Client,
@@ -78,6 +80,7 @@ func NewApi(
 ) *api {
 	return &api{
 		logger:      logger,
+		clock:       clock,
 		diffCache:   diffCache,
 		objectCache: objectCache,
 		metrics:     metrics,
@@ -99,7 +102,7 @@ func (api *api) Init(ctx context.Context) error {
 		logger := api.logger.WithField("source", ctx.Request.RemoteAddr)
 		defer shutdown.RecoverPanic(logger)
 		metric := &requestMetric{}
-		defer api.requestMetric.DeferCount(time.Now(), metric)
+		defer api.requestMetric.DeferCount(api.clock.Now(), metric)
 
 		if err := api.handleGet(ctx); err != nil {
 			logger.WithError(err).Error()
@@ -110,7 +113,7 @@ func (api *api) Init(ctx context.Context) error {
 		logger := api.logger.WithField("source", ctx.Request.RemoteAddr)
 		defer shutdown.RecoverPanic(logger)
 		metric := &scanMetric{}
-		defer api.scanMetric.DeferCount(time.Now(), metric)
+		defer api.scanMetric.DeferCount(api.clock.Now(), metric)
 
 		if err := api.handleScan(ctx); err != nil {
 			logger.WithError(err).Error()

@@ -19,9 +19,10 @@ import (
 	"encoding/hex"
 	"time"
 
+	"k8s.io/utils/clock"
+
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
-	"github.com/kubewharf/kelemetry/pkg/util/clock"
 	"github.com/kubewharf/kelemetry/pkg/util/errors"
 )
 

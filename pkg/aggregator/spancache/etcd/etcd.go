@@ -25,10 +25,10 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	etcdv3 "go.etcd.io/etcd/client/v3"
+	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator/spancache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
-	"github.com/kubewharf/kelemetry/pkg/util/clock"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
 )
 

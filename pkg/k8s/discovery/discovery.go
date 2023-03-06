@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/pflag"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/k8s"
 	"github.com/kubewharf/kelemetry/pkg/manager"
@@ -67,6 +68,7 @@ type DiscoveryCache interface {
 type discoveryCache struct {
 	options discoveryOptions
 	logger  logrus.FieldLogger
+	clock   clock.Clock
 	clients k8s.Clients
 	metrics metrics.Client
 
@@ -86,11 +88,13 @@ type resyncMetric struct{}
 
 func NewDiscoveryCache(
 	logger logrus.FieldLogger,
+	clock clock.Clock,
 	clients k8s.Clients,
 	metrics metrics.Client,
 ) DiscoveryCache {
 	return &discoveryCache{
 		logger:          logger,
+		clock:           clock,
 		clients:         clients,
 		metrics:         metrics,
 		resyncRequestCh: make(chan struct{}, 1),
@@ -127,7 +131,7 @@ func (dc *discoveryCache) run(stopCh <-chan struct{}) {
 		select {
 		case <-stopCh:
 			return
-		case <-time.After(dc.options.resyncInterval):
+		case <-dc.clock.After(dc.options.resyncInterval):
 		case <-dc.resyncRequestCh:
 		}
 	}
@@ -135,7 +139,7 @@ func (dc *discoveryCache) run(stopCh <-chan struct{}) {
 
 func (dc *discoveryCache) doResync() error {
 	metric := &resyncMetric{}
-	defer dc.resyncMetric.DeferCount(time.Now(), metric)
+	defer dc.resyncMetric.DeferCount(dc.clock.Now(), metric)
 
 	// TODO also sync non-target clusters
 	lists, err := dc.clients.TargetCluster().KubernetesClient().Discovery().ServerPreferredResources()
@@ -265,7 +269,7 @@ func (dc *discoveryCache) RequestAndWaitResync() {
 	default:
 	}
 
-	time.Sleep(time.Second * 5) // FIXME: notify resync completion from doResync
+	dc.clock.Sleep(time.Second * 5) // FIXME: notify resync completion from doResync
 }
 
 func (dc *discoveryCache) AddResyncHandler() <-chan struct{} {

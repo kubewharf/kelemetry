@@ -22,6 +22,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
@@ -94,7 +95,10 @@ func provideUtils(m *manager.Manager, logger logrus.FieldLogger, shutdownTrigger
 	m.ProvideUtil(func(ctx manager.UtilContext) (logrus.FieldLogger, error) {
 		return logger.WithField("mod", ctx.ComponentName), nil
 	})
-	manager.Global.ProvideUtil(func(ctx manager.UtilContext) (*shutdown.ShutdownTrigger, error) {
+	m.ProvideUtil(func(ctx manager.UtilContext) (*shutdown.ShutdownTrigger, error) {
 		return shutdownTrigger, nil
+	})
+	m.ProvideUtil(func(ctx manager.UtilContext) (clock.Clock, error) {
+		return clock.RealClock{}, nil
 	})
 }

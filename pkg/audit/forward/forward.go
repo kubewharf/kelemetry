@@ -26,6 +26,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/audit"
 	auditwebhook "github.com/kubewharf/kelemetry/pkg/audit/webhook"
@@ -56,6 +57,7 @@ func (options *options) EnableFlag() *bool {
 type comp struct {
 	options options
 	logger  logrus.FieldLogger
+	clock   clock.Clock
 	webhook auditwebhook.Webhook
 	metrics metrics.Client
 	ctx     context.Context
@@ -65,11 +67,13 @@ type comp struct {
 
 func New(
 	logger logrus.FieldLogger,
+	clock clock.Clock,
 	webhook auditwebhook.Webhook,
 	metrics metrics.Client,
 ) *comp {
 	return &comp{
 		logger:  logger,
+		clock:   clock,
 		webhook: webhook,
 		metrics: metrics,
 	}
@@ -92,6 +96,7 @@ func (comp *comp) Init(ctx context.Context) error {
 	for upstreamName, url := range comp.options.forwardUrls {
 		proxy := newProxy(
 			comp.logger.WithField("url", url).WithField("upstream", upstreamName),
+			comp.clock,
 			comp.metrics.New("audit_forward_proxy", &proxyMetric{}),
 			&comp.options,
 			upstreamName,
@@ -121,6 +126,7 @@ func (comp *comp) Close() error {
 
 type proxy struct {
 	logger       logrus.FieldLogger
+	clock        clock.Clock
 	metric       metrics.Metric
 	upstreamName string
 	url          string
@@ -130,6 +136,7 @@ type proxy struct {
 
 func newProxy(
 	logger logrus.FieldLogger,
+	clock clock.Clock,
 	metric metrics.Metric,
 	options *options,
 	upstreamName string,
@@ -138,6 +145,7 @@ func newProxy(
 ) *proxy {
 	proxy := &proxy{
 		logger:       logger,
+		clock:        clock,
 		metric:       metric,
 		upstreamName: upstreamName,
 		url:          url,
@@ -178,7 +186,7 @@ func (proxy *proxy) handleEvent(message *audit.RawMessage) error {
 		Upstream: proxy.upstreamName,
 		Cluster:  message.Cluster,
 	}
-	defer proxy.metric.DeferCount(time.Now(), metric)
+	defer proxy.metric.DeferCount(proxy.clock.Now(), metric)
 
 	jsonBuf, err := json.Marshal(message.EventList)
 	if err != nil {

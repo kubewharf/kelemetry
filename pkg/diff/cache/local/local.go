@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"k8s.io/utils/clock"
 
 	diffcache "github.com/kubewharf/kelemetry/pkg/diff/cache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
@@ -37,6 +38,7 @@ type localCache struct {
 	manager.MuxImplBase
 
 	logger logrus.FieldLogger
+	clock  clock.Clock
 
 	data     map[string]*history
 	dataLock sync.RWMutex
@@ -49,9 +51,10 @@ type history struct {
 	patches    map[string]*diffcache.Patch
 }
 
-func newLocal(logger logrus.FieldLogger) *localCache {
+func newLocal(logger logrus.FieldLogger, clock clock.Clock) *localCache {
 	return &localCache{
 		logger: logger,
+		clock:  clock,
 		data:   map[string]*history{},
 	}
 }
@@ -61,7 +64,7 @@ func (_ *localCache) MuxImplName() (name string, isDefault bool) { return "local
 func (cache *localCache) Options() manager.Options { return &manager.NoOptions{} }
 
 func (lc *localCache) Init(ctx context.Context) error {
-	lc.snapshotCache = cache.NewTtlOnce(lc.GetCommonOptions().SnapshotTtl)
+	lc.snapshotCache = cache.NewTtlOnce(lc.GetCommonOptions().SnapshotTtl, lc.clock)
 	return nil
 }
 
@@ -84,7 +87,7 @@ func (cache *localCache) runTrimLoop(expiry time.Duration, interval time.Duratio
 		select {
 		case <-stopCh:
 			return
-		case <-time.After(interval):
+		case <-cache.clock.After(interval):
 			cache.doTrim(expiry)
 		}
 	}
@@ -96,7 +99,7 @@ func (cache *localCache) doTrim(expiry time.Duration) {
 
 	removals := []string{}
 	for k, v := range cache.data {
-		if time.Since(v.lastModify) > expiry {
+		if cache.clock.Since(v.lastModify) > expiry {
 			removals = append(removals, k)
 		}
 	}
@@ -121,7 +124,7 @@ func (cache *localCache) Store(ctx context.Context, object util.ObjectRef, patch
 	}
 
 	patches := cache.data[object.String()]
-	patches.lastModify = time.Now()
+	patches.lastModify = cache.clock.Now()
 
 	keyRv, _ := cache.GetCommonOptions().ChooseResourceVersion(patch.OldResourceVersion, &patch.NewResourceVersion)
 	patches.patches[keyRv] = patch

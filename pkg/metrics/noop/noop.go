@@ -16,6 +16,7 @@ package metricsnoop
 
 import (
 	"context"
+	"time"
 
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
@@ -58,3 +59,5 @@ func (metric metric) Count(value int64, tags []string) {}
 func (metric metric) Histogram(value int64, tags []string) {}
 
 func (metric metric) Gauge(value int64, tags []string) {}
+
+func (metric metric) Defer(start time.Time, tags []string) {}

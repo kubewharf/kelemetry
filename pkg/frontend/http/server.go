@@ -23,6 +23,7 @@ import (
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/frontend/clusterlist"
 	jaegerreader "github.com/kubewharf/kelemetry/pkg/frontend/reader"
@@ -50,6 +51,7 @@ func (options *options) EnableFlag() *bool { return &options.enable }
 type server struct {
 	options          options
 	logger           logrus.FieldLogger
+	clock            clock.Clock
 	server           pkghttp.Server
 	metrics          metrics.Client
 	spanReader       jaegerreader.Interface
@@ -66,6 +68,7 @@ type requestMetric struct {
 
 func NewRedirectServer(
 	logger logrus.FieldLogger,
+	clock clock.Clock,
 	httpServer pkghttp.Server,
 	metrics metrics.Client,
 	spanReader jaegerreader.Interface,
@@ -74,6 +77,7 @@ func NewRedirectServer(
 ) *server {
 	return &server{
 		logger:           logger,
+		clock:            clock,
 		server:           httpServer,
 		metrics:          metrics,
 		spanReader:       spanReader,
@@ -94,7 +98,7 @@ func (server *server) Init(ctx context.Context) error {
 		logger := server.logger.WithField("source", ctx.Request.RemoteAddr)
 		defer shutdown.RecoverPanic(logger)
 		metric := &requestMetric{}
-		defer server.requestMetric.DeferCount(time.Now(), metric)
+		defer server.requestMetric.DeferCount(server.clock.Now(), metric)
 
 		logger.WithField("query", ctx.Request.URL.RawQuery).Infof("GET /redirect %v", ctx.Request.URL.Query())
 

@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
@@ -28,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
 	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
+	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator"
 	"github.com/kubewharf/kelemetry/pkg/audit"
@@ -76,6 +76,7 @@ func (options *options) EnableFlag() *bool { return &options.enable }
 type receiver struct {
 	options          options
 	logger           logrus.FieldLogger
+	clock            clock.Clock
 	aggregator       aggregator.Aggregator
 	mq               mq.Queue
 	decoratorList    audit.DecoratorList
@@ -104,6 +105,7 @@ type e2eLatencyMetric struct {
 
 func New(
 	logger logrus.FieldLogger,
+	clock clock.Clock,
 	aggregator aggregator.Aggregator,
 	queue mq.Queue,
 	decoratorList audit.DecoratorList,
@@ -112,6 +114,7 @@ func New(
 ) *receiver {
 	return &receiver{
 		logger:        logger,
+		clock:         clock,
 		aggregator:    aggregator,
 		mq:            queue,
 		decoratorList: decoratorList,
@@ -171,7 +174,7 @@ func (recv *receiver) handleMessage(
 		ConsumerGroup: consumerGroup,
 		Partition:     partition,
 	}
-	defer recv.consumeMetric.DeferCount(time.Now(), metric)
+	defer recv.consumeMetric.DeferCount(recv.clock.Now(), metric)
 
 	cluster := strings.SplitN(string(msgKey), "/", 2)[0]
 	metric.Cluster = cluster
@@ -251,7 +254,7 @@ func (recv *receiver) handleItem(
 		field = "deletion"
 	}
 
-	e2eLatency := time.Since(message.StageTimestamp.Time)
+	e2eLatency := recv.clock.Since(message.StageTimestamp.Time)
 
 	fieldLogger := logger.
 		WithField("verb", message.Verb).

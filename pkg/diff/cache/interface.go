@@ -21,6 +21,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"k8s.io/utils/clock"
 
 	diffcmp "github.com/kubewharf/kelemetry/pkg/diff/cmp"
 	"github.com/kubewharf/kelemetry/pkg/manager"
@@ -98,6 +99,7 @@ type mux struct {
 	*manager.Mux
 	metrics metrics.Client
 	logger  logrus.FieldLogger
+	clock   clock.Clock
 
 	impl Cache
 
@@ -108,12 +110,17 @@ type mux struct {
 	listMetric          metrics.Metric
 }
 
-func newCache(logger logrus.FieldLogger, metrics metrics.Client) Cache {
+func newCache(
+	logger logrus.FieldLogger,
+	clock clock.Clock,
+	metrics metrics.Client,
+) Cache {
 	options := &CommonOptions{}
 	return &mux{
 		options: options,
 		Mux:     manager.NewMux("diff-cache", false).WithAdditionalOptions(options),
 		logger:  logger,
+		clock:   clock,
 		metrics: metrics,
 	}
 }
@@ -136,7 +143,7 @@ func (mux *mux) Init(ctx context.Context) error {
 
 	mux.impl = mux.Impl().(Cache)
 	if mux.options.EnableCacheWrapper {
-		wrapper := newCacheWrapper(mux.options, mux.impl, mux.metrics)
+		wrapper := newCacheWrapper(mux.options, mux.impl, mux.clock, mux.metrics)
 		wrapper.initMetricsLoop(mux.metrics)
 		mux.impl = wrapper
 	}
@@ -163,13 +170,13 @@ func (mux *mux) GetCommonOptions() *CommonOptions {
 }
 
 func (mux *mux) Store(ctx context.Context, object util.ObjectRef, patch *Patch) {
-	defer mux.storeDiffMetric.DeferCount(time.Now(), &storeMetric{Redacted: patch.Redacted})
+	defer mux.storeDiffMetric.DeferCount(mux.clock.Now(), &storeMetric{Redacted: patch.Redacted})
 	mux.Impl().(Cache).Store(ctx, object, patch)
 }
 
 func (mux *mux) Fetch(ctx context.Context, object util.ObjectRef, oldResourceVersion string, newResourceVersion *string) (*Patch, error) {
 	metric := &fetchMetric{}
-	defer mux.fetchDiffMetric.DeferCount(time.Now(), metric)
+	defer mux.fetchDiffMetric.DeferCount(mux.clock.Now(), metric)
 
 	patch, err := mux.Impl().(Cache).Fetch(ctx, object, oldResourceVersion, newResourceVersion)
 	if err != nil {
@@ -182,13 +189,13 @@ func (mux *mux) Fetch(ctx context.Context, object util.ObjectRef, oldResourceVer
 }
 
 func (mux *mux) StoreSnapshot(ctx context.Context, object util.ObjectRef, snapshotName string, snapshot *Snapshot) {
-	defer mux.storeSnapshotMetric.DeferCount(time.Now(), &storeMetric{Redacted: snapshot.Redacted})
+	defer mux.storeSnapshotMetric.DeferCount(mux.clock.Now(), &storeMetric{Redacted: snapshot.Redacted})
 	mux.Impl().(Cache).StoreSnapshot(ctx, object, snapshotName, snapshot)
 }
 
 func (mux *mux) FetchSnapshot(ctx context.Context, object util.ObjectRef, snapshotName string) (*Snapshot, error) {
 	metric := &fetchMetric{}
-	defer mux.fetchSnapshotMetric.DeferCount(time.Now(), metric)
+	defer mux.fetchSnapshotMetric.DeferCount(mux.clock.Now(), metric)
 
 	snapshot, err := mux.Impl().(Cache).FetchSnapshot(ctx, object, snapshotName)
 	if err != nil {
@@ -201,6 +208,6 @@ func (mux *mux) FetchSnapshot(ctx context.Context, object util.ObjectRef, snapsh
 }
 
 func (mux *mux) List(ctx context.Context, object util.ObjectRef, limit int) ([]string, error) {
-	defer mux.listMetric.DeferCount(time.Now(), &listMetric{})
+	defer mux.listMetric.DeferCount(mux.clock.Now(), &listMetric{})
 	return mux.Impl().(Cache).List(ctx, object, limit)
 }

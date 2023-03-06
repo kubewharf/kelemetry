@@ -18,12 +18,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
+
+	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
 
-func NewMock() (Client, *Mock) {
-	recorder := &Mock{}
+func NewMock(clock clock.Clock) (Client, *Mock) {
+	recorder := &Mock{
+		clock: clock,
+	}
 
 	return &mux{
 		Mux: manager.NewMockMux("metrics", "mock", recorder),
@@ -34,6 +39,7 @@ type Mock struct {
 	manager.MuxImplBase
 	manager.BaseComponent
 
+	clock   clock.Clock
 	metrics sync.Map // map[string]*mockEntry
 }
 
@@ -74,6 +80,7 @@ func (mock *Mock) MuxImplName() (name string, isDefault bool) { panic("unreachab
 func (mock *Mock) New(name string, tagNames []string) MetricImpl {
 	return &mockImpl{
 		metrics:  &mock.metrics,
+		clock:    mock.clock,
 		name:     name,
 		tagNames: tagNames,
 	}
@@ -81,6 +88,7 @@ func (mock *Mock) New(name string, tagNames []string) MetricImpl {
 
 type mockImpl struct {
 	metrics  *sync.Map
+	clock    clock.Clock
 	name     string
 	tagNames []string
 }
@@ -103,6 +111,10 @@ func (mi *mockImpl) Histogram(value int64, tags []string) {
 
 func (mi *mockImpl) Gauge(value int64, tags []string) {
 	mi.record(tags, func(entry *MockEntry) { entry.Int = value })
+}
+
+func (mi *mockImpl) Defer(start time.Time, tags []string) {
+	mi.record(tags, func(me *MockEntry) {})
 }
 
 func (mi *mockImpl) record(tags []string, modifier func(*MockEntry)) {

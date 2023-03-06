@@ -17,7 +17,8 @@ package diffcache
 import (
 	"context"
 	"fmt"
-	"time"
+
+	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/metrics"
 	"github.com/kubewharf/kelemetry/pkg/util"
@@ -30,15 +31,22 @@ type CacheWrapper struct {
 	penetrateMetric metrics.Metric
 	snapshotCache   *cache.TtlOnce
 	options         *CommonOptions
+	clock           clock.Clock
 }
 
-func newCacheWrapper(options *CommonOptions, delegate Cache, metricsClient metrics.Client) *CacheWrapper {
+func newCacheWrapper(
+	options *CommonOptions,
+	delegate Cache,
+	clock clock.Clock,
+	metricsClient metrics.Client,
+) *CacheWrapper {
 	return &CacheWrapper{
 		delegate:        delegate,
-		patchCache:      cache.NewTtlOnce(options.PatchTtl),
-		snapshotCache:   cache.NewTtlOnce(options.SnapshotTtl),
+		patchCache:      cache.NewTtlOnce(options.PatchTtl, clock),
+		snapshotCache:   cache.NewTtlOnce(options.SnapshotTtl, clock),
 		penetrateMetric: metricsClient.New("diff_cache_memory_wrapper_penetrate", &penetrateMetric{}),
 		options:         options,
+		clock:           clock,
 	}
 }
 
@@ -74,7 +82,7 @@ func (wrapper *CacheWrapper) Fetch(
 	newResourceVersion *string,
 ) (*Patch, error) {
 	penetrateMetric := &penetrateMetric{Type: "diff"}
-	defer wrapper.penetrateMetric.DeferCount(time.Now(), penetrateMetric)
+	defer wrapper.penetrateMetric.DeferCount(wrapper.clock.Now(), penetrateMetric)
 
 	keyRv, err := wrapper.options.ChooseResourceVersion(oldResourceVersion, newResourceVersion)
 	if err != nil {
@@ -111,7 +119,7 @@ func (wrapper *CacheWrapper) FetchSnapshot(
 	snapshotName string,
 ) (*Snapshot, error) {
 	penetrateMetric := &penetrateMetric{Type: fmt.Sprintf("snapshot/%s", snapshotName)}
-	defer wrapper.penetrateMetric.DeferCount(time.Now(), penetrateMetric)
+	defer wrapper.penetrateMetric.DeferCount(wrapper.clock.Now(), penetrateMetric)
 
 	if value, ok := wrapper.patchCache.Get(cacheWrapperKey(object, snapshotName)); ok {
 		return value.(*Snapshot), nil

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/util/channel"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
@@ -27,6 +28,7 @@ import (
 // TtlOnce is a cache where new insertions do not overwrite the old insertion.
 type TtlOnce struct {
 	ttl      time.Duration
+	clock    clock.Clock
 	wakeupCh chan struct{}
 
 	lock         sync.RWMutex
@@ -39,9 +41,10 @@ type cleanupEntry struct {
 	expiry time.Time
 }
 
-func NewTtlOnce(ttl time.Duration) *TtlOnce {
+func NewTtlOnce(ttl time.Duration, clock clock.Clock) *TtlOnce {
 	return &TtlOnce{
 		ttl:          ttl,
+		clock:        clock,
 		wakeupCh:     make(chan struct{}),
 		cleanupQueue: channel.NewDeque(16),
 		data:         map[string]interface{}{},
@@ -51,7 +54,7 @@ func NewTtlOnce(ttl time.Duration) *TtlOnce {
 func (cache *TtlOnce) Add(key string, value interface{}) {
 	if _, exists := cache.data[key]; !exists {
 		cache.data[key] = value
-		expiry := time.Now().Add(cache.ttl)
+		expiry := cache.clock.Now().Add(cache.ttl)
 		cache.cleanupQueue.LockedPushBack(cleanupEntry{key: key, expiry: expiry})
 	}
 }
@@ -78,7 +81,7 @@ func (cache *TtlOnce) RunCleanupLoop(stopCh <-chan struct{}, logger logrus.Field
 		wakeup := cache.wakeupCh
 		var nextExpiryCh <-chan time.Time
 		if expiry, hasNext := cache.peekExpiry(); hasNext {
-			nextExpiryCh = time.After(time.Until(expiry) + time.Second) // +1s to mitigate race conditions
+			nextExpiryCh = cache.clock.After(expiry.Sub(cache.clock.Now()) + time.Second) // +1s to mitigate race conditions
 			wakeup = nil
 		}
 
@@ -100,7 +103,7 @@ func (cache *TtlOnce) doCleanup() {
 	for {
 		if entry := cache.cleanupQueue.LockedPeekFront(); entry != nil {
 			entry := entry.(cleanupEntry)
-			if entry.expiry.Before(time.Now()) {
+			if entry.expiry.Before(cache.clock.Now()) {
 				cache.cleanupQueue.LockedPopFront()
 				delete(cache.data, entry.key)
 				continue

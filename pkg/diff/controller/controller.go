@@ -32,6 +32,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	toolscache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/utils/clock"
 
 	diffcache "github.com/kubewharf/kelemetry/pkg/diff/cache"
 	diffcmp "github.com/kubewharf/kelemetry/pkg/diff/cmp"
@@ -83,6 +84,7 @@ func (options *ctrlOptions) EnableFlag() *bool { return &options.enable }
 type controller struct {
 	options   ctrlOptions
 	logger    logrus.FieldLogger
+	clock     clock.Clock
 	clients   k8s.Clients
 	discovery discovery.DiscoveryCache
 	cache     diffcache.Cache
@@ -104,6 +106,7 @@ var _ manager.Component = &controller{}
 
 func newController(
 	logger logrus.FieldLogger,
+	clock clock.Clock,
 	clients k8s.Clients,
 	discovery discovery.DiscoveryCache,
 	cache diffcache.Cache,
@@ -112,6 +115,7 @@ func newController(
 ) *controller {
 	return &controller{
 		logger:    logger,
+		clock:     clock,
 		clients:   clients,
 		discovery: discovery,
 		cache:     cache,
@@ -155,6 +159,7 @@ func (ctrl *controller) Init(ctx context.Context) (err error) {
 	ctrl.elector, err = multileader.NewElector(
 		"kelemetry-diff-controller",
 		ctrl.logger.WithField("submod", "leader-elector"),
+		ctrl.clock,
 		&ctrl.options.electorOptions,
 		ctrl.clients.TargetCluster(),
 		ctrl.metrics,
@@ -432,7 +437,7 @@ func (monitor *monitor) close() {
 }
 
 func (monitor *monitor) onUpdate(oldObj, newObj *unstructured.Unstructured) {
-	defer monitor.onUpdateMetric.DeferCount(time.Now())
+	defer monitor.onUpdateMetric.DeferCount(monitor.ctrl.clock.Now())
 
 	if oldObj.GetResourceVersion() == newObj.GetResourceVersion() {
 		// no change
@@ -440,7 +445,7 @@ func (monitor *monitor) onUpdate(oldObj, newObj *unstructured.Unstructured) {
 	}
 
 	patch := &diffcache.Patch{
-		InformerTime:       time.Now(),
+		InformerTime:       monitor.ctrl.clock.Now(),
 		OldResourceVersion: oldObj.GetResourceVersion(),
 		NewResourceVersion: newObj.GetResourceVersion(),
 	}
@@ -468,7 +473,7 @@ func (monitor *monitor) onUpdate(oldObj, newObj *unstructured.Unstructured) {
 }
 
 func (monitor *monitor) onCreateDelete(obj *unstructured.Unstructured, snapshotName string) {
-	defer monitor.onDeleteMetric.DeferCount(time.Now())
+	defer monitor.onDeleteMetric.DeferCount(monitor.ctrl.clock.Now())
 
 	redacted := monitor.testRedacted(obj)
 
