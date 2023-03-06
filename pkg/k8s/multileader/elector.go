@@ -91,7 +91,7 @@ func NewElector(
 	elector := &Elector{
 		enable:         config.Enable,
 		name:           component,
-		logger:         logger,
+		logger:         logger.WithField("identity", identity),
 		configs:        make([]*leaderelection.LeaderElectionConfig, 0, config.NumLeaders),
 		isLeaderMetric: metrics.New("is_leader", &isLeaderMetric{}),
 		isLeaderFlag:   make([]uint32, config.NumLeaders),
