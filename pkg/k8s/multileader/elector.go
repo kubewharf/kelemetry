@@ -43,6 +43,7 @@ type Config struct {
 	RenewDeadline time.Duration
 	RetryPeriod   time.Duration
 	NumLeaders    int
+	Identity      string // for testing only
 }
 
 func (config *Config) SetupOptions(fs *pflag.FlagSet, prefix string, component string, defaultNumLeaders int) {
@@ -67,9 +68,11 @@ type Elector struct {
 	name           string
 	logger         logrus.FieldLogger
 	clock          clock.Clock
-	configs        []*leaderelection.LeaderElectionConfig
 	isLeaderMetric metrics.Metric
 	isLeaderFlag   []uint32
+	Identity       string
+
+	configCreator func() ([]*leaderelection.LeaderElectionConfig, <-chan event, error)
 }
 
 type isLeaderMetric struct {
@@ -89,42 +92,54 @@ func NewElector(
 	if err != nil {
 		return nil, fmt.Errorf("cannot get hostname for leader election: %w", err)
 	}
-	identity := hostname + "_" + string(uuid.NewUUID())
+
+	var identity string
+	if config.Identity != "" {
+		identity = config.Identity
+	} else {
+		identity = hostname + "_" + string(uuid.NewUUID())
+	}
 
 	elector := &Elector{
 		enable:         config.Enable,
 		name:           component,
 		logger:         logger.WithField("identity", identity),
 		clock:          clock,
-		configs:        make([]*leaderelection.LeaderElectionConfig, 0, config.NumLeaders),
 		isLeaderMetric: metrics.New("is_leader", &isLeaderMetric{}),
 		isLeaderFlag:   make([]uint32, config.NumLeaders),
-	}
+		Identity:       identity,
+		configCreator: func() ([]*leaderelection.LeaderElectionConfig, <-chan event, error) {
+			configs := make([]*leaderelection.LeaderElectionConfig, 0, config.NumLeaders)
 
-	for i := int(0); i < config.NumLeaders; i++ {
-		rl, err := resourcelock.New(
-			resourcelock.LeasesResourceLock,
-			config.Namespace,
-			fmt.Sprintf("%s-%d", config.Name, i),
-			client.KubernetesClient().CoreV1(),
-			client.KubernetesClient().CoordinationV1(),
-			resourcelock.ResourceLockConfig{
-				Identity:      identity,
-				EventRecorder: client.EventRecorder(component),
-			},
-		)
-		if err != nil {
-			return nil, fmt.Errorf("cannot initialize %s leader election resource lock: %w", component, err)
-		}
+			for i := int(0); i < config.NumLeaders; i++ {
+				rl, err := resourcelock.New(
+					resourcelock.LeasesResourceLock,
+					config.Namespace,
+					fmt.Sprintf("%s-%d", config.Name, i),
+					client.KubernetesClient().CoreV1(),
+					client.KubernetesClient().CoordinationV1(),
+					resourcelock.ResourceLockConfig{
+						Identity:      identity,
+						EventRecorder: client.EventRecorder(component),
+					},
+				)
+				if err != nil {
+					return nil, nil, fmt.Errorf("cannot initialize %s leader election resource lock: %w", component, err)
+				}
 
-		leaderElectionConfig := leaderelection.LeaderElectionConfig{
-			Lock:            rl,
-			LeaseDuration:   config.LeaseDuration,
-			RenewDeadline:   config.RenewDeadline,
-			RetryPeriod:     config.RetryPeriod,
-			ReleaseOnCancel: true,
-		}
-		elector.configs = append(elector.configs, &leaderElectionConfig)
+				leaderElectionConfig := leaderelection.LeaderElectionConfig{
+					Lock:            rl,
+					LeaseDuration:   config.LeaseDuration,
+					RenewDeadline:   config.RenewDeadline,
+					RetryPeriod:     config.RetryPeriod,
+					ReleaseOnCancel: true,
+				}
+				configs = append(configs, &leaderElectionConfig)
+			}
+
+			eventCh := configureCallbacks(configs)
+			return configs, eventCh, nil
+		},
 	}
 
 	return elector, nil
@@ -237,7 +252,10 @@ func (elector *Elector) spinOnce(run func(doneCh <-chan struct{}), stopCh <-chan
 }
 
 func (elector *Elector) waitForLeader(baseCtx context.Context, stopCh <-chan struct{}) (leaderId int, doneCh <-chan struct{}, err error) {
-	eventCh := configureCallbacks(elector.configs)
+	configs, eventCh, err := elector.configCreator()
+	if err != nil {
+		return -1, nil, err
+	}
 
 	cancelFuncs := []func(){}
 	defer func() {
@@ -247,9 +265,9 @@ func (elector *Elector) waitForLeader(baseCtx context.Context, stopCh <-chan str
 	}()
 
 	wg := &sync.WaitGroup{}
-	wg.Add(len(elector.configs))
+	wg.Add(len(configs))
 
-	for _, config := range elector.configs {
+	for i, config := range configs {
 		ctx, cancelFunc := context.WithCancel(baseCtx)
 		cancelFuncs = append(cancelFuncs, cancelFunc)
 
@@ -258,12 +276,14 @@ func (elector *Elector) waitForLeader(baseCtx context.Context, stopCh <-chan str
 			return -1, nil, fmt.Errorf("cannot initialize elector: %w", err)
 		}
 
-		go func() {
+		go func(i int) {
 			defer shutdown.RecoverPanic(elector.logger)
 			defer wg.Done()
 
+			elector.logger.WithField("i", i).Debug("start running subelector")
 			sub.Run(ctx)
-		}()
+			elector.logger.WithField("i", i).Debug("subelector stopped")
+		}(i)
 	}
 
 	var event event
