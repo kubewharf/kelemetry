@@ -386,7 +386,7 @@ func (ctrl *controller) startMonitor(gvr schema.GroupVersionResource, apiResourc
 			ctrl.taskPool.Send(func() { monitor.onUpdate(oldObj, newObj) })
 		},
 		onDelete: func(oldObj *unstructured.Unstructured) {
-			ctrl.taskPool.Send(func() { monitor.onCreateDelete(oldObj, diffcache.SnapshotNameDeletion) })
+			ctrl.taskPool.Send(func() { monitor.onNeedSnapshot(oldObj, diffcache.SnapshotNameDeletion) })
 		},
 	}
 
@@ -450,6 +450,10 @@ func (monitor *monitor) onUpdate(oldObj, newObj *unstructured.Unstructured) {
 		return
 	}
 
+	if oldDelTs, newDelTs := oldObj.GetDeletionTimestamp(), newObj.GetDeletionTimestamp(); oldDelTs.IsZero() && !newDelTs.IsZero() {
+		monitor.onNeedSnapshot(newObj, "deletion")
+	}
+
 	patch := &diffcache.Patch{
 		InformerTime:       monitor.ctrl.clock.Now(),
 		OldResourceVersion: oldObj.GetResourceVersion(),
@@ -478,7 +482,7 @@ func (monitor *monitor) onUpdate(oldObj, newObj *unstructured.Unstructured) {
 	)
 }
 
-func (monitor *monitor) onCreateDelete(obj *unstructured.Unstructured, snapshotName string) {
+func (monitor *monitor) onNeedSnapshot(obj *unstructured.Unstructured, snapshotName string) {
 	defer monitor.onDeleteMetric.DeferCount(monitor.ctrl.clock.Now())
 
 	redacted := monitor.testRedacted(obj)

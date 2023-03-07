@@ -43,7 +43,7 @@
       --diff-controller-worker-count int                                     number of workers for all object types to compute diff (default 8)
       --diff-decorator-enable                                                enable object diff audit decorator
       --diff-decorator-fetch-backoff duration                                backoff time between multiple attempts to fetch diff (default 1s)
-      --diff-decorator-fetch-event-timeout duration                          backoff is halted if this duration has elapsed since ResponseComplete stageTimestamp (default 1m0s)
+      --diff-decorator-fetch-event-timeout duration                          backoff is halted if this duration has elapsed since ResponseComplete stageTimestamp (default 15s)
       --diff-decorator-fetch-total-timeout duration                          maximum total time in worker to wait for fetching a single resource (default 10s)
       --discovery-resync-interval duration                                   frequency of refreshing discovery API (default 1h0m0s)
       --dot string                                                           write dependencies as graphviz output
