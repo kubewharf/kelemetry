@@ -23,6 +23,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -33,6 +34,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/audit"
 	"github.com/kubewharf/kelemetry/pkg/audit/mq"
 	"github.com/kubewharf/kelemetry/pkg/filter"
+	"github.com/kubewharf/kelemetry/pkg/k8s/discovery"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
 	"github.com/kubewharf/kelemetry/pkg/util"
@@ -74,14 +76,16 @@ func (options *options) Setup(fs *pflag.FlagSet) {
 func (options *options) EnableFlag() *bool { return &options.enable }
 
 type receiver struct {
-	options          options
-	logger           logrus.FieldLogger
-	clock            clock.Clock
-	aggregator       aggregator.Aggregator
-	mq               mq.Queue
-	decoratorList    audit.DecoratorList
-	filter           filter.Filter
-	metrics          metrics.Client
+	options        options
+	logger         logrus.FieldLogger
+	clock          clock.Clock
+	aggregator     aggregator.Aggregator
+	mq             mq.Queue
+	decoratorList  audit.DecoratorList
+	filter         filter.Filter
+	metrics        metrics.Client
+	discoveryCache discovery.DiscoveryCache
+
 	ctx              context.Context
 	consumeMetric    metrics.Metric
 	e2eLatencyMetric metrics.Metric
@@ -111,16 +115,18 @@ func New(
 	decoratorList audit.DecoratorList,
 	filter filter.Filter,
 	metrics metrics.Client,
+	discoveryCache discovery.DiscoveryCache,
 ) *receiver {
 	return &receiver{
-		logger:        logger,
-		clock:         clock,
-		aggregator:    aggregator,
-		mq:            queue,
-		decoratorList: decoratorList,
-		filter:        filter,
-		metrics:       metrics,
-		consumers:     map[mq.PartitionId]mq.Consumer{},
+		logger:         logger,
+		clock:          clock,
+		aggregator:     aggregator,
+		mq:             queue,
+		decoratorList:  decoratorList,
+		filter:         filter,
+		metrics:        metrics,
+		discoveryCache: discoveryCache,
+		consumers:      map[mq.PartitionId]mq.Consumer{},
 	}
 }
 
@@ -219,8 +225,11 @@ func (recv *receiver) handleItem(
 	}
 
 	if message.ObjectRef == nil || message.ObjectRef.Name == "" {
-		logger.Debugf("Invalid objectRef")
-		return
+		// try reconstructing ObjectRef from ResponseObject
+		if err := recv.inferObjectRef(message); err != nil {
+			logger.WithError(err).Debug("Invalid objectRef, cannot infer")
+			return
+		}
 	}
 
 	objectRef := util.ObjectRef{
@@ -313,4 +322,45 @@ func (recv *receiver) handleItem(
 	}
 
 	metric.HasTrace = true
+}
+
+func (receiver *receiver) inferObjectRef(message *audit.Message) error {
+	if message.ResponseObject != nil {
+		var partial metav1.PartialObjectMetadata
+		if err := json.Unmarshal(message.ResponseObject.Raw, &partial); err != nil {
+			return fmt.Errorf("unmarshal raw object: %w", err)
+		}
+
+		gv, err := schema.ParseGroupVersion(partial.APIVersion)
+		if err != nil {
+			return fmt.Errorf("object has invalid GroupVersion: %w", err)
+		}
+
+		cdc, err := receiver.discoveryCache.ForCluster(message.Cluster)
+		if err != nil {
+			return fmt.Errorf("no ClusterDiscoveryCache: %w", err)
+		}
+
+		gvr, ok := cdc.LookupResource(gv.WithKind(partial.Kind))
+		if !ok {
+			return fmt.Errorf("conversion of response to GVR failed")
+		}
+
+		message.ObjectRef = &auditv1.ObjectReference{
+			APIGroup:   gvr.Group,
+			APIVersion: gvr.Version,
+			Resource:   gvr.Resource,
+			Namespace:  partial.Namespace,
+			Name:       partial.Name,
+			UID:        partial.UID,
+			// do not set as partial.ResourceVersion, otherwise diff decorator will think this is a no-op
+			ResourceVersion: "",
+			// TODO try to infer subresource from RequestObject
+			Subresource: "",
+		}
+
+		return nil
+	}
+
+	return fmt.Errorf("no ResponseObject to infer objectRef from")
 }
