@@ -22,19 +22,6 @@ services:
     ports:
       - 2379:2379
     restart: always
-  # Backend ES storage
-  es:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.9
-    environment:
-      discovery.type: single-node
-      xpack.security.enabled: "false"
-      ES_JAVA_OPTS: "-Xms128m -Xmx128m"
-    mem_limit: 1073741824
-    ports:
-      - 9200:9200
-    volumes:
-      - es:/usr/share/elasticsearch/data
-    restart: always
   # Web frontend for trace view.
   jaeger-query:
     image: jaegertracing/jaeger-query:1.42
@@ -44,26 +31,30 @@ services:
     ports:
       - 0.0.0.0:16686:16686
     restart: always
-  # OTLP collector that writes to ES
+  # OTLP collector that writes to Badger
   jaeger-collector:
     image: jaegertracing/jaeger-collector:1.42
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
-      SPAN_STORAGE_TYPE: elasticsearch
-      ES_SERVER_URLS: http://es:9200
-      ES_INDEX_PREFIX: kelemetry
+      SPAN_STORAGE_TYPE: grpc-plugin
+      GRPC_STORAGE_SERVER: remote-badger:17271
     ports:
-      - 4317:4317
+      - 127.0.0.1:4317:4317
     restart: always
-  # kibana frontend for debugging ES
-  kibana:
-    image: docker.elastic.co/kibana/kibana:7.17.9
+  # Backend badger storage
+  # Feel free to override environment.SPAN_STORAGE_TYPE to other storages given the proper configuration.
+  remote-badger:
+    image: jaegertracing/jaeger-remote-storage:1.42
     environment:
-      ELASTICSEARCH_HOSTS: http://es:9200
+      SPAN_STORAGE_TYPE: badger
+      BADGER_EPHEMERAL: "false"
+      BADGER_DIRECTORY_KEY: /mnt/badger/key
+      BADGER_DIRECTORY_VALUE: /mnt/badger/data
     ports:
-      - 5601:5601
-    restart: always
+      - 127.0.0.1:17272:17271
+    volumes:
+      - badger:/mnt/badger
 
 volumes:
   etcd: {}
-  es: {}
+  badger: {}

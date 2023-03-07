@@ -106,7 +106,7 @@ func (cache *etcdCache) Persist(ctx context.Context, entries []tracecache.Entry)
 	for i, entry := range entries {
 		key := cache.cacheKey(entry.LowId)
 
-		identifierJson, err := json.Marshal(entry)
+		identifierJson, err := json.Marshal(entry.Identifier)
 		if err != nil {
 			return fmt.Errorf("cannot marshal entry %d: %w", i, err)
 		}
