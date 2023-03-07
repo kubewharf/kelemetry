@@ -65,7 +65,7 @@ func (options *decoratorOptions) Setup(fs *pflag.FlagSet) {
 	fs.DurationVar(
 		&options.fetchEventTimeout,
 		"diff-decorator-fetch-event-timeout",
-		time.Minute,
+		time.Second*15,
 		"backoff is halted if this duration has elapsed since ResponseComplete stageTimestamp",
 	)
 	fs.DurationVar(
@@ -171,6 +171,35 @@ func (decorator *decorator) Decorate(message *audit.Message, event *aggregator.E
 	}
 	defer decorator.diffMetric.DeferCount(decorator.clock.Now(), metric)
 
+	cacheHit, err := decorator.tryDecorate(logger, message, event)
+	if err != nil {
+		event.Log(zconstants.LogTypeKelemetryError, err.Error())
+		metric.Error = err
+	}
+
+	metric.CacheHit = string(cacheHit)
+}
+
+type cacheHitType string
+
+const (
+	cacheHitTypeTrue            cacheHitType = "true"
+	cacheHitTypeFalse           cacheHitType = "false"
+	cacheHitTypeError           cacheHitType = "failedRequest"
+	cacheHitTypeNoObjectRef     cacheHitType = "noObjectRef"
+	cacheHitTypeRawJsonDecode   cacheHitType = "rawJsonDecodeError"
+	cacheHitTypeNoop            cacheHitType = "noopUpdate"
+	cacheHitTypeFiltered        cacheHitType = "filtered"
+	cacheHitTypeSameRv          cacheHitType = "sameRv"
+	cacheHitTypeUndecoratedVerb cacheHitType = "undecoratedVerb"
+	cacheHitTypeUnsupportedVerb cacheHitType = "unsupportedVerb"
+)
+
+func (decorator *decorator) tryDecorate(
+	logger logrus.FieldLogger,
+	message *audit.Message,
+	event *aggregator.Event,
+) (cacheHitType, metrics.LabeledError) {
 	if message.ResponseStatus != nil && message.ResponseStatus.Code >= 300 {
 		event.Log(zconstants.LogTypeRealError, fmt.Sprintf("%s: %s", message.ResponseStatus.Reason, message.ResponseStatus.Message))
 		if message.ResponseStatus.Details != nil {
@@ -179,23 +208,19 @@ func (decorator *decorator) Decorate(message *audit.Message, event *aggregator.E
 			}
 		}
 
-		metric.CacheHit = "error"
-		return
+		return cacheHitTypeError, nil
 	}
 
 	if message.ObjectRef == nil {
 		logger.Warn("audit event has no ObjectRef")
-		metric.CacheHit = "noObjectRef"
-		return
+		return cacheHitTypeNoObjectRef, nil
 	}
 
 	var respObj *metav1.PartialObjectMetadata
 	if message.ResponseObject != nil && message.ResponseObject.Raw != nil {
 		if err := json.Unmarshal(message.ResponseObject.Raw, &respObj); err != nil {
 			event.Log(zconstants.LogTypeKelemetryError, "Error decoding raw object")
-			metric.CacheHit = "rawJsonDecodeError"
-			metric.Error = metrics.LabelError(err, "RawJsonDecodeError")
-			respObj = nil
+			return cacheHitTypeRawJsonDecode, metrics.LabelError(fmt.Errorf("Error decoding raw object: %w", err), "RawJsonDecodeError")
 		}
 	}
 
@@ -207,12 +232,11 @@ func (decorator *decorator) Decorate(message *audit.Message, event *aggregator.E
 	hasDiff := message.Verb == audit.VerbUpdate || message.Verb == audit.VerbPatch
 	if hasDiff && respObj != nil && message.ObjectRef.ResourceVersion == respObj.ResourceVersion {
 		event.Log(zconstants.LogTypeRealVerbose, "No-op update")
-		return
+		return cacheHitTypeNoop, nil
 	}
 
 	if !decoratesResource(message.ObjectRef) {
-		metric.CacheHit = "filtered"
-		return
+		return cacheHitTypeFiltered, nil
 	}
 
 	// NOTE: UID may be empty, but we don't use it anyway
@@ -230,9 +254,8 @@ func (decorator *decorator) Decorate(message *audit.Message, event *aggregator.E
 		}
 
 		if newRv != nil && oldRv == *newRv {
-			metric.CacheHit = "sameRv"
 			event.Log(zconstants.LogTypeRealVerbose, "No-op update")
-			return
+			return cacheHitTypeSameRv, nil
 		}
 
 		logger = logger.WithField("oldRv", oldRv).WithField("newRv", newRv)
@@ -245,15 +268,14 @@ func (decorator *decorator) Decorate(message *audit.Message, event *aggregator.E
 		snapshotName, hasSnapshotName := diffcache.VerbToSnapshotName[message.Verb]
 		if !hasSnapshotName {
 			// TODO fallback to ResponseObject?
-			return
+			return cacheHitTypeUndecoratedVerb, nil
 		}
 
 		tryOnce = func(ctx context.Context) (shouldRetry bool, err error) {
 			return decorator.tryCreateDeleteOnce(ctx, object, snapshotName, event)
 		}
 	default:
-		metric.CacheHit = "unsupportedVerb"
-		return
+		return cacheHitTypeUnsupportedVerb, nil
 	}
 
 	// this context will interrupt the Fetch call
@@ -266,28 +288,30 @@ func (decorator *decorator) Decorate(message *audit.Message, event *aggregator.E
 
 	var retryCount int64
 	var cacheHit bool
+	var err error
 
 	// the implementation never returns error
 	_ = wait.PollImmediateUntil(decorator.options.fetchBackoff, func() (done bool, _ error) {
 		retryCount += 1
-		cacheHit, metric.Error = tryOnce(totalCtx)
+		cacheHit, err = tryOnce(totalCtx)
 		return cacheHit, nil
 	}, retryCtx.Done())
 
 	decorator.retryCountMetric.With(&retryCountMetric{
-		Cluster:  metric.Cluster,
-		ApiGroup: metric.ApiGroup,
-		Resource: metric.Resource,
+		Cluster: message.Cluster,
+		ApiGroup: schema.GroupVersion{
+			Group:   message.ObjectRef.APIGroup,
+			Version: message.ObjectRef.APIVersion,
+		},
+		Resource: message.ObjectRef.Resource,
 		Success:  cacheHit,
 	}).Histogram(retryCount)
-	metric.CacheHit = fmt.Sprint(cacheHit)
 
 	if cacheHit {
-		metric.CacheHit = "true"
+		return cacheHitTypeTrue, nil
 	} else {
 		logger.WithField("object", message.ObjectRef).Warn("cannot associate diff cache")
-		event.Log(zconstants.LogTypeKelemetryError, "No object diff found")
-		return
+		return cacheHitTypeFalse, err
 	}
 }
 

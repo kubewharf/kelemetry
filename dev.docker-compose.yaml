@@ -29,7 +29,7 @@ services:
       discovery.type: single-node
       xpack.security.enabled: "false"
       ES_JAVA_OPTS: "-Xms128m -Xmx128m"
-    mem_limit: 536870912
+    mem_limit: 1073741824
     ports:
       - 9200:9200
     volumes:
