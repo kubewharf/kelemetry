@@ -1,0 +1,40 @@
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{.Release.Name}}
+  labels: {{ include "kelemetry.default-labels-raw" . | fromYaml | toJson }}
+spec:
+  ingressClassName: {{toJson .Values.ingress.className}}
+  tls: {{toJson .Values.ingress.tls}}
+  rules:
+    - http:
+        paths:
+          {{- if .Values.consumer.source.type | eq "webhook" }}
+          - path: /audit
+            pathType: Prefix
+            backend:
+              service:
+                name: {{.Release.Name}}-webhook
+                port:
+                  name: webhook
+          {{- end }}
+          - path: /redirect
+            pathType: Exact
+            backend:
+              service:
+                name: {{.Release.Name}}-query
+                port:
+                  name: redirect
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{.Release.Name}}-query
+                port:
+                  name: query
+      {{- if .Values.ingress.host }}
+      host: {{toJson .Values.ingress.host}}
+      {{- end }}
+{{- end }}

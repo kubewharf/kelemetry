@@ -1,0 +1,55 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{.Release.Name}}-collector
+  labels: {{ include "kelemetry.collector-labels" . }}
+spec:
+  replicas: {{.Values.collector.replicaCount}}
+  selector:
+    matchLabels: {{ include "kelemetry.collector-labels" . }}
+  template:
+    metadata:
+      labels: {{ include "kelemetry.collector-labels" . }}
+    spec:
+      imagePullSecrets: [
+        {{- range .Values.jaegerImages.pullSecrets }}
+        {{ . | toJson }},
+        {{- end }}
+      ]
+      {{ include "kelemetry.pod-boilerplate" .Values.collector | nindent 6 }}
+      containers:
+        - name: jaeger-collector
+          {{ include "kelemetry.container-boilerplate" .Values.collector | nindent 10 }}
+          args: [
+            {{- include "kelemetry.storage-options-raw" . | include "kelemetry.yaml-to-args" }}
+          ]
+          image: {{ printf "%s:%s" .Values.jaegerImages.collector.repository .Values.jaegerImages.collector.tag | toJson }}
+          imagePullPolicy: {{ toJson .Values.jaegerImages.pullPolicy }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: admin
+          readinessProbe:
+            httpGet:
+              path: /
+              port: admin
+          ports:
+            - name: collector
+              containerPort: 4317
+            - name: admin
+              containerPort: 14269
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{.Release.Name}}-collector
+  labels: {{ include "kelemetry.collector-labels" . }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: collector
+      port: 4317
+      targetPort: collector
+  selector: {{ include "kelemetry.collector-labels" . }}

@@ -165,6 +165,106 @@ consumer:
   # klog verbosity level for Kubernetes SDK calls
   klogLevel: "4"
 
+# Jaeger collector collects otel tracing data and dispatches them to Jaeger storage.
+collector:
+  replicaCount: 3
+  resources: {}
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+  podSecurityContext: {}
+  containerSecurityContext: {}
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+
+# Storage plugin serves the transformation layer between Jaeger UI and the storage backend.
+frontend:
+  replicaCount: 3
+  podSecurityContext: {}
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+
+  storagePlugin:
+    resources: {}
+      # limits:
+      #   cpu: 100m
+      #   memory: 128Mi
+      # requests:
+      #   cpu: 100m
+      #   memory: 128Mi
+    containerSecurityContext: {}
+
+    # Whether to expose pprof server
+    pprof: true
+    # Log verbosity level (`debug`, `info`, `warn`, `error`)
+    logLevel: info
+
+  jaegerQuery:
+    resources: {}
+      # limits:
+      #   cpu: 100m
+      #   memory: 128Mi
+      # requests:
+      #   cpu: 100m
+      #   memory: 128Mi
+    containerSecurityContext: {}
+
+  service:
+    type: ClusterIP
+    queryNodePort: ~
+    redirectNodePort: ~
+    otherConfig: {}
+      # clusterIP: xxx, externalIP: xxx, etc.
+
+  # The trace cache identifies search queries.
+  traceCache:
+    # Trace cache implementation.
+    # Supported types: 'local', 'etcd'
+    type: etcd
+    # The local trace cache can be used if the same user always connects to the same frontend instance.
+    local: {}
+    etcd:
+      # If externalEndpoint is false, the sharedEtcd database will be used.
+      externalEndpoint: false
+      # The prefix prepended to diff cache keys.
+      prefix: /trace/
+
+# Actual storage backend
+storageBackend:
+  # Refer to https://www.jaegertracing.io/docs/1.41/deployment/#span-storage-backends for options
+  type: badger
+  # If the storage backend is stateful (i.e. badger, memory), the storage must be delegated to a single pod.
+  # The settings are configured here.
+  stateful:
+    resources: {}
+      # limits:
+      #   cpu: 100m
+      #   memory: 128Mi
+      # requests:
+      #   cpu: 100m
+      #   memory: 128Mi
+    podSecurityContext: {}
+    containerSecurityContext: {}
+    nodeSelector: {}
+    affinity: {}
+    tolerations: []
+
+    # Storage settings if badger is enabled
+    storageAccessModes: [ReadWriteOnce]
+    storageClassName: local-path
+    storageResources:
+      requests:
+        storage: 1Gi
+  # storage plugin options, refer to `docker run --rm jaegertracing/jaeger-query --help --span-storage.type=${storageBackend.type}`
+  options:
+    # The following is equivalent to `--badger.ephemeral=false`:
+    badger.ephemeral: false
+
 # Configuration related to span generation.
 aggregator:
   globalTags:
@@ -269,52 +369,6 @@ multiCluster:
       # This is the list of addresses that audit webhook requests from the apiserver may be sent from.
       peerAddresses: [127.0.0.1]
 
-# Storage plugin serves the transformation layer between Jaeger UI and the storage backend.
-frontend:
-  replicaCount: 3
-  podSecurityContext: {}
-  nodeSelector: {}
-  affinity: {}
-  tolerations: []
-
-  storagePlugin:
-    resources: {}
-      # limits:
-      #   cpu: 100m
-      #   memory: 128Mi
-      # requests:
-      #   cpu: 100m
-      #   memory: 128Mi
-    containerSecurityContext: {}
-
-  jaegerQuery:
-    resources: {}
-      # limits:
-      #   cpu: 100m
-      #   memory: 128Mi
-      # requests:
-      #   cpu: 100m
-      #   memory: 128Mi
-    containerSecurityContext: {}
-    service:
-      type: ClusterIP
-      nodePort: ~
-      otherConfig: {}
-        # clusterIP: xxx, externalIP: xxx, etc.
-
-  # The trace cache identifies search queries.
-  traceCache:
-    # Trace cache implementation.
-    # Supported types: 'local', 'etcd'
-    type: etcd
-    # The local trace cache can be used if the same user always connects to the same frontend instance.
-    local: {}
-    etcd:
-      # If externalEndpoint is false, the sharedEtcd database will be used.
-      externalEndpoint: false
-      # The prefix prepended to diff cache keys.
-      prefix: /trace/
-
 kelemetryImage:
   repository: kubewharf/kelemetry
   pullPolicy: IfNotPresent
@@ -326,8 +380,14 @@ jaegerImages:
   pullPolicy: IfNotPresent
   pullSecrets: []
   query:
-    repository: kubewharf/kelemetry
-    tag: ""
+    repository: jaegertracing/jaeger-query
+    tag: "1.42"
+  collector:
+    repository: jaegertracing/jaeger-collector
+    tag: "1.42"
+  remoteStorage:
+    repository: jaegertracing/jaeger-remote-storage
+    tag: "1.42"
 
 # The shared etcd database.
 # It is only deployed if at least one of diffCache/spanCache/traceCache uses etcd with externalEndpoint=false.
@@ -337,7 +397,7 @@ sharedEtcd:
   image:
     repository: quay.io/coreos/etcd
     pullPolicy: IfNotPresent
-    tag: v3.5.7
+    tag: v3.3 # note: etcd v3.4 onwards use distroless base image, which is not supported by this chart
     pullSecrets: []
   resources: {}
     # limits:
@@ -357,3 +417,10 @@ sharedEtcd:
     requests:
       storage: 1Gi
 
+# Ingress will export the Jaeger UI, redirect API and audit webhook (if available) through the ingress controller.
+ingress:
+  enabled: true
+  className: traefik
+  # Equivalent to Ingress.spec.tls in the K8S API
+  tls: []
+  host: ~

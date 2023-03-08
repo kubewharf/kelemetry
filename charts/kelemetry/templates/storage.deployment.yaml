@@ -1,0 +1,100 @@
+{{- if list "badger" "memory" | has .Values.storageBackend.type }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{.Release.Name}}-storage
+  labels: {{ include "kelemetry.storage-labels" . }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{ include "kelemetry.storage-labels" . }}
+  serviceName: {{.Release.Name}}-storage
+  template:
+    metadata:
+      labels: {{ include "kelemetry.storage-labels" . }}
+    spec:
+      imagePullSecrets: [
+        {{- range .Values.jaegerImages.pullSecrets }}
+        {{ . | toJson }},
+        {{- end }}
+      ]
+      {{ include "kelemetry.pod-boilerplate" .Values.storageBackend.stateful | nindent 6 }}
+      containers:
+        - name: jaeger-storage
+          {{ include "kelemetry.container-boilerplate" .Values.storageBackend.stateful | nindent 10 }}
+          image: {{ printf "%s:%s" .Values.jaegerImages.remoteStorage.repository .Values.jaegerImages.remoteStorage.tag | toJson }}
+          imagePullPolicy: {{ toJson .Values.jaegerImages.pullPolicy }}
+          args: [
+            # Don't include storage-options-raw directly here; otherwise the traffic would be infinite recursion.
+            {{- include "kelemetry.storage-options-stateless" . | include "kelemetry.yaml-to-args" }}
+          ]
+          livenessProbe:
+            httpGet:
+              path: /
+              port: admin
+          readinessProbe:
+            httpGet:
+              path: /
+              port: admin
+          ports:
+            - name: grpc
+              containerPort: 17271
+            - name: admin
+              containerPort: 17270
+          volumeMounts: [
+            {{- if get .Values.storageBackend.options "badger.ephemeral" | printf "%v" | ne "true" | and (eq .Values.storageBackend.type "badger") }}
+            {
+              name: "data-keys",
+              mountPath: {{ get .Values.storageBackend.options "badger.directory-key" | default "/go/bin/data/keys" | toJson }},
+            },
+            {
+              name: "data-values",
+              mountPath: {{ get .Values.storageBackend.options "badger.directory-value" | default "/go/bin/data/values" | toJson }},
+            },
+            {{- end }}
+          ]
+      volumes: [
+        {{- if get .Values.storageBackend.options "badger.ephemeral" | printf "%v" | ne "true" | and (eq .Values.storageBackend.type "badger") }}
+        {
+          name: "data-keys",
+          persistentVolumeClaim: {claimName: "data-keys"},
+        },
+        {
+          name: "data-values",
+          persistentVolumeClaim: {claimName: "data-values"},
+        },
+        {{- end }}
+      ]
+  {{- if get .Values.storageBackend.options "badger.ephemeral" | printf "%v" | ne "true" | and (eq .Values.storageBackend.type "badger") }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data-keys
+        labels: {{ include "kelemetry.storage-labels" . }}
+      spec:
+        accessModes: {{toJson .Values.storageBackend.stateful.storageAccessModes}}
+        storageClassName: {{toJson .Values.storageBackend.stateful.storageClassName}}
+        resources: {{toJson .Values.storageBackend.stateful.storageResources}}
+    - metadata:
+        name: data-values
+        labels: {{ include "kelemetry.storage-labels" . }}
+      spec:
+        accessModes: {{toJson .Values.storageBackend.stateful.storageAccessModes}}
+        storageClassName: {{toJson .Values.storageBackend.stateful.storageClassName}}
+        resources: {{toJson .Values.storageBackend.stateful.storageResources}}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{.Release.Name}}-storage
+  labels: {{ include "kelemetry.storage-labels" . }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: grpc
+      port: 17271
+      targetPort: grpc
+  selector: {{ include "kelemetry.storage-labels" . }}
+{{- end }}

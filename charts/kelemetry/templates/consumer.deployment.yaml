@@ -31,6 +31,7 @@ spec:
             {{ include "kelemetry.object-cache-options" . }}
             {{ include "kelemetry.in-cluster-config-options" . }}
             {{ include "kelemetry.logging-options" .Values.consumer }}
+            {{ include "kelemetry.kube-options" .Values.consumer }}
             {{ include "kelemetry.audit-options" . }}
           ]
           ports: [

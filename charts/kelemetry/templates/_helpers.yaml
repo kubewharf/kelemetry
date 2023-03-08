@@ -1,22 +1,29 @@
-{{- define "kelemetry.etcd-labels" }}
-{{- include "kelemetry.default-labels-raw" . | fromYaml | merge (dict "app.kubernetes.io/component" "etcd") | toJson }}
+{{- define "kelemetry.collector-labels" }}
+{{- dict "main" . "comp" "collector" | include "kelemetry.default-labels" }}
 {{- end }}
-
-{{- define "kelemetry.informers-labels" }}
-{{- include "kelemetry.default-labels-raw" . | fromYaml | merge (dict "app.kubernetes.io/component" "informers") | toJson }}
-{{- end }}
-
 {{- define "kelemetry.consumer-labels" }}
-{{- include "kelemetry.default-labels-raw" . | fromYaml | merge (dict "app.kubernetes.io/component" "consumer") | toJson }}
+{{- dict "main" . "comp" "consumer" | include "kelemetry.default-labels" }}
+{{- end }}
+{{- define "kelemetry.etcd-labels" }}
+{{- dict "main" . "comp" "etcd" | include "kelemetry.default-labels" }}
+{{- end }}
+{{- define "kelemetry.frontend-labels" }}
+{{- dict "main" . "comp" "frontend" | include "kelemetry.default-labels" }}
+{{- end }}
+{{- define "kelemetry.informers-labels" }}
+{{- dict "main" . "comp" "informers" | include "kelemetry.default-labels" }}
+{{- end }}
+{{- define "kelemetry.storage-labels" }}
+{{- dict "main" . "comp" "storage" | include "kelemetry.default-labels" }}
 {{- end }}
 
-{{- define "kelemetry.frontend-labels" }}
-{{- include "kelemetry.default-labels-raw" . | fromYaml | merge (dict "app.kubernetes.io/component" "frontend") | toJson }}
+{{- define "kelemetry.default-labels" }}
+{{- include "kelemetry.default-labels-raw" (get . "main") | fromYaml | merge (dict "app.kubernetes.io/component" (get . "comp")) | toJson }}
 {{- end }}
 
 {{- define "kelemetry.default-labels-raw" }}
 app.kubernetes.io/name: kelemetry
-app.kubernetes.io/instance: {{.Release.Name}}
+app.kubernetes.io/instance: {{toJson .Release.Name}}
 {{- end }}
 
 {{- define "kelemetry.container-boilerplate"}}
@@ -36,12 +43,24 @@ resources: {{ toJson .resources }}
 
 {{- define "kelemetry.yaml-to-args" }}
 {{- range $key, $value := (fromYaml .) }}
+{{- $explicit := true }}
 {{- if kindIs "map" $value }}
+
+{{/* Skip empty maps; see https://github.com/spf13/pflag/issues/312 */}}
+{{- $explicit = empty $value | not }}
+
 {{- $value = include "kelemetry.map-to-arg" $value }}
+
 {{- else if kindIs "slice" $value }}
 {{- $value = include "kelemetry.slice-to-arg" $value}}
+
+{{- else if kindIs "invalid" $value }}
+{{- $explicit = false }}
 {{- end }}
+
+{{- if $explicit }}
 {{- printf "--%v=%v" $key $value | toJson }},
+{{- end }}
 {{- end }}
 {{- end }}
 
@@ -96,7 +115,7 @@ annotation-linker-enable: {{ .Values.linkers.annotation }}
 owner-linker-enable: {{ .Values.linkers.ownerReference }}
 
 {{/* TRACER */}}
-tracer-otel-endpoint: jaeger-collector.{{.Release.Namespace}}.svc:4317
+tracer-otel-endpoint: {{.Release.Name}}-jaeger-collector.{{.Release.Namespace}}.svc:4317
 {{- end }}
 
 {{- define "kelemetry.object-cache-options" }}
@@ -137,6 +156,12 @@ kube-target-cluster: {{ .Values.multiCluster.currentClusterName | default (.Valu
 {{- define "kelemetry.logging-options-raw"}}
 pprof-enable: {{.pprof}}
 log-level: {{.logLevel}}
+{{- end }}
+
+{{- define "kelemetry.kube-options" }}
+{{- include "kelemetry.kube-options-raw" . | include "kelemetry.yaml-to-args" }}
+{{- end }}
+{{- define "kelemetry.kube-options-raw"}}
 klog-v: {{.klogLevel}}
 kube-target-rest-qps: {{.clusterQps}}
 kube-target-rest-burst: {{.clusterBurst}}
@@ -180,9 +205,9 @@ diff-controller-enable: true
 diff-controller-leader-election-name: {{.Values.informers.diff.leaderElection.name}}
 diff-controller-leader-election-namespace: {{.Values.informers.diff.leaderElection.namespace}}
 diff-controller-leader-election-lease-duration: {{.Values.informers.diff.leaderElection.leaseDuration}}
-diff-controller-leader-election-renew-duration: {{.Values.informers.diff.leaderElection.renewDuration}}
+diff-controller-leader-election-renew-deadline: {{.Values.informers.diff.leaderElection.renewDeadline}}
 diff-controller-leader-election-retry-period: {{.Values.informers.diff.leaderElection.retryPeriod}}
-diff-controller-leader-election-num-leaders: {{.Values.informers.diff.leaderElection.retryPeriod}}
+diff-controller-leader-election-num-leaders: {{.Values.informers.diff.leaders}}
 diff-controller-redact-pattern: {{toJson .Values.informers.diff.redactPattern}}
 diff-controller-store-timeout: {{toJson .Values.informers.diff.storeTimeout}}
 diff-controller-deletion-snapshot: {{toJson .Values.informers.diff.snapshots.deletion}}
@@ -202,7 +227,7 @@ event-informer-configmap-sync-interval: {{toJson .Values.informers.event.stateCo
 event-informer-leader-election-name: {{.Values.informers.event.leaderElection.name}}
 event-informer-leader-election-namespace: {{.Values.informers.event.leaderElection.namespace}}
 event-informer-leader-election-lease-duration: {{.Values.informers.event.leaderElection.leaseDuration}}
-event-informer-leader-election-renew-duration: {{.Values.informers.event.leaderElection.renewDuration}}
+event-informer-leader-election-renew-deadline: {{.Values.informers.event.leaderElection.renewDeadline}}
 event-informer-leader-election-retry-period: {{.Values.informers.event.leaderElection.retryPeriod}}
 event-informer-worker-count: {{toJson .Values.informers.diff.workerCount}}
 {{- end }}
@@ -240,10 +265,9 @@ jaeger-cluster-names: [
 jaeger-redirect-server-enable: true
 jaeger-storage-plugin-enable: true
 jaeger-storage-plugin-address: :17271
-jaeger-storage.span-storage.type: elasticsearch
-jaeger-storage.es.server-urls: http://elasticsearch.{{.Release.Namespace}}.svc:9200
-jaeger-storage.es.index-prefix: kelemetry
-# TODO extra ES options
+{{- range $key, $value := (include "kelemetry.storage-options-raw" . | fromYaml) }}
+{{ printf "jaeger-storage.%s" $key | toJson }}: {{ toJson $value }}
+{{- end }}
 {{- if .Values.frontend.traceCache.type | eq "local" }}
 jaeger-trace-cache: local
 {{- else if .Values.frontend.traceCache.type | eq "etcd" }}
@@ -257,6 +281,24 @@ jaeger-trace-cache-etcd-endpoints: {{.Release.Name}}-etcd.{{.Release.Namespace}}
 jaeger-trace-cache-etcd-prefix: {{ .Values.frontend.traceCache.etcd.prefix | toJson }}
 {{- else }}
 {{ printf "Unsupported span cache type %q" .Values.frontend.traceCache.type | fail }}
+{{- end }}
+{{- end }}
+
+{{- define "kelemetry.storage-options-raw" }}
+{{- if list "badger" "memory" | has .Values.storageBackend.type }}
+{{- include "kelemetry.storage-options-stateful-grpc" . }}
+{{- else }}
+{{- include "kelemetry.storage-options-raw-stateless" . }}
+{{- end }}
+{{- end }}
+{{- define "kelemetry.storage-options-stateful-grpc" }}
+span-storage.type: grpc-plugin
+grpc-storage.server: {{.Release.Name}}-storage.{{.Release.Namespace}}.svc:17271
+{{- end }}
+{{- define "kelemetry.storage-options-stateless" }}
+span-storage.type: {{toJson .Values.storageBackend.type}}
+{{- range $key, $value := .Values.storageBackend.options }}
+{{ toJson $key }}: {{ toJson $value }}
 {{- end }}
 {{- end }}
 

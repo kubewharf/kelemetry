@@ -20,7 +20,6 @@ spec:
         {{ . | toJson }},
         {{- end }}
       ]
-      serviceAccountName: {{.Release.Name}}-frontend
       {{ include "kelemetry.pod-boilerplate" .Values.frontend | nindent 6 }}
       containers:
         - name: jaeger-query
@@ -40,6 +39,8 @@ spec:
               containerPort: 16686
             - name: grpc
               containerPort: 16685
+            - name: admin
+              containerPort: 16687
           env:
             - name: GRPC_STORAGE_SERVER
               value: localhost:17271
@@ -52,21 +53,18 @@ spec:
           # TODO: add readiness probe
           command: [
             "/usr/local/bin/kelemetry",
-            {{ include "kelemetry.logging-options" .Values.frontend }}
+            {{ include "kelemetry.logging-options" .Values.frontend.storagePlugin }}
             {{ include "kelemetry.storage-plugin-options" . }}
           ]
-          ports: [
-            {
-              containerPort: 17271,
-              name: storage-grpc,
-            },
+          ports:
+            - name: storage-grpc
+              containerPort: 17271
+            - name: redirect
+              containerPort: 8080
             {{- if .Values.frontend.storagePlugin.pprof }}
-            {
-              containerPort: 6060,
-              name: pprof,
-            },
+            - name: pprof
+              containerPort: 6060
             {{- end }}
-          ]
 
 ---
 apiVersion: v1
@@ -74,7 +72,7 @@ kind: Service
 metadata:
   name: {{.Release.Name}}-query
   labels: {{ include "kelemetry.frontend-labels" . }}
-{{- with .Values.frontend.jaegerQuery.service}}
+{{- with .Values.frontend.service }}
 spec:
   type: {{toJson .type}}
   {{- if .otherConfig }}
@@ -85,7 +83,13 @@ spec:
     - name: query
       port: 16686
       targetPort: query
-      {{- if .nodePort }}
-      nodePort: {{toJson .nodePort}}
+      {{- if .queryNodePort }}
+      nodePort: {{toJson .queryNodePort}}
+      {{- end }}
+    - name: redirect
+      port: 8080
+      targetPort: redirect
+      {{- if .redirectNodePort }}
+      nodePort: {{toJson .redirectNodePort}}
       {{- end }}
 {{- end }}
