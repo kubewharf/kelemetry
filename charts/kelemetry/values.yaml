@@ -42,7 +42,7 @@ informers:
     # Leader election configuration
     leaderElection:
       name: kelemetry-diff-controller
-      namespace: kelemetry
+      namespace: default
       leaseDuration: 15s
       renewDeadline: 10s
       retryPeriod: 2s
@@ -57,13 +57,14 @@ informers:
     # Path to a configmap that persists the state of an event controller to avoid repeated consumption when restarting.
     stateConfig:
       name: kelemetry-event-controller-state
-      namespace: kelemetry
+      namespace: default
       # The interval at which the event controller stores its state
       syncInterval: 5s
 
     # Leader election configuration
     leaderElection:
       name: kelemetry-event-controller
+      namespace: default
       leaseDuration: 15s
       renewDeadline: 10s
       retryPeriod: 2s
@@ -85,11 +86,11 @@ informers:
   tolerations: []
 
   # QPS and burst for accessing the target cluster
-  clusterQps: 10.0
-  clusterBurst: 10
+  clusterQps: 1000.0
+  clusterBurst: 1000
   # QPS and burst for accessing other clusters (due to cross-cluster linkers)
-  otherClusterQps: 10.0
-  otherClusterBurst: 10
+  otherClusterQps: 1000.0
+  otherClusterBurst: 1000
   # Whether to expose pprof server
   pprof: true
   # Log verbosity level (`debug`, `info`, `warn`, `error`)
@@ -153,11 +154,11 @@ consumer:
   tolerations: []
 
   # QPS and burst for accessing the target cluster
-  clusterQps: 10.0
-  clusterBurst: 10
+  clusterQps: 100.0
+  clusterBurst: 100
   # QPS and burst for accessing other clusters (due to cross-cluster linkers)
-  otherClusterQps: 10.0
-  otherClusterBurst: 10
+  otherClusterQps: 100.0
+  otherClusterBurst: 100
   # Whether to expose pprof server
   pprof: true
   # Log verbosity level (`debug`, `info`, `warn`, `error`)

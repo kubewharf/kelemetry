@@ -115,7 +115,7 @@ annotation-linker-enable: {{ .Values.linkers.annotation }}
 owner-linker-enable: {{ .Values.linkers.ownerReference }}
 
 {{/* TRACER */}}
-tracer-otel-endpoint: {{.Release.Name}}-jaeger-collector.{{.Release.Namespace}}.svc:4317
+tracer-otel-endpoint: {{.Release.Name}}-collector.{{.Release.Namespace}}.svc:4317
 {{- end }}
 
 {{- define "kelemetry.object-cache-options" }}
@@ -133,7 +133,9 @@ object-cache-size: {{ int64 .Values.objectCache.size | printf "%d" | toJson }}
 {{- define "kelemetry.in-cluster-config-options-raw"}}
 kube-apiservers:
   {{- range .Values.multiCluster.clusters }}
+  {{- if empty .master | not }}
   {{toJson .name}}: {{toJson .master}}
+  {{- end }}
   {{- end }}
 kube-config-paths:
   {{- range .Values.multiCluster.clusters }}
@@ -299,6 +301,14 @@ grpc-storage.server: {{.Release.Name}}-storage.{{.Release.Namespace}}.svc:17271
 span-storage.type: {{toJson .Values.storageBackend.type}}
 {{- range $key, $value := .Values.storageBackend.options }}
 {{ toJson $key }}: {{ toJson $value }}
+{{- end }}
+{{- end }}
+
+{{- define "kelemetry.consumer-replicas" }}
+{{- if .Values.consumer.source.type | eq "webhook" }}
+{{- .Values.consumer.source.webhook.replicaCount }}
+{{- else }}
+{{ printf "Unsupported span cache type %q" .Values.consumer.source.type | fail }}
 {{- end }}
 {{- end }}
 

@@ -5,7 +5,7 @@ metadata:
   name: {{.Release.Name}}-consumer
   labels: {{ include "kelemetry.consumer-labels" . }}
 spec:
-  replicas: {{.Values.consumer.replicaCount}}
+  replicas: {{ include "kelemetry.consumer-replicas" . }}
   selector:
     matchLabels: {{ include "kelemetry.consumer-labels" . }}
   template:
