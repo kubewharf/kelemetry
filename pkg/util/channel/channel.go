@@ -25,23 +25,23 @@ import (
 )
 
 // UnboundedQueue is an unbounded channel.
-type UnboundedQueue struct {
-	deque    *Deque
+type UnboundedQueue[T any] struct {
+	deque    *Deque[T]
 	notifier chan<- struct{}
-	receiver <-chan interface{}
+	receiver <-chan T
 	stopCh   chan<- struct{}
 }
 
 // Creates a new UnboundedQueue with the specified initial capacity.
-func NewUnboundedQueue(initialCapacity int) *UnboundedQueue {
-	deque := NewDeque(initialCapacity)
+func NewUnboundedQueue[T any](initialCapacity int) *UnboundedQueue[T] {
+	deque := NewDeque[T](initialCapacity)
 	notifier := make(chan struct{}, 1)
-	receiver := make(chan interface{})
+	receiver := make(chan T)
 	stopCh := make(chan struct{}, 1)
 
 	go receiverLoop(deque, notifier, receiver, stopCh)
 
-	return &UnboundedQueue{
+	return &UnboundedQueue[T]{
 		deque:    deque,
 		notifier: notifier,
 		receiver: receiver,
@@ -50,26 +50,26 @@ func NewUnboundedQueue(initialCapacity int) *UnboundedQueue {
 }
 
 // Receiver returns the channel that can be used for receiving from this UnboundedQueue.
-func (uq *UnboundedQueue) Receiver() <-chan interface{} {
+func (uq *UnboundedQueue[T]) Receiver() <-chan T {
 	return uq.receiver
 }
 
-func (uq *UnboundedQueue) Close() {
+func (uq *UnboundedQueue[T]) Close() {
 	uq.stopCh <- struct{}{}
 }
 
-func (uq *UnboundedQueue) Length() int {
+func (uq *UnboundedQueue[T]) Length() int {
 	return uq.deque.Len()
 }
 
-func (uq *UnboundedQueue) InitMetricLoop(metricsClient metrics.Client, metricName string, tags interface{}) {
+func (uq *UnboundedQueue[T]) InitMetricLoop(metricsClient metrics.Client, metricName string, tags interface{}) {
 	metricsClient.NewMonitor(metricName, tags, func() int64 { return int64(uq.deque.GetAndResetLength()) })
 }
 
 // Sends an item to the queue.
 //
 // Since the channel capacity is unbounded, send operations always succeed and never block.
-func (uq *UnboundedQueue) Send(obj interface{}) {
+func (uq *UnboundedQueue[T]) Send(obj T) {
 	uq.deque.PushBack(obj)
 
 	select {
@@ -80,13 +80,13 @@ func (uq *UnboundedQueue) Send(obj interface{}) {
 	}
 }
 
-func receiverLoop(deque *Deque, notifier <-chan struct{}, receiver chan<- interface{}, stopCh <-chan struct{}) {
+func receiverLoop[T any](deque *Deque[T], notifier <-chan struct{}, receiver chan<- T, stopCh <-chan struct{}) {
 	defer shutdown.RecoverPanic(logrus.New())
 
 	for {
-		item := deque.PopFront()
+		item, hasItem := deque.PopFront()
 
-		if item != nil {
+		if hasItem {
 			select {
 			case <-stopCh:
 				// queue stopped, close the receiver
@@ -118,8 +118,8 @@ func receiverLoop(deque *Deque, notifier <-chan struct{}, receiver chan<- interf
 // Deque is a typical double-ended queue implemented through a ring buffer.
 //
 // All operations on Deque locks on its own mutex, so all operations are concurrency-safe.
-type Deque struct {
-	data      []interface{}
+type Deque[T any] struct {
+	data      []T
 	start     int
 	end       int
 	maxLength int
@@ -130,9 +130,9 @@ type Deque struct {
 //
 // deque capacity is doubled when the length reaches the capacity,
 // i.e. a deque can never be full.
-func NewDeque(initialCapacity int) *Deque {
-	return &Deque{
-		data:  make([]interface{}, initialCapacity),
+func NewDeque[T any](initialCapacity int) *Deque[T] {
+	return &Deque[T]{
+		data:  make([]T, initialCapacity),
 		start: 0,
 		end:   0,
 	}
@@ -141,14 +141,14 @@ func NewDeque(initialCapacity int) *Deque {
 // PushBack pushes an object to the end of the queue.
 //
 // This method has amortized O(1) time complexity and expands the capacity on demand.
-func (q *Deque) PushBack(obj interface{}) {
+func (q *Deque[T]) PushBack(obj T) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
 	q.LockedPushBack(obj)
 }
 
-func (q *Deque) LockedPushBack(obj interface{}) {
+func (q *Deque[T]) LockedPushBack(obj T) {
 	q.data[q.end] = obj
 	q.end = (q.end + 1) % len(q.data)
 
@@ -156,7 +156,7 @@ func (q *Deque) LockedPushBack(obj interface{}) {
 		// when deque is unlocked, q.end == q.start implies empty deque.
 		// therefore, we need to expand it now.
 
-		newData := make([]interface{}, len(q.data)*2)
+		newData := make([]T, len(q.data)*2)
 
 		for i := q.start; i < len(q.data); i++ {
 			newData[i-q.start] = q.data[i]
@@ -179,7 +179,7 @@ func (q *Deque) LockedPushBack(obj interface{}) {
 	}
 }
 
-func (q *Deque) GetAndResetLength() int {
+func (q *Deque[T]) GetAndResetLength() int {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
@@ -191,46 +191,46 @@ func (q *Deque) GetAndResetLength() int {
 // PopFront pops an object from the start of the queue.
 //
 // This method has O(1) time complexity.
-func (q *Deque) PopFront() interface{} {
+func (q *Deque[T]) PopFront() (T, bool) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
 	return q.LockedPopFront()
 }
 
-func (q *Deque) LockedPopFront() interface{} {
+func (q *Deque[T]) LockedPopFront() (T, bool) {
 	if q.start == q.end {
 		// we assume the deque is in sound state,
 		// i.e. q.start == q.end implies empty queue.
-		return nil
+		return zero[T](), false
 	}
 
 	ret := q.data[q.start]
 
 	// we need to unset this pointer to allow GC
-	q.data[q.start] = nil
+	q.data[q.start] = zero[T]()
 
 	q.start = (q.start + 1) % len(q.data)
 
-	return ret
+	return ret, true
 }
 
-func (q *Deque) LockedPeekFront() interface{} {
+func (q *Deque[T]) LockedPeekFront() (T, bool) {
 	if q.start == q.end {
-		return nil
+		return zero[T](), false
 	}
 
-	return q.data[q.start]
+	return q.data[q.start], true
 }
 
-func (q *Deque) Len() int {
+func (q *Deque[T]) Len() int {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
 	return q.lockedLen()
 }
 
-func (q *Deque) lockedLen() int {
+func (q *Deque[T]) lockedLen() int {
 	delta := q.end - q.start
 	if delta < 0 {
 		delta += len(q.data)
@@ -238,19 +238,19 @@ func (q *Deque) lockedLen() int {
 	return delta
 }
 
-func (q *Deque) Cap() int {
+func (q *Deque[T]) Cap() int {
 	return len(q.data)
 }
 
 // Compact reallocates the buffer with capacity = Len * ratio.
-func (q *Deque) Compact(ratio float64) {
+func (q *Deque[T]) Compact(ratio float64) {
 	length := q.Len()
 
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
 	capacity := int(math.Ceil(float64(length) * ratio))
-	data := make([]interface{}, capacity)
+	data := make([]T, capacity)
 
 	if q.end < q.start {
 		firstLength := len(q.data) - q.start
@@ -265,3 +265,5 @@ func (q *Deque) Compact(ratio float64) {
 	q.start = 0
 	q.end = length
 }
+
+func zero[T any]() (zero T) { return }

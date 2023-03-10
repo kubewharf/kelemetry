@@ -71,13 +71,13 @@ type webhook struct {
 	ctx            context.Context
 	requestMetric  metrics.Metric
 	sendRateMetric metrics.Metric
-	subscribers    []namedQueue
-	rawSubscribers []namedQueue
+	subscribers    []namedQueue[*audit.Message]
+	rawSubscribers []namedQueue[*audit.RawMessage]
 }
 
-type namedQueue struct {
+type namedQueue[T any] struct {
 	name  string
-	queue *channel.UnboundedQueue
+	queue *channel.UnboundedQueue[T]
 }
 
 type requestMetric struct {
@@ -195,59 +195,17 @@ func (webhook *webhook) Close() error {
 }
 
 func (webhook *webhook) AddSubscriber(name string) <-chan *audit.Message {
-	queue := channel.NewUnboundedQueue(1)
+	queue := channel.NewUnboundedQueue[*audit.Message](1)
 	queue.InitMetricLoop(webhook.metrics, "audit_webhook_subscriber_lag", &queueMetricTags{Name: name})
 
-	webhook.subscribers = append(webhook.subscribers, namedQueue{name: name, queue: queue})
-
-	ch := make(chan *audit.Message)
-	go runSubscriberLoop(
-		webhook.logger.WithField("queue", name),
-		queue.Receiver(),
-		ch,
-	)
-
-	return ch
-}
-
-func runSubscriberLoop(
-	logger logrus.FieldLogger,
-	in <-chan interface{},
-	out chan<- *audit.Message,
-) {
-	defer shutdown.RecoverPanic(logger)
-
-	for message := range in {
-		out <- message.(*audit.Message)
-	}
-	close(out)
+	webhook.subscribers = append(webhook.subscribers, namedQueue[*audit.Message]{name: name, queue: queue})
+	return queue.Receiver()
 }
 
 func (webhook *webhook) AddRawSubscriber(name string) <-chan *audit.RawMessage {
-	queue := channel.NewUnboundedQueue(1)
+	queue := channel.NewUnboundedQueue[*audit.RawMessage](1)
 	queue.InitMetricLoop(webhook.metrics, "audit_webhook_subscriber_lag", &queueMetricTags{Name: name})
 
-	webhook.rawSubscribers = append(webhook.rawSubscribers, namedQueue{name: name, queue: queue})
-
-	ch := make(chan *audit.RawMessage)
-	go runRawSubscriberLoop(
-		webhook.logger.WithField("queue", name),
-		queue.Receiver(),
-		ch,
-	)
-
-	return ch
-}
-
-func runRawSubscriberLoop(
-	logger logrus.FieldLogger,
-	in <-chan interface{},
-	out chan<- *audit.RawMessage,
-) {
-	defer shutdown.RecoverPanic(logger)
-
-	for message := range in {
-		out <- message.(*audit.RawMessage)
-	}
-	close(out)
+	webhook.rawSubscribers = append(webhook.rawSubscribers, namedQueue[*audit.RawMessage]{name: name, queue: queue})
+	return queue.Receiver()
 }

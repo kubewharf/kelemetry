@@ -99,7 +99,7 @@ type controller struct {
 	elector           *multileader.Elector
 	monitors          map[schema.GroupVersionResource]*monitor
 	monitorsLock      sync.RWMutex
-	taskPool          *channel.UnboundedQueue
+	taskPool          *channel.UnboundedQueue[func()]
 }
 
 var _ manager.Component = &controller{}
@@ -122,7 +122,7 @@ func newController(
 		filter:    filter,
 		metrics:   metrics,
 		monitors:  map[schema.GroupVersionResource]*monitor{},
-		taskPool:  channel.NewUnboundedQueue(16),
+		taskPool:  channel.NewUnboundedQueue[func()](16),
 	}
 }
 
@@ -186,19 +186,18 @@ func (ctrl *controller) Start(stopCh <-chan struct{}) error {
 	return nil
 }
 
-func runWorker(stopCh <-chan struct{}, logger logrus.FieldLogger, taskPool *channel.UnboundedQueue) {
+func runWorker(stopCh <-chan struct{}, logger logrus.FieldLogger, taskPool *channel.UnboundedQueue[func()]) {
 	defer shutdown.RecoverPanic(logger)
 
 	for {
 		select {
 		case <-stopCh:
 			return
-		case taskAny, ok := <-taskPool.Receiver():
+		case task, ok := <-taskPool.Receiver():
 			if !ok {
 				return
 			}
 
-			task := taskAny.(func())
 			task()
 		}
 	}

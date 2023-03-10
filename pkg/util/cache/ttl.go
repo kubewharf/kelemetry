@@ -32,7 +32,7 @@ type TtlOnce struct {
 	wakeupCh chan struct{}
 
 	lock         sync.RWMutex
-	cleanupQueue *channel.Deque
+	cleanupQueue *channel.Deque[cleanupEntry]
 	data         map[string]interface{}
 }
 
@@ -46,7 +46,7 @@ func NewTtlOnce(ttl time.Duration, clock clock.Clock) *TtlOnce {
 		ttl:          ttl,
 		clock:        clock,
 		wakeupCh:     make(chan struct{}),
-		cleanupQueue: channel.NewDeque(16),
+		cleanupQueue: channel.NewDeque[cleanupEntry](16),
 		data:         map[string]interface{}{},
 	}
 }
@@ -104,8 +104,7 @@ func (cache *TtlOnce) doCleanup() {
 	defer cache.lock.Unlock()
 
 	for {
-		if entry := cache.cleanupQueue.LockedPeekFront(); entry != nil {
-			entry := entry.(cleanupEntry)
+		if entry, hasEntry := cache.cleanupQueue.LockedPeekFront(); hasEntry {
 			if entry.expiry.Before(cache.clock.Now()) {
 				cache.cleanupQueue.LockedPopFront()
 				delete(cache.data, entry.key)
@@ -121,8 +120,7 @@ func (cache *TtlOnce) peekExpiry() (expiry time.Time, found bool) {
 	cache.lock.RLock()
 	defer cache.lock.RUnlock()
 
-	if entry := cache.cleanupQueue.LockedPeekFront(); entry != nil {
-		entry := entry.(cleanupEntry)
+	if entry, hasEntry := cache.cleanupQueue.LockedPeekFront(); hasEntry {
 		expiry = entry.expiry
 		found = true
 	}

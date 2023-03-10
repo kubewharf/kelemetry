@@ -152,7 +152,7 @@ func (producer *localProducer) Send(partitionKey []byte, value []byte) error {
 
 	offset := atomic.AddInt64(&producer.offsetCounter, 1)
 
-	var message interface{} = localMessage{
+	message := localMessage{
 		offset: offset,
 		key:    partitionKey,
 		value:  value,
@@ -185,14 +185,14 @@ func (q *localQueue) CreateConsumer(group mq.ConsumerGroup, partition mq.Partiti
 type localConsumer struct {
 	logger  logrus.FieldLogger
 	handler mq.MessageHandler
-	uq      *channel.UnboundedQueue
+	uq      *channel.UnboundedQueue[localMessage]
 }
 
 func (q *localQueue) newConsumer(group mq.ConsumerGroup, partition mq.PartitionId, handler mq.MessageHandler) *localConsumer {
 	return &localConsumer{
 		logger:  q.logger.WithField("submod", "consumer").WithField("group", string(group)).WithField("partition", int32(partition)),
 		handler: handler,
-		uq:      channel.NewUnboundedQueue(64),
+		uq:      channel.NewUnboundedQueue[localMessage](64),
 	}
 }
 
@@ -202,12 +202,11 @@ func (consumer *localConsumer) start(stopCh <-chan struct{}) {
 
 		for {
 			select {
-			case messageAny, chOpen := <-consumer.uq.Receiver():
+			case message, chOpen := <-consumer.uq.Receiver():
 				if !chOpen {
 					return
 				}
 
-				message := messageAny.(localMessage)
 				consumer.handler(consumer.logger.WithField("offset", message.offset), message.key, message.value)
 			case <-stopCh:
 				return
