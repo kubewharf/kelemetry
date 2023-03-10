@@ -114,7 +114,7 @@ type mockEventRecorder struct{}
 
 func (mockEventRecorder) Event(object runtime.Object, eventtype, reason, message string) {}
 
-func (mockEventRecorder) Eventf(object runtime.Object, eventtype, reason, messageFmt string, args ...interface{}) {
+func (mockEventRecorder) Eventf(object runtime.Object, eventtype, reason, messageFmt string, args ...any) {
 }
 
 func (mockEventRecorder) AnnotatedEventf(
@@ -123,6 +123,6 @@ func (mockEventRecorder) AnnotatedEventf(
 	eventtype string,
 	reason string,
 	messageFmt string,
-	args ...interface{},
+	args ...any,
 ) {
 }

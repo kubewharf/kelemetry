@@ -42,7 +42,7 @@ type Span struct {
 	Logs       []Log
 }
 
-type SpanContext interface{}
+type SpanContext any
 
 type Log struct {
 	Type    zconstants.LogType

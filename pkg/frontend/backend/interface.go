@@ -42,7 +42,7 @@ type Backend interface {
 
 type TraceThumbnail struct {
 	// Identifier is a serializable object that identifies the trace in GetTrace calls.
-	Identifier interface{} `json:"identifier"`
+	Identifier any `json:"identifier"`
 
 	// Object metadata
 	Cluster  string `json:"cluster"`

@@ -50,7 +50,7 @@ func (store *prepushUndeltaStore) swap(key namespacedName, newValue storageType)
 	return oldValue
 }
 
-func (store *prepushUndeltaStore) set(obj interface{}, isDelete bool) {
+func (store *prepushUndeltaStore) set(obj any, isDelete bool) {
 	uns := obj.(*unstructured.Unstructured)
 	if !store.objectFilter(uns) {
 		return
@@ -82,22 +82,22 @@ func (store *prepushUndeltaStore) set(obj interface{}, isDelete bool) {
 	}
 }
 
-func (store *prepushUndeltaStore) Add(obj interface{}) error {
+func (store *prepushUndeltaStore) Add(obj any) error {
 	store.set(obj, false)
 	return nil
 }
 
-func (store *prepushUndeltaStore) Update(obj interface{}) error {
+func (store *prepushUndeltaStore) Update(obj any) error {
 	store.set(obj, false)
 	return nil
 }
 
-func (store *prepushUndeltaStore) Delete(obj interface{}) error {
+func (store *prepushUndeltaStore) Delete(obj any) error {
 	store.set(obj, true)
 	return nil
 }
 
-func (store *prepushUndeltaStore) Replace(list []interface{}, resourceVersion string) error {
+func (store *prepushUndeltaStore) Replace(list []any, resourceVersion string) error {
 	keys := map[namespacedName]struct{}{}
 
 	for _, item := range list {
@@ -136,8 +136,8 @@ func (store *prepushUndeltaStore) drainNotIn(dontDelete map[namespacedName]struc
 	return output
 }
 
-func (store *prepushUndeltaStore) Get(obj interface{}) (interface{}, bool, error) { panic("unused") }
-func (store *prepushUndeltaStore) GetByKey(key string) (interface{}, bool, error) { panic("unused") }
-func (store *prepushUndeltaStore) List() []interface{}                            { panic("unused") }
-func (store *prepushUndeltaStore) ListKeys() []string                             { panic("unused") }
-func (store *prepushUndeltaStore) Resync() error                                  { panic("unused") }
+func (store *prepushUndeltaStore) Get(obj any) (any, bool, error)         { panic("unused") }
+func (store *prepushUndeltaStore) GetByKey(key string) (any, bool, error) { panic("unused") }
+func (store *prepushUndeltaStore) List() []any                            { panic("unused") }
+func (store *prepushUndeltaStore) ListKeys() []string                     { panic("unused") }
+func (store *prepushUndeltaStore) Resync() error                          { panic("unused") }

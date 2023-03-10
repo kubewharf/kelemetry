@@ -409,7 +409,7 @@ func (ctrl *controller) startMonitor(gvr schema.GroupVersionResource, apiResourc
 	reflector := toolscache.NewReflector(
 		lw,
 		&unstructured.Unstructured{
-			Object: map[string]interface{}{
+			Object: map[string]any{
 				"apiVersion": gvr.GroupVersion().String(),
 				"kind":       apiResource.Kind,
 			},

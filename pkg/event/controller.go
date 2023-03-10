@@ -214,11 +214,11 @@ func (ctrl *controller) runLeader(stopCh <-chan struct{}) {
 	factory := ctrl.clients.TargetCluster().NewInformerFactory()
 	eventInformer := factory.Core().V1().Events()
 	_, err := eventInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
+		AddFunc: func(obj any) {
 			event := obj.(*corev1.Event)
 			queue.Add(eventKey{namespace: event.Namespace, name: event.Name})
 		},
-		UpdateFunc: func(oldObj, newObj interface{}) {
+		UpdateFunc: func(oldObj, newObj any) {
 			oldEvent := oldObj.(*corev1.Event)
 			newEvent := newObj.(*corev1.Event)
 			if oldEvent.ResourceVersion == newEvent.ResourceVersion {

@@ -62,7 +62,7 @@ func (uq *UnboundedQueue[T]) Length() int {
 	return uq.deque.Len()
 }
 
-func (uq *UnboundedQueue[T]) InitMetricLoop(metricsClient metrics.Client, metricName string, tags interface{}) {
+func (uq *UnboundedQueue[T]) InitMetricLoop(metricsClient metrics.Client, metricName string, tags any) {
 	metricsClient.NewMonitor(metricName, tags, func() int64 { return int64(uq.deque.GetAndResetLength()) })
 }
 

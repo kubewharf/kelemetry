@@ -32,7 +32,7 @@ type Cache interface {
 
 type Entry struct {
 	LowId      uint64
-	Identifier interface{}
+	Identifier any
 }
 
 type mux struct {

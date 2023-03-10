@@ -28,10 +28,10 @@ var (
 type labeled struct {
 	unwrap error
 	key    string
-	value  interface{}
+	value  any
 }
 
-func Label(err error, key string, value interface{}) error {
+func Label(err error, key string, value any) error {
 	return labeled{unwrap: err, key: key, value: value}
 }
 
@@ -43,7 +43,7 @@ func (err labeled) Unwrap() error {
 	return err.unwrap
 }
 
-func GetNearestLabel(err error, key string) (interface{}, bool) {
+func GetNearestLabel(err error, key string) (any, bool) {
 	if err, ok := err.(labeled); ok && err.key == key {
 		return err.value, true
 	}
@@ -55,7 +55,7 @@ func GetNearestLabel(err error, key string) (interface{}, bool) {
 	return "", false
 }
 
-func GetDeepestLabel(err error, key string) (interface{}, bool) {
+func GetDeepestLabel(err error, key string) (any, bool) {
 	if inner := goerrors.Unwrap(err); inner != nil {
 		if value, ok := GetDeepestLabel(inner, key); ok {
 			return value, true
@@ -70,8 +70,8 @@ func GetDeepestLabel(err error, key string) (interface{}, bool) {
 }
 
 // GetLabels returns labels from the nearest to the deepest.
-func GetLabels(err error, key string) []interface{} {
-	var out []interface{}
+func GetLabels(err error, key string) []any {
+	var out []any
 
 	for err != nil {
 		if err, ok := err.(labeled); ok {

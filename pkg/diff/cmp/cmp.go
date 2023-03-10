@@ -25,12 +25,12 @@ type DiffList struct {
 }
 
 type Diff struct {
-	JsonPath string      `json:"jsonPath"`
-	Old      interface{} `json:"old,omitempty"`
-	New      interface{} `json:"new,omitempty"`
+	JsonPath string `json:"jsonPath"`
+	Old      any    `json:"old,omitempty"`
+	New      any    `json:"new,omitempty"`
 }
 
-func pushDiff(diffs *[]Diff, jsonPath []string, oldObj, newObj interface{}) {
+func pushDiff(diffs *[]Diff, jsonPath []string, oldObj, newObj any) {
 	*diffs = append(*diffs, Diff{
 		JsonPath: strings.Join(jsonPath, "."),
 		Old:      oldObj,
@@ -38,13 +38,13 @@ func pushDiff(diffs *[]Diff, jsonPath []string, oldObj, newObj interface{}) {
 	})
 }
 
-func Compare(oldObj, newObj interface{}) DiffList {
+func Compare(oldObj, newObj any) DiffList {
 	diffs := []Diff{}
 	compare(&diffs, []string{}, oldObj, newObj)
 	return DiffList{Diffs: diffs}
 }
 
-func compare(diffs *[]Diff, jsonPath []string, oldObj, newObj interface{}) {
+func compare(diffs *[]Diff, jsonPath []string, oldObj, newObj any) {
 	if conclusive, equal := compareMaybePrimitive(oldObj, newObj); conclusive {
 		if !equal {
 			pushDiff(diffs, jsonPath, oldObj, newObj)
@@ -52,15 +52,15 @@ func compare(diffs *[]Diff, jsonPath []string, oldObj, newObj interface{}) {
 		return
 	}
 
-	if oldMap, ok := oldObj.(map[string]interface{}); ok {
-		if newMap, ok := newObj.(map[string]interface{}); ok {
+	if oldMap, ok := oldObj.(map[string]any); ok {
+		if newMap, ok := newObj.(map[string]any); ok {
 			compareMaps(diffs, jsonPath, oldMap, newMap)
 			return
 		}
 	}
 
-	if oldSlice, ok := oldObj.([]interface{}); ok {
-		if newSlice, ok := newObj.([]interface{}); ok {
+	if oldSlice, ok := oldObj.([]any); ok {
+		if newSlice, ok := newObj.([]any); ok {
 			compareSlices(diffs, jsonPath, oldSlice, newSlice)
 			return
 		}
@@ -69,7 +69,7 @@ func compare(diffs *[]Diff, jsonPath []string, oldObj, newObj interface{}) {
 	pushDiff(diffs, jsonPath, oldObj, newObj)
 }
 
-func compareMaybePrimitive(oldObj, newObj interface{}) (conclusive, equal bool) {
+func compareMaybePrimitive(oldObj, newObj any) (conclusive, equal bool) {
 	if oldObj == nil || newObj == nil {
 		return true, oldObj == nil && newObj == nil
 	}
@@ -101,7 +101,11 @@ func compareMaybePrimitive(oldObj, newObj interface{}) (conclusive, equal bool) 
 	return false, false
 }
 
-func compareMaps(diffs *[]Diff, jsonPath []string, oldObj, newObj map[string]interface{}) {
+func compareMaps(
+	diffs *[]Diff,
+	jsonPath []string,
+	oldObj, newObj map[string]any,
+) {
 	keysMap := map[string]struct{}{}
 	collectKeys(keysMap, oldObj)
 	collectKeys(keysMap, newObj)
@@ -130,7 +134,7 @@ func compareMaps(diffs *[]Diff, jsonPath []string, oldObj, newObj map[string]int
 	}
 }
 
-func collectKeys(dest map[string]struct{}, src map[string]interface{}) {
+func collectKeys(dest map[string]struct{}, src map[string]any) {
 	for key := range src {
 		dest[key] = struct{}{}
 	}
@@ -144,16 +148,20 @@ func getMapKeys(m map[string]struct{}) []string {
 	return out
 }
 
-func compareSlices(diffs *[]Diff, jsonPath []string, oldSlice, newSlice []interface{}) {
+func compareSlices(
+	diffs *[]Diff,
+	jsonPath []string,
+	oldSlice, newSlice []any,
+) {
 	for i := 0; i < len(oldSlice) || i < len(newSlice); i++ {
 		keyPath := append(jsonPath, fmt.Sprintf("[%d]", i))
 
-		oldValue := interface{}(nil)
+		oldValue := any(nil)
 		if i < len(oldSlice) {
 			oldValue = oldSlice[i]
 		}
 
-		newValue := interface{}(nil)
+		newValue := any(nil)
 		if i < len(newSlice) {
 			newValue = newSlice[i]
 		}

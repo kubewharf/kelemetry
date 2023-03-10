@@ -31,5 +31,5 @@ func TestGetLabels(t *testing.T) {
 	err = errors.Label(err, "foo", "qux")
 
 	labels := errors.GetLabels(err, "foo")
-	assert.EqualValues([]interface{}{"qux", "bar"}, labels)
+	assert.EqualValues([]any{"qux", "bar"}, labels)
 }

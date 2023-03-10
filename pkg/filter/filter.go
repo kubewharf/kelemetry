@@ -137,9 +137,9 @@ func (filter *filter) Init(ctx context.Context) error {
 		}),
 	)
 	_, err := filter.configMapInformer.Core().V1().ConfigMaps().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj interface{}) { filter.setConfig(obj.(*corev1.ConfigMap)) },
-		UpdateFunc: func(oldObj, newObj interface{}) { filter.setConfig(newObj.(*corev1.ConfigMap)) },
-		DeleteFunc: func(obj interface{}) { filter.setConfig(nil) },
+		AddFunc:    func(obj any) { filter.setConfig(obj.(*corev1.ConfigMap)) },
+		UpdateFunc: func(oldObj, newObj any) { filter.setConfig(newObj.(*corev1.ConfigMap)) },
+		DeleteFunc: func(obj any) { filter.setConfig(nil) },
 	})
 	if err != nil {
 		// should not happen during startup

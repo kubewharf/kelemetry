@@ -93,7 +93,7 @@ func (list *DeferList) RunWithChannel(logger logrus.FieldLogger, ch chan<- error
 }
 
 func RecoverPanic(logger logrus.FieldLogger) {
-	utilruntime.HandleCrash(func(err interface{}) {
+	utilruntime.HandleCrash(func(err any) {
 		if logger != nil {
 			logger.WithField("error", err).Error()
 		}

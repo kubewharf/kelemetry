@@ -27,7 +27,7 @@ type Event struct {
 	Time        time.Time
 	EndTime     *time.Time
 	TraceSource string
-	Tags        map[string]interface{}
+	Tags        map[string]any
 	Logs        []tracer.Log
 }
 
@@ -37,7 +37,7 @@ func NewEvent(field string, title string, when time.Time, traceSource string) *E
 		Title:       title,
 		Time:        when,
 		TraceSource: traceSource,
-		Tags:        map[string]interface{}{},
+		Tags:        map[string]any{},
 		Logs:        []tracer.Log{},
 	}
 }
@@ -59,7 +59,7 @@ func (event *Event) WithDuration(duration time.Duration) *Event {
 	return event.WithEndTime(event.Time.Add(duration))
 }
 
-func (event *Event) WithTag(key string, value interface{}) *Event {
+func (event *Event) WithTag(key string, value any) *Event {
 	event.Tags[key] = value
 	return event
 }

@@ -246,7 +246,7 @@ func (recv *receiver) handleItem(
 
 	if message.ResponseObject != nil {
 		objectRef.Raw = &unstructured.Unstructured{
-			Object: map[string]interface{}{},
+			Object: map[string]any{},
 		}
 
 		err := json.Unmarshal(message.ResponseObject.Raw, &objectRef.Raw.Object)

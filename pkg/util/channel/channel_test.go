@@ -26,7 +26,7 @@ func TestOverflow(t *testing.T) {
 	assert := assert.New(t)
 
 	uq := channel.NewUnboundedQueue[int](3)
-	recv := []interface{}{}
+	recv := []any{}
 
 	uq.Send(int(1))
 	recv = append(recv, <-uq.Receiver())

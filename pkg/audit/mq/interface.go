@@ -39,7 +39,7 @@ type Producer interface {
 	Send(partitionKey []byte, value []byte) error
 }
 
-type Consumer interface{}
+type Consumer any
 
 type mux struct {
 	*manager.Mux

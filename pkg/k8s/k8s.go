@@ -251,7 +251,7 @@ func (s logrusSink) Init(info logr.RuntimeInfo) {}
 
 func (s logrusSink) Enabled(level int) bool { return klog.V(klog.Level(level)).Enabled() }
 
-func kvToLogr(keysAndValues []interface{}) logrus.Fields {
+func kvToLogr(keysAndValues []any) logrus.Fields {
 	m := logrus.Fields{}
 	for i := 0; i+1 < len(keysAndValues); i += 2 {
 		m[keysAndValues[i].(string)] = keysAndValues[i+1]
@@ -259,7 +259,7 @@ func kvToLogr(keysAndValues []interface{}) logrus.Fields {
 	return m
 }
 
-func (s logrusSink) Info(level int, msg string, keysAndValues ...interface{}) {
+func (s logrusSink) Info(level int, msg string, keysAndValues ...any) {
 	delegate := s.delegate.WithFields(kvToLogr(keysAndValues))
 	if level > 2 {
 		delegate.Debug(msg)
@@ -268,11 +268,11 @@ func (s logrusSink) Info(level int, msg string, keysAndValues ...interface{}) {
 	}
 }
 
-func (s logrusSink) Error(err error, msg string, keysAndValues ...interface{}) {
+func (s logrusSink) Error(err error, msg string, keysAndValues ...any) {
 	s.delegate.WithFields(kvToLogr(keysAndValues)).Info(msg)
 }
 
-func (s logrusSink) WithValues(keysAndValues ...interface{}) logr.LogSink {
+func (s logrusSink) WithValues(keysAndValues ...any) logr.LogSink {
 	return logrusSink{delegate: s.delegate.WithFields(kvToLogr(keysAndValues))}
 }
 

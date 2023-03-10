@@ -76,7 +76,7 @@ type componentInfo struct {
 	dependencies map[reflect.Type]*componentInfo
 }
 
-type utilFactory = func(UtilContext) (interface{}, error)
+type utilFactory = func(UtilContext) (any, error)
 
 type componentFactory struct {
 	name     string
@@ -105,8 +105,8 @@ func New() *Manager {
 // ProvideUtil provides a parameter factory that gets called for every requesting component.
 // The factory should be in the form `func(reflect.Type) (T, error)`,
 // where the input is the type of the requesting component and T is the type of root.
-func (manager *Manager) ProvideUtil(factory interface{}) {
-	manager.utils[reflect.TypeOf(factory).Out(0)] = func(ctx UtilContext) (interface{}, error) {
+func (manager *Manager) ProvideUtil(factory any) {
+	manager.utils[reflect.TypeOf(factory).Out(0)] = func(ctx UtilContext) (any, error) {
 		out := reflect.ValueOf(factory).Call([]reflect.Value{reflect.ValueOf(ctx)})
 		if len(out) >= 2 && !out[1].IsNil() {
 			return nil, out[1].Interface().(error)
@@ -120,11 +120,11 @@ func (manager *Manager) ProvideUtil(factory interface{}) {
 // The factory can accept any number of parameters with types that were provided as roots or components,
 // and return either `T` or `(T, error)`, where `T` is the type of component.
 // The parameter type must be identical to the return type explicitly declared in the factory (not subtypes/supertypes).
-func (manager *Manager) Provide(name string, factory interface{}) {
+func (manager *Manager) Provide(name string, factory any) {
 	manager.provideComponent(name, factory)
 }
 
-func (manager *Manager) provideComponent(name string, factory interface{}) reflect.Type {
+func (manager *Manager) provideComponent(name string, factory any) reflect.Type {
 	factoryType := reflect.TypeOf(factory)
 	compTy := factoryType.Out(0)
 
@@ -193,7 +193,7 @@ func (manager *Manager) provideComponent(name string, factory interface{}) refle
 // ProvideMuxImpl provides a MuxImpl factory.
 // It is similar to Manager.Provide(), but with an additional parameter interfaceFunc,
 // where the argument is in the form `Interface.AnyFunc`.
-func (manager *Manager) ProvideMuxImpl(name string, factory interface{}, interfaceFunc interface{}) {
+func (manager *Manager) ProvideMuxImpl(name string, factory any, interfaceFunc any) {
 	compTy := manager.provideComponent(name, factory)
 	itfTy := reflect.TypeOf(interfaceFunc).In(0)
 
@@ -207,7 +207,7 @@ func (manager *Manager) resolve(
 	req reflect.Type,
 	ctx *UtilContext,
 	deps map[reflect.Type]*componentInfo,
-) (interface{}, error) {
+) (any, error) {
 	if factory, exists := manager.utils[req]; exists {
 		return factory(*ctx)
 	}

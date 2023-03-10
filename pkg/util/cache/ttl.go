@@ -33,7 +33,7 @@ type TtlOnce struct {
 
 	lock         sync.RWMutex
 	cleanupQueue *channel.Deque[cleanupEntry]
-	data         map[string]interface{}
+	data         map[string]any
 }
 
 type cleanupEntry struct {
@@ -47,11 +47,11 @@ func NewTtlOnce(ttl time.Duration, clock clock.Clock) *TtlOnce {
 		clock:        clock,
 		wakeupCh:     make(chan struct{}),
 		cleanupQueue: channel.NewDeque[cleanupEntry](16),
-		data:         map[string]interface{}{},
+		data:         map[string]any{},
 	}
 }
 
-func (cache *TtlOnce) Add(key string, value interface{}) {
+func (cache *TtlOnce) Add(key string, value any) {
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
 
@@ -62,7 +62,7 @@ func (cache *TtlOnce) Add(key string, value interface{}) {
 	}
 }
 
-func (cache *TtlOnce) Get(key string) (interface{}, bool) {
+func (cache *TtlOnce) Get(key string) (any, bool) {
 	cache.lock.RLock()
 	defer cache.lock.RUnlock()
 

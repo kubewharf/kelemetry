@@ -35,8 +35,8 @@ func init() {
 }
 
 type Client interface {
-	New(name string, tagsType interface{}) Metric
-	NewMonitor(name string, tags interface{}, getter func() int64)
+	New(name string, tagsType any) Metric
+	NewMonitor(name string, tags any, getter func() int64)
 }
 
 type Metric struct {
@@ -44,7 +44,7 @@ type Metric struct {
 	tagType reflect.Type
 }
 
-func (metric Metric) getTagValues(tags interface{}) []string {
+func (metric Metric) getTagValues(tags any) []string {
 	tagsValue := reflect.ValueOf(tags).Elem()
 	if tagsValue.Type() != metric.tagType {
 		panic(fmt.Sprintf("metric tag type is inconsistent (%s != %s)", tagsValue.Type(), metric.tagType))
@@ -71,7 +71,7 @@ func (metric Metric) getTagValues(tags interface{}) []string {
 	return values
 }
 
-func (metric Metric) With(tags interface{}) TaggedMetric {
+func (metric Metric) With(tags any) TaggedMetric {
 	tagValues := metric.getTagValues(tags)
 	return TaggedMetric{
 		impl:      metric.impl,
@@ -79,7 +79,7 @@ func (metric Metric) With(tags interface{}) TaggedMetric {
 	}
 }
 
-func (metric Metric) DeferCount(start time.Time, tags interface{}) {
+func (metric Metric) DeferCount(start time.Time, tags any) {
 	tagged := metric.With(tags)
 	tagged.Count(1)
 	tagged.Defer(start)
@@ -126,7 +126,7 @@ func newMux(logger logrus.FieldLogger) Client {
 	}
 }
 
-func (mux *mux) New(name string, tagsType interface{}) Metric {
+func (mux *mux) New(name string, tagsType any) Metric {
 	if metric, exists := mux.metricPool[name]; exists {
 		return metric
 	}
@@ -152,7 +152,7 @@ func (mux *mux) New(name string, tagsType interface{}) Metric {
 	return metric
 }
 
-func (mux *mux) NewMonitor(name string, tags interface{}, getter func() int64) {
+func (mux *mux) NewMonitor(name string, tags any, getter func() int64) {
 	tagged := mux.New(name, tags).With(tags)
 	loop := func(stopCh <-chan struct{}) {
 		defer shutdown.RecoverPanic(mux.logger)

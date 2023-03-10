@@ -24,7 +24,7 @@ import (
 
 type testCase struct {
 	name     string
-	old, new interface{}
+	old, new any
 	diff     []diffcmp.Diff
 }
 
@@ -58,32 +58,32 @@ func TestCompare(t *testing.T) {
 			{JsonPath: "", Old: float64(1.0), New: float64(2.0)},
 		}},
 
-		{name: "empty map equal", old: map[string]interface{}{}, new: map[string]interface{}{}, diff: []diffcmp.Diff{}},
-		{name: "empty slice equal", old: []interface{}{}, new: []interface{}{}, diff: []diffcmp.Diff{}},
-		{name: "map slice differ", old: map[string]interface{}{}, new: []interface{}{}, diff: []diffcmp.Diff{
-			{JsonPath: "", Old: map[string]interface{}{}, New: []interface{}{}},
+		{name: "empty map equal", old: map[string]any{}, new: map[string]any{}, diff: []diffcmp.Diff{}},
+		{name: "empty slice equal", old: []any{}, new: []any{}, diff: []diffcmp.Diff{}},
+		{name: "map slice differ", old: map[string]any{}, new: []any{}, diff: []diffcmp.Diff{
+			{JsonPath: "", Old: map[string]any{}, New: []any{}},
 		}},
 
 		{
 			name: "nested string map equal",
-			old:  map[string]interface{}{"a": map[string]interface{}{"b": "c"}},
-			new:  map[string]interface{}{"a": map[string]interface{}{"b": "c"}},
+			old:  map[string]any{"a": map[string]any{"b": "c"}},
+			new:  map[string]any{"a": map[string]any{"b": "c"}},
 			diff: []diffcmp.Diff{},
 		},
 		{
 			name: "map slice nested differ",
-			old:  map[string]interface{}{"a": []interface{}{"b"}},
-			new:  map[string]interface{}{"a": []interface{}{true}},
+			old:  map[string]any{"a": []any{"b"}},
+			new:  map[string]any{"a": []any{true}},
 			diff: []diffcmp.Diff{{JsonPath: "a.[0]", Old: "b", New: true}},
 		},
 		{
 			name: "slice map nested differ",
-			old:  map[string]interface{}{"a": []interface{}{"b"}},
-			new:  map[string]interface{}{"a": []interface{}{true}},
+			old:  map[string]any{"a": []any{"b"}},
+			new:  map[string]any{"a": []any{true}},
 			diff: []diffcmp.Diff{{JsonPath: "a.[0]", Old: "b", New: true}},
 		},
 
-		{name: "slice order differ", old: []interface{}{"a", "b"}, new: []interface{}{"b", "a"}, diff: []diffcmp.Diff{
+		{name: "slice order differ", old: []any{"a", "b"}, new: []any{"b", "a"}, diff: []diffcmp.Diff{
 			{JsonPath: "[0]", Old: "a", New: "b"},
 			{JsonPath: "[1]", Old: "b", New: "a"},
 		}},
