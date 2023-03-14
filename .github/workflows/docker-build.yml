@@ -1,0 +1,31 @@
+name: Build docker image
+
+on:
+  push:
+    tags: "*"
+    branches: ["main"]
+
+jobs:
+  image:
+    name: Build docker image
+    runs-on: [ubuntu-20.04]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set image tag for release
+        if: ${{ github.ref_type == 'tag' }}
+        run: echo "IMAGE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+      - name: Set image tag for release
+        if: ${{ github.ref_type == 'branch' }}
+        run: echo "IMAGE_TAG=dev" >> $GITHUB_ENV
+
+      - name: Build docker image
+        run: docker build -t ghcr.io/kubewharf/kelemetry:${IMAGE_TAG} .
+
+      - name: Docker login for ghcr
+        uses: docker/login-action@28218f9b04b4f3f62068d7b6ce6ca5b26e35336c
+        with:
+          registry: ghcr.io
+          username: ${{github.actor}}
+          password: ${{secrets.GITHUB_TOKEN}}
+      - run: docker push ghcr.io/kubewharf/kelemetry:${IMAGE_TAG}
