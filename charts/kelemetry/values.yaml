@@ -371,7 +371,7 @@ multiCluster:
       peerAddresses: [127.0.0.1]
 
 kelemetryImage:
-  repository: kubewharf/kelemetry
+  repository: ghcr.io/kubewharf/kelemetry
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""

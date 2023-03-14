@@ -49,16 +49,16 @@ graph TB
 
 ## Getting started
 
-- [Deployment](DEPLOY.md) for production
-- [Quickstart](QUICK_START.md) for trying out Kelemetry with a test cluster
-- [Development setup](DEV.md) for developing Kelemetry
+- [Deployment](./docs/DEPLOY.md) for production
+- [Quickstart](./docs/QUICK_START.md) for trying out Kelemetry with a test cluster
+- [Development setup](./docs/DEV.md) for developing Kelemetry
 
 ## Contribution/Development
 
 - [Contributing guidelines](CONTRIBUTING.md)
-- [Developer manual](DEV.md)
+- [Developer manual](./docs/DEV.md)
 - [Security policy](SECURITY.md)
-- [User guide](USER_GUIDE.md)
+- [User guide](./docs/USER_GUIDE.md)
 
 ## Code of Conduct
 

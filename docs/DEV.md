@@ -203,15 +203,18 @@ This is used in diff controllers where multiple parallel instances are allowed.
 
 #### Discovery
 
-The `k8s/discovery` package provides utilities for mapping the GVR &harr; default GVK conversion.
+The `k8s/discovery` package provides utilities for mapping the GVR/GVK conversion.
 This does not account for subresources.
+
+The component updates the discovery cache every half an hour,
+or when an outdated component is encountered.
 
 ### Event
 
 The `event` package list-watches event objects from the target cluster,
 transforming new events into the corresponding spans.
 
-Maintains a `namespaces/default/configmaps/kubetrace-event-controller` object
+Maintains a `namespaces/default/configmaps/kelemetry-event-controller` object
 to store the latest receiveed event timestamp
 to avoid resending all events after restart.
 Furthermore, events older than 5 minutes are discarded
@@ -233,14 +236,16 @@ where an event is associated with a K8S object.
 "Linkers" are invoked recursively to determine the "parent" object of the associated object,
 thus placing the span under the same trace as other events under the same ancestor objects.
 
+You can add a component that calls `LinkerList.AddLinker` to define custom linking logic.
+
 ### Span cache
 
 The `spancache` package abstracts an expiring `map[string][]byte` cache.
 A local layer of cache is provided to reduce cache penetration.
 
-### Jaeger
+### Frontend
 
-The packages under `jaeger` provide components related to Jaeger UI.
+The packages under `frontend` provide components related to Jaeger UI.
 It provides a Jaeger storage plugin wrapper
 that transforms the trace tree to a more user-friendly view.
 When the storage plugin returns a list of traces,
