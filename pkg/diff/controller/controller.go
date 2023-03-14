@@ -44,6 +44,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/metrics"
 	"github.com/kubewharf/kelemetry/pkg/util"
 	"github.com/kubewharf/kelemetry/pkg/util/channel"
+	"github.com/kubewharf/kelemetry/pkg/util/informer"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
 )
 
@@ -371,22 +372,22 @@ func (ctrl *controller) startMonitor(gvr schema.GroupVersionResource, apiResourc
 		}),
 	}
 
-	store := &prepushUndeltaStore{
-		logger: logger,
-		store:  map[namespacedName]storageType{},
-		objectFilter: func(obj *unstructured.Unstructured) bool {
+	store := informerutil.NewPrepushUndeltaStore(
+		logger,
+		func(obj *unstructured.Unstructured) bool {
 			return ctrl.shouldMonitorObject(gvr, obj.GetNamespace(), obj.GetName())
 		},
-		// TODO fix: detect creation after initial sync, do not spam snapshots during startup
-		// onAdd: func(newObj *unstructured.Unstructured) {
-		// ctrl.taskPool.Send(func() { monitor.onCreateDelete(newObj, "creation") })
-		// },
-		onUpdate: func(oldObj, newObj *unstructured.Unstructured) {
-			ctrl.taskPool.Send(func() { monitor.onUpdate(oldObj, newObj) })
-		},
-		onDelete: func(oldObj *unstructured.Unstructured) {
-			ctrl.taskPool.Send(func() { monitor.onNeedSnapshot(oldObj, diffcache.SnapshotNameDeletion) })
-		},
+	)
+
+	// TODO fix: detect creation after initial sync, do not spam snapshots during startup
+	// store.OnAdd = func(newObj *unstructured.Unstructured) {
+	// ctrl.taskPool.Send(func() { monitor.onCreateDelete(newObj, "creation") })
+	// }
+	store.OnUpdate = func(oldObj, newObj *unstructured.Unstructured) {
+		ctrl.taskPool.Send(func() { monitor.onUpdate(oldObj, newObj) })
+	}
+	store.OnDelete = func(oldObj *unstructured.Unstructured) {
+		ctrl.taskPool.Send(func() { monitor.onNeedSnapshot(oldObj, diffcache.SnapshotNameDeletion) })
 	}
 
 	nsableReflectorClient := ctrl.clients.TargetCluster().DynamicClient().Resource(gvr)
@@ -525,16 +526,4 @@ func (monitor *monitor) testRedacted(obj *unstructured.Unstructured) bool {
 	}
 
 	return redacted
-}
-
-type namespacedName struct {
-	namespace string
-	name      string
-}
-
-func getNamespacedKey(uns *unstructured.Unstructured) namespacedName {
-	return namespacedName{
-		namespace: uns.GetNamespace(),
-		name:      uns.GetName(),
-	}
 }
