@@ -5,3 +5,5 @@ log
 coverage.out
 *.local.yaml
 dump*.json
+/depgraph.*
+/USAGE.txt

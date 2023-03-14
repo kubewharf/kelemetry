@@ -29,7 +29,7 @@ $ make
 Kelemetry uses a component-oriented design.
 Dependency components are automatically enabled if any of its (transitive) dependents is enabled.
 
-![](./depgraph.png)
+![](https://github.com/kubewharf/kelemetry/raw/gh-pages/depgraph.png)
 
 New components can be added simply by importing their package.
 All default packages are imported in [pkg/imports.go](pkg/imports.go).

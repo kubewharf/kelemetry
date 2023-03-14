@@ -1,0 +1,45 @@
+name: Generate site
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  generate:
+    name: Generate GitHub pages
+    runs-on: [ubuntu-20.04]
+    concurrency:
+      group: gh-pages
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '1.19'
+      - name: Install graphviz
+        run: sudo apt-get install -y graphviz
+
+      - name: Compile binary
+        run: make output/kelemetry
+
+      - name: Re-generate USAGE.txt
+        run: make usage
+      - name: Generate depgraph
+        run: make dot
+
+      - name: Clone gh-pages
+        uses: actions/checkout@v3
+        with:
+          ref: gh-pages
+          ssh-key: ${{secrets.GH_PAGES_PRIVKEY}}
+          path: .gh-pages
+      - name: Copy output to site
+        run: mv USAGE.txt depgraph.* .gh-pages
+      - name: Git commit and push
+        working-directory: .gh-pages
+        run: |
+          git add -A && git diff --staged --exit-code || (
+            git config --global user.name "github-actions[bot]" && \
+            git config --global user.email "41898282+github-actions[bot]@users.noreply.github.io" && \
+            git commit --allow-empty -m "Update GitHub pages for ${{github.sha}}" && \
+            git push)

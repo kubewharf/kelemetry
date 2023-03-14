@@ -6,29 +6,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  check-generated:
-    name: Check if generated files are up-to-date
-    runs-on: [ubuntu-20.04]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
-        with:
-          go-version: '1.19'
-      - name: Compile binary
-        run: make output/kelemetry
-
-      - name: Re-generate USAGE.txt
-        run: make usage
-      - name: Check if USAGE.txt is changed
-        run: git diff --exit-code USAGE.txt
-
-      - name: Install graphviz
-        run: sudo apt-get install -y graphviz
-      - name: Generate depgraph
-        run: make dot
-      - name: Check if depgraph is changed
-        run: "git diff --exit-code depgraph.*"
-
   test:
     name: Run unit tests
     runs-on: [ubuntu-20.04]
@@ -51,4 +28,5 @@ jobs:
       - name: Run lint
         uses: golangci/golangci-lint-action@v3
         with:
+          args: --timeout=5m
           only-new-issues: true
