@@ -40,12 +40,12 @@ func (m *SwapMap[K, V]) SwapIf(
 	key K,
 	newValue V,
 	hasNewValue bool,
-	condition func(oldValue, newValue V) bool,
+	shouldSwap func(oldValue, newValue V) bool,
 ) SwapResult[V] {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	return m.lockedSwapIf(key, newValue, hasNewValue, condition)
+	return m.lockedSwapIf(key, newValue, hasNewValue, shouldSwap)
 }
 
 func (m *SwapMap[K, V]) lockedSwapIf(
@@ -87,19 +87,14 @@ func (m *SwapMap[K, V]) lockedSwapIf(
 	}
 }
 
-func (m *SwapMap[K, V]) Replace(values []V, keyer func(V) K) map[K]SwapResult[V] {
-	keys := make(map[K]struct{}, len(values))
-	for _, value := range values {
-		keys[keyer(value)] = struct{}{}
-	}
-
+func SwapMapReplace[K comparable, V any, U any](m *SwapMap[K, V], values map[K]U, transformValue func(U) V) map[K]SwapResult[V] {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
 	output := map[K]SwapResult[V]{}
 
 	for key, value := range m.data {
-		if _, retain := keys[key]; !retain {
+		if _, retain := values[key]; !retain {
 			output[key] = SwapResult[V]{
 				Kind:     SwapResultKindRemove,
 				OldValue: value,
@@ -108,9 +103,8 @@ func (m *SwapMap[K, V]) Replace(values []V, keyer func(V) K) map[K]SwapResult[V]
 		}
 	}
 
-	for _, value := range values {
-		key := keyer(value)
-		output[key] = m.lockedSwapIf(key, value, true, func(_, _ V) bool { return true })
+	for key, value := range values {
+		output[key] = m.lockedSwapIf(key, transformValue(value), true, func(_, _ V) bool { return true })
 	}
 
 	return output

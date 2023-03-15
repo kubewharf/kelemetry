@@ -26,9 +26,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/watch"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/util/workqueue"
+	toolscache "k8s.io/client-go/tools/cache"
 	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator"
@@ -39,6 +40,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
 	"github.com/kubewharf/kelemetry/pkg/util"
+	informerutil "github.com/kubewharf/kelemetry/pkg/util/informer"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
@@ -207,31 +209,27 @@ func (ctrl *controller) runLeader(stopCh <-chan struct{}) {
 
 	startReadyCh := make(chan struct{})
 
-	queue := workqueue.New()
+	ctx := shutdown.ContextWithStopCh(ctrl.ctx, stopCh)
 
-	type eventKey struct{ namespace, name string }
-
-	factory := ctrl.clients.TargetCluster().NewInformerFactory()
-	eventInformer := factory.Core().V1().Events()
-	_, err := eventInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			event := obj.(*corev1.Event)
-			queue.Add(eventKey{namespace: event.Namespace, name: event.Name})
+	eventClient := ctrl.clients.TargetCluster().KubernetesClient().CoreV1().Events(metav1.NamespaceAll)
+	lw := toolscache.ListWatch{
+		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+			return eventClient.List(ctx, options)
 		},
-		UpdateFunc: func(oldObj, newObj any) {
-			oldEvent := oldObj.(*corev1.Event)
-			newEvent := newObj.(*corev1.Event)
-			if oldEvent.ResourceVersion == newEvent.ResourceVersion {
-				return
-			}
-			queue.Add(eventKey{namespace: newEvent.Namespace, name: newEvent.Name})
+		WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+			return eventClient.Watch(ctx, options)
 		},
-	})
-	if err != nil {
-		ctrl.logger.WithError(err).Error("cannot add Event event handler") // should not happen during startup
-		return                                                             // probably lost leader lease?
 	}
-	factory.Start(stopCh)
+
+	store := informerutil.NewDecayingInformer[*corev1.Event]()
+	addCh := store.SetAddCh()
+	replaceCh := store.SetReplaceCh()
+
+	reflector := toolscache.NewReflector(&lw, &corev1.Event{}, store, 0)
+	go func() {
+		defer shutdown.RecoverPanic(ctrl.logger)
+		reflector.Run(ctx.Done())
+	}()
 
 	for workerId := 0; workerId < ctrl.options.workerCount; workerId++ {
 		go func(workerId int) {
@@ -240,30 +238,20 @@ func (ctrl *controller) runLeader(stopCh <-chan struct{}) {
 			<-startReadyCh
 
 			for {
-				item, shutdown := queue.Get()
-				if shutdown {
+				select {
+				case event := <-addCh:
+					ctrl.handleEvent(event)
+				case event := <-replaceCh:
+					ctrl.handleEvent(event)
+				case <-stopCh:
 					return
 				}
-
-				func() {
-					defer queue.Done(item)
-
-					k := item.(eventKey)
-
-					event, err := eventInformer.Lister().Events(k.namespace).Get(k.name)
-					if err != nil || event == nil {
-						return
-					}
-
-					ctrl.handleEvent(event)
-				}()
 			}
 		}(workerId)
 	}
 
 	go func() {
 		<-stopCh
-		queue.ShutDown()
 	}()
 
 	ctrl.syncConfigMap(startReadyCh, stopCh)

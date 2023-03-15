@@ -105,12 +105,13 @@ func (store *PrepushUndeltaStore[V]) Delete(obj any) error {
 }
 
 func (store *PrepushUndeltaStore[V]) Replace(list []any, resourceVersion string) error {
-	vList := make([]V, len(list))
-	for i, v := range list {
-		vList[i] = v.(V)
+	kv := make(map[ObjectKey]V, len(list))
+	for _, obj := range list {
+		value := obj.(V)
+		kv[ObjectKeyOf(value)] = value
 	}
 
-	for key, swap := range store.data.Replace(vList, ObjectKeyOf[V]) {
+	for key, swap := range SwapMapReplace(store.data, kv, identity[V]) {
 		store.processSwapResult(key, swap)
 	}
 
@@ -122,3 +123,5 @@ func (store *PrepushUndeltaStore[V]) GetByKey(key string) (any, bool, error) { p
 func (store *PrepushUndeltaStore[V]) List() []any                            { panic("unused") }
 func (store *PrepushUndeltaStore[V]) ListKeys() []string                     { panic("unused") }
 func (store *PrepushUndeltaStore[V]) Resync() error                          { panic("unused") }
+
+func identity[T any](value T) T { return value }

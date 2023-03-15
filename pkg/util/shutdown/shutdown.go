@@ -15,6 +15,7 @@
 package shutdown
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -102,6 +103,16 @@ func RecoverPanic(logger logrus.FieldLogger) {
 
 type ShutdownTrigger struct {
 	stopCh chan<- struct{}
+}
+
+// Converts a stopCh to a context.
+func ContextWithStopCh(base context.Context, stopCh <-chan struct{}) context.Context {
+	ctx, cancelFunc := context.WithCancel(base)
+	go func() {
+		<-stopCh
+		cancelFunc()
+	}()
+	return ctx
 }
 
 func NewShutdownTrigger() (*ShutdownTrigger, <-chan struct{}) {
