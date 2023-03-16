@@ -20,7 +20,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("audit-decorator-list", NewDecoratorList)
+	manager.Global.Provide("audit-decorator-list", manager.Ptr[DecoratorList](&decoratorList{}))
 }
 
 type Decorator interface {
@@ -38,12 +38,6 @@ type DecoratorList interface {
 type decoratorList struct {
 	manager.BaseComponent
 	decorators []Decorator
-}
-
-func NewDecoratorList() DecoratorList {
-	return &decoratorList{
-		decorators: []Decorator{},
-	}
 }
 
 func (list *decoratorList) AddDecorator(decorator Decorator) {

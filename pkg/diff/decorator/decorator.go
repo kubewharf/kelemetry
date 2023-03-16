@@ -38,7 +38,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("diff-decorator", newDecorator)
+	manager.Global.Provide("diff-decorator", manager.Ptr(&decorator{}))
 }
 
 type decoratorOptions struct {
@@ -79,16 +79,15 @@ func (options *decoratorOptions) EnableFlag() *bool { return &options.enable }
 
 type decorator struct {
 	options decoratorOptions
-	logger  logrus.FieldLogger
-	clock   clock.Clock
-	cache   diffcache.Cache
-	list    audit.DecoratorList
-	metrics metrics.Client
+	Logger  logrus.FieldLogger
+	Clock   clock.Clock
+	Cache   diffcache.Cache
+	List    audit.DecoratorList
 
 	ctx                   context.Context
-	diffMetric            metrics.Metric
-	informerLatencyMetric metrics.Metric
-	retryCountMetric      metrics.Metric
+	DiffMetric            *metrics.Metric[*diffMetric]
+	InformerLatencyMetric *metrics.Metric[*informerLatencyMetric]
+	RetryCountMetric      *metrics.Metric[*retryCountMetric]
 }
 
 var _ = func() manager.Component { return &decorator{} }
@@ -102,11 +101,15 @@ type diffMetric struct {
 	Error    metrics.LabeledError
 }
 
+func (*diffMetric) MetricName() string { return "diff_decorator" }
+
 type informerLatencyMetric struct {
 	Cluster  string
 	ApiGroup schema.GroupVersion
 	Resource string
 }
+
+func (*informerLatencyMetric) MetricName() string { return "diff_informer_latency" }
 
 type retryCountMetric struct {
 	Cluster  string
@@ -115,21 +118,7 @@ type retryCountMetric struct {
 	Success  bool
 }
 
-func newDecorator(
-	logger logrus.FieldLogger,
-	clock clock.Clock,
-	cache diffcache.Cache,
-	list audit.DecoratorList,
-	metrics metrics.Client,
-) *decorator {
-	return &decorator{
-		logger:  logger,
-		clock:   clock,
-		cache:   cache,
-		list:    list,
-		metrics: metrics,
-	}
-}
+func (*retryCountMetric) MetricName() string { return "diff_decorator_retry_count" }
 
 func (decorator *decorator) Options() manager.Options {
 	return &decorator.options
@@ -137,10 +126,7 @@ func (decorator *decorator) Options() manager.Options {
 
 func (decorator *decorator) Init(ctx context.Context) error {
 	decorator.ctx = ctx
-	decorator.list.AddDecorator(decorator)
-	decorator.diffMetric = decorator.metrics.New("diff_decorator", &diffMetric{})
-	decorator.informerLatencyMetric = decorator.metrics.New("diff_informer_latency", &informerLatencyMetric{})
-	decorator.retryCountMetric = decorator.metrics.New("diff_decorator_retry_count", &retryCountMetric{})
+	decorator.List.AddDecorator(decorator)
 	return nil
 }
 
@@ -153,7 +139,7 @@ func (decorator *decorator) Close() error {
 }
 
 func (decorator *decorator) Decorate(message *audit.Message, event *aggregator.Event) {
-	logger := decorator.logger.
+	logger := decorator.Logger.
 		WithField("audit-id", message.AuditID).
 		WithField("title", event.Title).
 		WithField("verb", message.Verb)
@@ -168,7 +154,7 @@ func (decorator *decorator) Decorate(message *audit.Message, event *aggregator.E
 		},
 		Resource: message.ObjectRef.Resource,
 	}
-	defer decorator.diffMetric.DeferCount(decorator.clock.Now(), metric)
+	defer decorator.DiffMetric.DeferCount(decorator.Clock.Now(), metric)
 
 	cacheHit, err := decorator.tryDecorate(logger, message, event)
 	if err != nil {
@@ -296,7 +282,7 @@ func (decorator *decorator) tryDecorate(
 		return cacheHit, nil
 	}, retryCtx.Done())
 
-	decorator.retryCountMetric.With(&retryCountMetric{
+	decorator.RetryCountMetric.With(&retryCountMetric{
 		Cluster: message.Cluster,
 		ApiGroup: schema.GroupVersion{
 			Group:   message.ObjectRef.APIGroup,
@@ -327,7 +313,7 @@ func (decorator *decorator) tryUpdateOnce(
 	message *audit.Message,
 ) (bool, error) {
 	var err error
-	patch, err := decorator.cache.Fetch(ctx, object, oldRv, newRv)
+	patch, err := decorator.Cache.Fetch(ctx, object, oldRv, newRv)
 	if err != nil || patch == nil {
 		return false, err
 	}
@@ -346,7 +332,7 @@ func (decorator *decorator) tryUpdateOnce(
 	event.Log(zconstants.LogTypeObjectDiff, diffInfo)
 
 	informerLatency := patch.InformerTime.Sub(message.StageTimestamp.Time)
-	decorator.informerLatencyMetric.With(&informerLatencyMetric{
+	decorator.InformerLatencyMetric.With(&informerLatencyMetric{
 		Cluster: message.Cluster,
 		ApiGroup: schema.GroupVersion{
 			Group:   message.ObjectRef.APIGroup,
@@ -365,7 +351,7 @@ func (decorator *decorator) tryCreateDeleteOnce(
 	snapshotName string,
 	event *aggregator.Event,
 ) (bool, error) {
-	snapshot, err := decorator.cache.FetchSnapshot(ctx, object, snapshotName)
+	snapshot, err := decorator.Cache.FetchSnapshot(ctx, object, snapshotName)
 	if err != nil || snapshot == nil {
 		return false, err
 	}

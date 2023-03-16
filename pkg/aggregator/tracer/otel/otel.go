@@ -39,7 +39,9 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideMuxImpl("tracer/otel", newOtel, tracer.Tracer.CreateSpan)
+	manager.Global.ProvideMuxImpl("tracer/otel", manager.Ptr(&otelTracer{
+		deferList: shutdown.NewDeferList(),
+	}), tracer.Tracer.CreateSpan)
 }
 
 type options struct {
@@ -62,20 +64,13 @@ type otelTracer struct {
 	manager.MuxImplBase
 
 	options   options
-	logger    logrus.FieldLogger
+	Logger    logrus.FieldLogger
 	deferList *shutdown.DeferList
 
 	ctx        context.Context
 	exporter   *otlptrace.Exporter
 	tracers    sync.Map // equiv. map[string]*onceTracer
 	propagator propagation.TextMapPropagator
-}
-
-func newOtel(logger logrus.FieldLogger) *otelTracer {
-	return &otelTracer{
-		logger:    logger,
-		deferList: shutdown.NewDeferList(),
-	}
 }
 
 type onceTracer struct {
@@ -161,7 +156,7 @@ func (otel *otelTracer) createTracer(serviceName string) (oteltrace.Tracer, erro
 func (otel *otelTracer) Start(stopCh <-chan struct{}) error { return nil }
 
 func (otel *otelTracer) Close() error {
-	if name, err := otel.deferList.LockedRun(otel.logger); err != nil {
+	if name, err := otel.deferList.LockedRun(otel.Logger); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}
 

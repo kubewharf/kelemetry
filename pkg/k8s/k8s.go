@@ -40,7 +40,9 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("kube", New)
+	manager.Global.Provide("kube", manager.Ptr[Clients](&clusterClients{
+		clients: map[string]*client{},
+	}))
 }
 
 type options struct {
@@ -82,8 +84,8 @@ type Client interface {
 
 type clusterClients struct {
 	options options
-	logger  logrus.FieldLogger
-	config  k8sconfig.Config
+	Logger  logrus.FieldLogger
+	Config  k8sconfig.Config
 
 	ctx          context.Context
 	clientsLock  sync.RWMutex
@@ -102,14 +104,6 @@ type client struct {
 	eventBroadcaster record.EventBroadcaster
 }
 
-func New(logger logrus.FieldLogger, config k8sconfig.Config) Clients {
-	return &clusterClients{
-		logger:  logger,
-		config:  config,
-		clients: map[string]*client{},
-	}
-}
-
 func (clients *clusterClients) Options() manager.Options {
 	return &clients.options
 }
@@ -117,10 +111,10 @@ func (clients *clusterClients) Options() manager.Options {
 func (clients *clusterClients) Init(ctx context.Context) error {
 	clients.ctx = ctx
 
-	klog.SetLogger(logWrapper(clients.logger))
+	klog.SetLogger(logWrapper(clients.Logger))
 
 	var err error
-	clients.targetClient, err = clients.Cluster(clients.config.TargetName())
+	clients.targetClient, err = clients.Cluster(clients.Config.TargetName())
 	if err != nil {
 		return err
 	}
@@ -170,7 +164,7 @@ func (clients *clusterClients) Cluster(name string) (Client, error) {
 }
 
 func (clients *clusterClients) newClient(name string) (*client, error) {
-	config := clients.config.Provide(name)
+	config := clients.Config.Provide(name)
 	if config == nil {
 		return nil, fmt.Errorf("cluster %q is not available", name)
 	}
@@ -179,7 +173,7 @@ func (clients *clusterClients) newClient(name string) (*client, error) {
 	config.QPS = clients.options.otherRestQps
 	config.Burst = clients.options.otherRestBurst
 
-	if name == clients.config.TargetName() {
+	if name == clients.Config.TargetName() {
 		config.QPS = clients.options.targetRestQps
 		config.Burst = clients.options.targetRestBurst
 	}

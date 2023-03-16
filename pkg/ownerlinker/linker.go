@@ -30,7 +30,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("owner-linker", New)
+	manager.Global.Provide("owner-linker", manager.Ptr(&Controller{}))
 }
 
 type options struct {
@@ -45,39 +45,22 @@ func (options *options) EnableFlag() *bool { return &options.enable }
 
 type Controller struct {
 	options        options
-	logger         logrus.FieldLogger
-	linkers        linker.LinkerList
-	clients        k8s.Clients
-	discoveryCache discovery.DiscoveryCache
-	objectCache    objectcache.ObjectCache
+	Logger         logrus.FieldLogger
+	Linkers        linker.LinkerList
+	Clients        k8s.Clients
+	DiscoveryCache discovery.DiscoveryCache
+	ObjectCache    objectcache.ObjectCache
 	ctx            context.Context
 }
 
 var _ manager.Component = &Controller{}
-
-func New(
-	logger logrus.FieldLogger,
-	linkers linker.LinkerList,
-	clients k8s.Clients,
-	discoveryCache discovery.DiscoveryCache,
-	objectCache objectcache.ObjectCache,
-) *Controller {
-	ctrl := &Controller{
-		logger:         logger,
-		linkers:        linkers,
-		clients:        clients,
-		discoveryCache: discoveryCache,
-		objectCache:    objectCache,
-	}
-	return ctrl
-}
 
 func (ctrl *Controller) Options() manager.Options {
 	return &ctrl.options
 }
 
 func (ctrl *Controller) Init(ctx context.Context) error {
-	ctrl.linkers.AddLinker(ctrl)
+	ctrl.Linkers.AddLinker(ctrl)
 	ctrl.ctx = ctx
 
 	return nil
@@ -94,13 +77,13 @@ func (ctrl *Controller) Close() error {
 func (ctrl *Controller) Lookup(ctx context.Context, object util.ObjectRef) *util.ObjectRef {
 	raw := object.Raw
 
-	logger := ctrl.logger.WithField("object", object)
+	logger := ctrl.Logger.WithField("object", object)
 
 	if raw == nil {
 		logger.Debug("Fetching dynamic object")
 
 		var err error
-		raw, err = ctrl.objectCache.Get(ctx, object)
+		raw, err = ctrl.ObjectCache.Get(ctx, object)
 
 		if err != nil {
 			logger.WithError(err).Error("cannot fetch object value")
@@ -122,7 +105,7 @@ func (ctrl *Controller) Lookup(ctx context.Context, object util.ObjectRef) *util
 			}
 
 			gvk := groupVersion.WithKind(owner.Kind)
-			cdc, err := ctrl.discoveryCache.ForCluster(object.Cluster)
+			cdc, err := ctrl.DiscoveryCache.ForCluster(object.Cluster)
 			if err != nil {
 				logger.WithError(err).Error("cannot access cluster from object reference")
 				continue

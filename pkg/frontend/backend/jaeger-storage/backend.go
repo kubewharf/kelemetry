@@ -37,7 +37,9 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideMuxImpl("jaeger-backend/jaeger-storage", newBackend, jaegerbackend.Backend.List)
+	manager.Global.ProvideMuxImpl("jaeger-backend/jaeger-storage", manager.Ptr(&Backend{
+		viper: viper.New(),
+	}), jaegerbackend.Backend.List)
 }
 
 var spanStorageTypesToAddFlag = []string{
@@ -50,7 +52,7 @@ var spanStorageTypesToAddFlag = []string{
 
 type Backend struct {
 	manager.MuxImplBase
-	logger logrus.FieldLogger
+	Logger logrus.FieldLogger
 
 	storageFactory *jaegerstorage.Factory
 	viper          *viper.Viper
@@ -60,13 +62,6 @@ type Backend struct {
 type identifier struct {
 	TraceId string `json:"traceId"`
 	SpanId  uint64 `json:"spanId"`
-}
-
-func newBackend(logger logrus.FieldLogger) *Backend {
-	return &Backend{
-		logger: logger,
-		viper:  viper.New(),
-	}
 }
 
 var _ jaegerbackend.Backend = &Backend{}
@@ -80,7 +75,7 @@ func (backend *Backend) Setup(fs *pflag.FlagSet) {
 	}
 	storageFactory, err := jaegerstorage.NewFactory(factoryConfig)
 	if err != nil {
-		backend.logger.Fatalf("Cannot initialize storage factory: %v", err)
+		backend.Logger.Fatalf("Cannot initialize storage factory: %v", err)
 		return
 	}
 
@@ -99,7 +94,7 @@ func (backend *Backend) Setup(fs *pflag.FlagSet) {
 	)
 
 	if err := backend.viper.BindPFlags(rawPfs); err != nil {
-		backend.logger.Fatalf("Cannot bind storage factory flags: %w", err)
+		backend.Logger.Fatalf("Cannot bind storage factory flags: %w", err)
 	}
 
 	// rename flags after viper bind

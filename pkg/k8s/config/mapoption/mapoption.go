@@ -27,7 +27,7 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideMuxImpl("kube-config/mapoption", newProvider, k8sconfig.Config.Provide)
+	manager.Global.ProvideMuxImpl("kube-config/mapoption", manager.Ptr(&Provider{}), k8sconfig.Config.Provide)
 }
 
 type options struct {

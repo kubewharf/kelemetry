@@ -44,7 +44,7 @@ const (
 )
 
 func init() {
-	manager.Global.Provide("filter", newFilter)
+	manager.Global.Provide("filter", manager.Ptr[Filter](&filter{}))
 }
 
 type Filter interface {
@@ -77,9 +77,9 @@ func (options *options) EnableFlag() *bool { return nil }
 
 type filter struct {
 	options   options
-	logger    logrus.FieldLogger
-	discovery discovery.DiscoveryCache
-	clients   k8s.Clients
+	Logger    logrus.FieldLogger
+	Discovery discovery.DiscoveryCache
+	Clients   k8s.Clients
 
 	excludeTypeHashTable map[schema.GroupResource]struct{}
 	configMapInformer    informers.SharedInformerFactory
@@ -94,18 +94,6 @@ type config struct {
 }
 
 var _ = func() manager.Component { return &filter{} }
-
-func newFilter(
-	logger logrus.FieldLogger,
-	discovery discovery.DiscoveryCache,
-	clients k8s.Clients,
-) Filter {
-	return &filter{
-		logger:    logger,
-		discovery: discovery,
-		clients:   clients,
-	}
-}
 
 func (filter *filter) Options() manager.Options {
 	return &filter.options
@@ -130,7 +118,7 @@ func (filter *filter) Init(ctx context.Context) error {
 		filter.excludeTypeHashTable[parsed] = struct{}{}
 	}
 
-	filter.configMapInformer = filter.clients.TargetCluster().NewInformerFactory(
+	filter.configMapInformer = filter.Clients.TargetCluster().NewInformerFactory(
 		informers.WithNamespace(configMapNamespace),
 		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
 			options.FieldSelector = fields.OneTermEqualSelector("metadata.name", configMapName).String()
@@ -146,7 +134,7 @@ func (filter *filter) Init(ctx context.Context) error {
 		return fmt.Errorf("cannot add ConfigMap event handler: %w", err)
 	}
 
-	filter.recorder = filter.clients.TargetCluster().EventRecorder("kelemetry-filter")
+	filter.recorder = filter.Clients.TargetCluster().EventRecorder("kelemetry-filter")
 
 	return nil
 }
@@ -193,9 +181,9 @@ func (filter *filter) getConfig() *config {
 }
 
 func (filter *filter) TestGvk(cluster string, gvk schema.GroupVersionKind) bool {
-	cdc, err := filter.discovery.ForCluster(cluster)
+	cdc, err := filter.Discovery.ForCluster(cluster)
 	if err != nil {
-		filter.logger.
+		filter.Logger.
 			WithError(err).
 			WithField("cluster", cluster).
 			WithField("gvk", gvk).
@@ -205,7 +193,7 @@ func (filter *filter) TestGvk(cluster string, gvk schema.GroupVersionKind) bool 
 
 	gvr, hasCache := cdc.LookupResource(gvk)
 	if !hasCache {
-		filter.logger.WithField("gvk", gvk).Warn("Received object with unknown GVK")
+		filter.Logger.WithField("gvk", gvk).Warn("Received object with unknown GVK")
 		return true
 	}
 

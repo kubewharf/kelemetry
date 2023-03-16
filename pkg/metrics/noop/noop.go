@@ -23,7 +23,7 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideMuxImpl("metrics/noop", newNoop, metrics.Client.New)
+	manager.Global.ProvideMuxImpl("metrics/noop", manager.Ptr(&noop{}), func(metrics.Client) {})
 }
 
 type noop struct {

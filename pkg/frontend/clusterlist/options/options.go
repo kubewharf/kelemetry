@@ -24,7 +24,7 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideMuxImpl("jaeger-cluster-list/options", newLister, clusterlist.Lister.List)
+	manager.Global.ProvideMuxImpl("jaeger-cluster-list/options", manager.Ptr(&Lister{}), clusterlist.Lister.List)
 }
 
 type options struct {
@@ -43,10 +43,6 @@ type Lister struct {
 }
 
 var _ clusterlist.Lister = &Lister{}
-
-func newLister() *Lister {
-	return &Lister{}
-}
 
 func (_ *Lister) MuxImplName() (name string, isDefault bool) { return "options", true }
 

@@ -31,7 +31,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("http", newServer)
+	manager.Global.Provide("http", manager.Ptr[Server](&server{}))
 }
 
 type Server interface {
@@ -68,19 +68,11 @@ func (options *options) EnableFlag() *bool { return nil }
 
 type server struct {
 	options options
-	logger  logrus.FieldLogger
+	Logger  logrus.FieldLogger
 
 	ctx    context.Context
 	router *gin.Engine
 	server *http.Server
-}
-
-func newServer(
-	logger logrus.FieldLogger,
-) Server {
-	return &server{
-		logger: logger,
-	}
 }
 
 func (server *server) Options() manager.Options {
@@ -116,11 +108,11 @@ func (server *server) Start(stopCh <-chan struct{}) error {
 	}
 
 	go func() {
-		defer shutdown.RecoverPanic(server.logger)
+		defer shutdown.RecoverPanic(server.Logger)
 
 		err := serveFunc()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			server.logger.WithError(err).Error()
+			server.Logger.WithError(err).Error()
 		}
 	}()
 

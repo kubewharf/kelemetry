@@ -22,7 +22,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("aggregator-linker-list", NewLinkerList)
+	manager.Global.Provide("aggregator-linker-list", manager.Ptr[LinkerList](&linkerList{}))
 }
 
 type Linker interface {
