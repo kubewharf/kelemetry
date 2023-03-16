@@ -36,16 +36,64 @@ func init() {
 }
 
 type options struct {
-	enable      bool
-	workerCount int
+	enable           bool
+	workerCount      int
+	partitionKeyType partitionKeyType
 }
 
 func (options *options) Setup(fs *pflag.FlagSet) {
 	fs.BoolVar(&options.enable, "audit-producer-enable", false, "enable audit producer")
 	fs.IntVar(&options.workerCount, "audit-producer-worker-count", 1, "audit producer worker count")
+
+	options.partitionKeyType = partitionKeyTypeAuditId
+	fs.Var(
+		&options.partitionKeyType,
+		"audit-producer-partition-key-type",
+		fmt.Sprintf(
+			"how to partition audit messages in the message queue. Possible values are %q.",
+			[]string{"cluster", "object", "audit-id"},
+		),
+	)
 }
 
 func (options *options) EnableFlag() *bool { return &options.enable }
+
+type partitionKeyType uint32
+
+const (
+	partitionKeyTypeCluster partitionKeyType = iota
+	partitionKeyTypeObject
+	partitionKeyTypeAuditId
+)
+
+func (ty *partitionKeyType) String() string {
+	switch *ty {
+	case partitionKeyTypeCluster:
+		return "cluster"
+	case partitionKeyTypeObject:
+		return "object"
+	case partitionKeyTypeAuditId:
+		return "audit-id"
+	default:
+		panic("invalid value")
+	}
+}
+
+func (ty *partitionKeyType) Set(input string) error {
+	switch input {
+	case "cluster":
+		*ty = partitionKeyTypeCluster
+	case "object":
+		*ty = partitionKeyTypeObject
+	case "audit-id":
+		*ty = partitionKeyTypeAuditId
+	default:
+		return fmt.Errorf("unsupported partition key type")
+	}
+
+	return nil
+}
+func (ty *partitionKeyType) Type() string { return "partitionKeyType" }
 
 type producer struct {
 	options       options
@@ -134,16 +182,24 @@ func (producer *producer) handleEvent(message *audit.Message) error {
 
 	partitionKey := []byte(nil)
 
-	if message.Event.ObjectRef != nil {
-		partitionKey = []byte(fmt.Sprintf(
-			"%s/%s/%s/%s/%s/%s",
-			message.Cluster,
-			message.Event.ObjectRef.APIGroup,
-			message.Event.ObjectRef.APIVersion,
-			message.Event.ObjectRef.Resource,
-			message.Event.ObjectRef.Namespace,
-			message.Event.ObjectRef.Name,
-		))
+	switch producer.options.partitionKeyType {
+	case partitionKeyTypeCluster:
+		partitionKey = []byte(fmt.Sprintf("%s/", message.Cluster))
+	case partitionKeyTypeObject:
+		partitionKey = []byte(fmt.Sprintf("%s/", message.Cluster))
+		if message.Event.ObjectRef != nil {
+			partitionKey = append(partitionKey, []byte(fmt.Sprintf(
+				"%s/%s/%s/%s/%s/%s",
+				message.Cluster,
+				message.Event.ObjectRef.APIGroup,
+				message.Event.ObjectRef.APIVersion,
+				message.Event.ObjectRef.Resource,
+				message.Event.ObjectRef.Namespace,
+				message.Event.ObjectRef.Name,
+			))...)
+		}
+	case partitionKeyTypeAuditId:
+		partitionKey = []byte(fmt.Sprintf("%s/%s", message.Cluster, message.AuditID))
 	}
 
 	messageJson, err := json.Marshal(message)

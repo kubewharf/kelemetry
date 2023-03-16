@@ -182,6 +182,7 @@ func (recv *receiver) handleMessage(
 	}
 	defer recv.consumeMetric.DeferCount(recv.clock.Now(), metric)
 
+	// The first part of the message key is always the cluster no matter what partitioning method we use.
 	cluster := strings.SplitN(string(msgKey), "/", 2)[0]
 	metric.Cluster = cluster
 
