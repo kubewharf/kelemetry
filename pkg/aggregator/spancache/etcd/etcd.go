@@ -179,7 +179,7 @@ func (cache *Etcd) Fetch(ctx context.Context, key string) (*spancache.Entry, err
 		return nil, fmt.Errorf("etcd request error: %w", err)
 	}
 
-	if len(resp.Kvs) == 0 {
+	if len(resp.Kvs) == 0 || resp.Kvs[0] == nil {
 		return nil, nil
 	}
 
@@ -239,7 +239,7 @@ func (cache *Etcd) SetReserved(ctx context.Context, key string, value []byte, la
 
 	getResp := resp.Responses[0].GetResponseRange()
 
-	if len(getResp.Kvs) == 0 {
+	if len(getResp.Kvs) == 0 || getResp.Kvs[0] == nil {
 		return spancache.ErrInvalidKey
 	}
 

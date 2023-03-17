@@ -121,12 +121,13 @@ func (cache *etcdCache) Persist(ctx context.Context, entries []tracecache.Entry)
 }
 
 func (cache *etcdCache) Fetch(ctx context.Context, lowId uint64) (json.RawMessage, error) {
+	cache.logger.Warn(cache.cacheKey(lowId))
 	resp, err := cache.client.Get(ctx, cache.cacheKey(lowId))
 	if err != nil {
 		return nil, fmt.Errorf("etcd get error: %w", err)
 	}
 
-	if len(resp.Kvs) == 0 {
+	if len(resp.Kvs) == 0 || resp.Kvs[0] == nil {
 		return nil, nil
 	}
 
