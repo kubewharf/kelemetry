@@ -5,7 +5,7 @@ To try out Kelemetry, the easiest way is to create a new test cluster
 using the pre-made kind config we prepared for Kelemetry setup.
 
 1. Ensure the prerequisites are available:
-  - [kind](https://kind.sig.k8s.io)
+  - [kind](https://kind.sigs.k8s.io)
   - [docker-compose](https://docs.docker.com/compose/install/)
 
 2. Run the quickstart scripts:
