@@ -138,7 +138,7 @@ kind:
 COMPOSE_COMMAND ?= up --build -d --remove-orphans
 
 stack:
-	docker-compose -f dev.docker-compose.yaml up --no-recreate --no-build --no-start # create network only
+	docker-compose -f dev.docker-compose.yaml up --no-recreate --no-start # create network only
 	docker-compose \
 		-f dev.docker-compose.yaml \
 		-f <(jq -n \
@@ -148,7 +148,7 @@ stack:
 		$(COMPOSE_COMMAND)
 
 quickstart:
-	docker-compose -f quickstart.docker-compose.yaml up --no-recreate --no-build --no-start
+	docker-compose -f quickstart.docker-compose.yaml up --no-recreate --no-start
 	kubectl config view --raw --minify --flatten --merge >hack/client-kubeconfig.local.yaml
 	sed -i "s/0\.0\.0\.0/$$(docker network inspect kelemetry_default -f '{{(index .IPAM.Config 0).Gateway}}')/g" hack/client-kubeconfig.local.yaml
 	sed -i 's/certificate-authority-data: .*$$/insecure-skip-tls-verify: true/' hack/client-kubeconfig.local.yaml
