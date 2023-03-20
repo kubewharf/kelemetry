@@ -114,7 +114,9 @@ func (visitor CollapseNestingVisitor) processChild(tree tftree.SpanTree, span *m
 		if kv, hasKey := model.KeyValues(childSpan.Tags).FindByKey(mapping.FromSpanTag); hasKey {
 			// kv is a copy, so this does not mutate childSpan.Tags (which is deleted anyway)
 			kv.Key = mapping.ToLogField
-			fields = append(fields, kv)
+			if kv.AsStringLossy() != "" {
+				fields = append(fields, kv)
+			}
 		}
 	}
 
