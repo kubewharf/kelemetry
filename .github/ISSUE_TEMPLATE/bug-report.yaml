@@ -33,8 +33,6 @@ body:
       description: |
         "latest" is *not* a valid version name.
         Please provide the git commit, git tag or docker image tag.
-      options:
-        required: true
   - type: textarea
     id: env
     attributes:

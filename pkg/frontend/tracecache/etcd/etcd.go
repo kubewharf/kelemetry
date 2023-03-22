@@ -121,7 +121,7 @@ func (cache *etcdCache) Fetch(ctx context.Context, lowId uint64) (json.RawMessag
 		return nil, fmt.Errorf("etcd get error: %w", err)
 	}
 
-	if len(resp.Kvs) == 0 {
+	if len(resp.Kvs) == 0 || resp.Kvs[0] == nil {
 		return nil, nil
 	}
 

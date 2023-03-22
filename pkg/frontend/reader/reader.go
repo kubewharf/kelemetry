@@ -132,6 +132,9 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 
 		for _, span := range thumbnail.Spans {
 			span.TraceID = cacheId
+			for i := range span.References {
+				span.References[i].TraceID = cacheId
+			}
 		}
 
 		trace := &model.Trace{

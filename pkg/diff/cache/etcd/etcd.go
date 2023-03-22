@@ -148,7 +148,7 @@ func (cache *Etcd) Fetch(
 		return nil, metrics.LabelError(err, "UnknownEtcd")
 	}
 
-	if len(resp.Kvs) == 0 {
+	if len(resp.Kvs) == 0 || resp.Kvs[0] == nil {
 		return nil, nil
 	}
 
@@ -191,7 +191,7 @@ func (cache *Etcd) FetchSnapshot(ctx context.Context, object util.ObjectRef, sna
 		return nil, metrics.LabelError(err, "UnknownEtcd")
 	}
 
-	if len(resp.Kvs) == 0 {
+	if len(resp.Kvs) == 0 || resp.Kvs[0] == nil {
 		return nil, nil
 	}
 
