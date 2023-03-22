@@ -9,6 +9,9 @@ jobs:
   image:
     name: Build docker image
     runs-on: [ubuntu-20.04]
+    concurrency:
+      group: ${{ github.ref_type }}-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v3
 

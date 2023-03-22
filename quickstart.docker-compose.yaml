@@ -59,6 +59,7 @@ services:
       "--diff-controller-enable",
       "--diff-api-enable",
       "--jaeger-storage-plugin-enable",
+      "--jaeger-redirect-server-enable",
       "--mq=local",
       "--audit-consumer-partition=0,1,2,3,4,5,6,7",
       "--http-address=0.0.0.0",
