@@ -497,7 +497,9 @@ func (aggregator *aggregator) getOrCreateSpan(
 	}
 
 	retryCountMetric := lazySpanRetryCountMetric(*lazySpanMetric)
-	defer func() { aggregator.LazySpanRetryCountMetric.With(&retryCountMetric).Histogram(retries) }() // take the value of lazySpanMetric later
+	defer func() {
+		aggregator.LazySpanRetryCountMetric.With(&retryCountMetric).Histogram(retries)
+	}() // take the value of lazySpanMetric later
 
 	logger = logger.
 		WithField("returnSpan", returnSpan != nil).

@@ -54,7 +54,7 @@ type api struct {
 	Logger        logrus.FieldLogger
 	Clock         clock.Clock
 	DiffCache     diffcache.Cache
-	ObjectCache   objectcache.ObjectCache
+	ObjectCache   *objectcache.ObjectCache
 	Server        http.Server
 	Clients       k8s.Clients
 	RequestMetric *metrics.Metric[*requestMetric]

@@ -59,10 +59,6 @@ type Provider struct {
 
 var _ k8sconfig.Config = &Provider{}
 
-func newProvider() *Provider {
-	return &Provider{}
-}
-
 func (*Provider) MuxImplName() (name string, isDefault bool) { return "mapoption", true }
 
 func (provider *Provider) Options() manager.Options { return &provider.options }

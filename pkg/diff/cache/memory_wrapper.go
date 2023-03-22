@@ -38,7 +38,6 @@ func newCacheWrapper(
 	options *CommonOptions,
 	delegate Cache,
 	clock clock.Clock,
-	metricsClient metrics.Client,
 ) *CacheWrapper {
 	return &CacheWrapper{
 		delegate:      delegate,

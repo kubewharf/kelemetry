@@ -155,7 +155,7 @@ func (mux *mux) Init(ctx context.Context) error {
 
 	mux.impl = mux.Impl().(Cache)
 	if mux.options.EnableCacheWrapper {
-		wrapper := newCacheWrapper(mux.options, mux.impl, mux.Clock, mux.Metrics)
+		wrapper := newCacheWrapper(mux.options, mux.impl, mux.Clock)
 		wrapper.initMetricsLoop(mux.Metrics)
 		mux.impl = wrapper
 	}

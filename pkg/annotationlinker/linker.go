@@ -50,7 +50,7 @@ type controller struct {
 	Linkers        linker.LinkerList
 	Clients        k8s.Clients
 	DiscoveryCache discovery.DiscoveryCache
-	ObjectCache    objectcache.ObjectCache
+	ObjectCache    *objectcache.ObjectCache
 	ctx            context.Context
 }
 

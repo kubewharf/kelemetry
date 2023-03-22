@@ -32,10 +32,6 @@ type noop struct {
 
 var _ metrics.Impl = &noop{}
 
-func newNoop() *noop {
-	return &noop{}
-}
-
 func (_ *noop) MuxImplName() (name string, isDefault bool) { return "noop", true }
 
 func (client *noop) Options() manager.Options {
