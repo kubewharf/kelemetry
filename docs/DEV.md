@@ -26,7 +26,7 @@ $ make
 
 ### Component manager
 
-Kelemetry uses a component-oriented design.
+The code architecture of Kelemetry uses component-oriented dependency injection.
 Dependency components are automatically enabled if any of its (transitive) dependents is enabled.
 
 ![](https://github.com/kubewharf/kelemetry/raw/gh-pages/depgraph.png)
@@ -36,32 +36,41 @@ All default packages are imported in [pkg/imports.go](pkg/imports.go).
 You can also build your custom binary by importing `github.com/kubewharf/kelemetry/pkg`
 along with your custom component packages
 and calling `"github.com/kubewharf/kelemetry/cmd".Run()`.
+See [main.go](main.go) for example.
 
-In particular, the blue components are interfaces that can be extended with "mux components".
+There are a few extension points for the Kelemetry builtin packages:
 
-#### Singleton component
+- The blue components in the dependency graph above.
+  They are "mux components" that can be substituted with new (esp. vendor-specific) implementations of the interface.
+- Associate related objects to group their traces together.
+  Use the `LinkerList` API.
+- Add extra information to audit spans.
+  Use the `DecoratorList` API.
+- Add new spans to objects.
+  Use the `Aggregator` API.
 
-A singleton component is a component that cannot be swiched to a different implementation.
-
-In the package that defines the singleton component,
+To register a component,
 create a `func init()` that registers the component:
 
 ```go
 func init() {
-  manager.Global.Provide("component-name", componentConstructor)
+  manager.Global.Provide("component-name", manager.Ptr[ExportedType](&actualType{}))
 }
 ```
 
 If the component package is not directly imported
 (e.g. because it is a direct user-facing component with no direct dependents),
-import it explicitly in `pkg/imports.go`.
+import it explicitly in `pkg/imports.go` (or in your own `main.go`)
+so that the package is compiled in the output.
 
-The return type of `componentConstructor` uniquely identifies this component.
-It can take any number of parameters whose type is the return type of
-another component constructor in a dependency package.
-The constructor should only initialize fields but not perform any actions.
+For each exported, uninitialized (zero) field in `&actualType{}`,
+the component manager will populate it as a dependency component or an util value.
+A dependency component is another component registered to the manager through `manager.Ptr[FieldType](...)`;
+different components depending on the same dependency share the same instance.
+An util value is a dynamically-constructed value registered through `manager.ProvideUtil` or implements `manager.GenericUtil`.
+Builtin util value types include `logrus.FieldLogger`, `clock.Clock` and `*metrics.Metric[T metrics.Tags]`.
 
-The returned value must implement the `manager.Component` interface,
+The `&actualType{}` value must implement the `manager.Component` interface,
 which provides the following methods:
 
 - `Options()` returns an options object that contains the component options.
@@ -102,7 +111,7 @@ The implementations are registered with a slightly different API:
 
 ```go
 func init() {
-  manager.Global.ProvideMuxImpl("interface-name/implementation-name", implementationConstructor, Interface.AnyMethod)
+  manager.Global.ProvideMuxImpl("interface-name/implementation-name", manager.Ptr(&implType{}), Interface.AnyMethod)
 }
 ```
 
@@ -121,11 +130,10 @@ and would be disabled if it is not selected in the options.
 ### Audit
 
 The `audit` package provides an audit webhook server and trace event provider based on audit webhook.
-It has the following subpackages:
+It has the following subpackages;
 
 - `webhook`: Runs the audit webhook HTTP server and broadcasts them to registered subscribers through an in-memory channel.
 - `producer`: Receives events from the webhook and sends them to the message queue, with only one message per event.
-- `rawproducer`: Receives events from the webhook and sends them to the message queue,
   but each message contains all events from an `EventList` sent by kube-apiserver in one request.
 - `consumer`: Consumes events from the message queue, transforming the audit events into the corresponding span(s).
 - `decorator`: Allows other components to decorate trace events before they are sent to the trace aggregator.
@@ -145,8 +153,8 @@ graph TD
         --> |for cloud-hosted clusters| cloud-mq[Host-dependent audit stream]
         ---> consumer
     consumer
-      --> decorator[Audit decorators]
-      --> tracer[Trace writer]
+        --> decorator[Audit decorators]
+        --> tracer[Trace writer]
 ```
 
 ### Cluster name
