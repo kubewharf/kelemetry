@@ -265,6 +265,7 @@ jaeger-cluster-names: [
   {{- end }}
 ]
 jaeger-redirect-server-enable: true
+trace-server-enable: true
 jaeger-storage-plugin-enable: true
 jaeger-storage-plugin-address: :17271
 {{- range $key, $value := (include "kelemetry.storage-options-raw" . | fromYaml) }}

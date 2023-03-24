@@ -59,7 +59,7 @@ spec:
           ports:
             - name: storage-grpc
               containerPort: 17271
-            - name: redirect
+            - name: extension
               containerPort: 8080
             {{- if .Values.frontend.storagePlugin.pprof }}
             - name: pprof
@@ -86,9 +86,9 @@ spec:
       {{- if .queryNodePort }}
       nodePort: {{toJson .queryNodePort}}
       {{- end }}
-    - name: redirect
+    - name: extension
       port: 8080
-      targetPort: redirect
+      targetPort: extension
       {{- if .redirectNodePort }}
       nodePort: {{toJson .redirectNodePort}}
       {{- end }}
