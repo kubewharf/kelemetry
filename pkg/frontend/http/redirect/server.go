@@ -17,6 +17,7 @@ package jaegerhttp
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -108,7 +109,7 @@ func (server *server) handleGet(ctx *gin.Context, metric *requestMetric) (code i
 
 	var hasCluster bool
 	for _, knownCluster := range server.ClusterList.List() {
-		if knownCluster == cluster {
+		if strings.EqualFold(strings.ToLower(knownCluster), strings.ToLower(cluster)) {
 			hasCluster = true
 		}
 	}

@@ -26,7 +26,14 @@ spec:
               service:
                 name: {{.Release.Name}}-query
                 port:
-                  name: redirect
+                  name: extension
+          - path: /extensions
+            pathType: Prefix
+            backend:
+              service:
+                name: {{.Release.Name}}-query
+                port:
+                  name: extension
           - path: /
             pathType: Prefix
             backend:
