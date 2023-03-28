@@ -16,8 +16,8 @@ package objectcache
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 	"time"
 
 	"github.com/coocood/freecache"
@@ -119,7 +119,10 @@ func (oc *objectCache) Get(ctx context.Context, object util.ObjectRef) (*unstruc
 
 	key := objectKey(object)
 	randomId := [5]byte{0, 0, 0, 0, 0}
-	_, _ = rand.Read(randomId[1:])
+	_, err := rand.Read(randomId[1:])
+	if err != nil {
+		return nil, fmt.Errorf("generate random initial value: %w", err)
+	}
 
 	for {
 		cached, _ := oc.cache.GetOrSet(key, randomId[:], int(oc.options.fetchTimeout.Seconds()))
