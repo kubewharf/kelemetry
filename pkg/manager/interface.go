@@ -35,7 +35,7 @@ type Component interface {
 	// Returns the options required for this component.
 	Options() Options
 	// Validates options. Initializes the component with a context. Registers inter-component connections.
-	Init(ctx context.Context) error
+	Init() error
 	// Starts the component with a stop channel for shutdown.
 	Start(ctx context.Context) error
 	// Stops the component. This method should not return until all required workers have joined.
@@ -45,7 +45,7 @@ type Component interface {
 type BaseComponent struct{}
 
 func (*BaseComponent) Options() Options                { return &NoOptions{} }
-func (*BaseComponent) Init(ctx context.Context) error  { return nil }
+func (*BaseComponent) Init() error  { return nil }
 func (*BaseComponent) Start(ctx context.Context) error { return nil }
 func (*BaseComponent) Close(ctx context.Context) error { return nil }
 
@@ -454,7 +454,7 @@ func (manager *Manager) Init(ctx context.Context, logger logrus.FieldLogger) err
 	for _, comp := range manager.orderedComponents {
 		logger.WithField("mod", comp.name).Info("Initializing")
 
-		if err := comp.component.Init(ctx); err != nil {
+		if err := comp.component.Init(); err != nil {
 			return fmt.Errorf("error initializing %q: %w", comp.name, err)
 		}
 	}

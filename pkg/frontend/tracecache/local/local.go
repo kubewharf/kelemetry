@@ -50,7 +50,7 @@ func (_ *localCache) MuxImplName() (name string, isDefault bool) { return "local
 
 func (cache *localCache) Options() manager.Options { return &manager.NoOptions{} }
 
-func (cache *localCache) Init(ctx context.Context) error { return nil }
+func (cache *localCache) Init() error { return nil }
 
 func (cache *localCache) Start(ctx context.Context) error { return nil }
 

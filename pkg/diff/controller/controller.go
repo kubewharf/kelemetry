@@ -141,7 +141,7 @@ func (ctrl *controller) Options() manager.Options {
 	return &ctrl.options
 }
 
-func (ctrl *controller) Init(ctx context.Context) (err error) {
+func (ctrl *controller) Init() (err error) {
 	ctrl.redactRegex, err = regexp.Compile(ctrl.options.redact)
 	if err != nil {
 		return fmt.Errorf("cannot compile --diff-controller-redact-pattern value: %w", err)

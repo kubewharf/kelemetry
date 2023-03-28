@@ -153,7 +153,7 @@ func (mux *Mux) Impl() MuxImpl {
 	return mux.whichValue
 }
 
-func (mux *Mux) Init(ctx context.Context) error {
+func (mux *Mux) Init() error {
 	var exists bool
 	mux.whichValue, exists = mux.choices[mux.which]
 	if !exists {

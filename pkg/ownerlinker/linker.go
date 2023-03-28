@@ -75,7 +75,7 @@ func (ctrl *Controller) Options() manager.Options {
 	return &ctrl.options
 }
 
-func (ctrl *Controller) Init(ctx context.Context) error {
+func (ctrl *Controller) Init() error {
 	ctrl.linkers.AddLinker(ctrl)
 
 	return nil

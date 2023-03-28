@@ -131,7 +131,7 @@ func (producer *producer) Options() manager.Options {
 	return &producer.options
 }
 
-func (producer *producer) Init(ctx context.Context) (err error) {
+func (producer *producer) Init() (err error) {
 	producer.produceMetric = producer.metrics.New("audit_producer_produce", &produceMetric{})
 	producer.subscriber = producer.webhook.AddSubscriber("audit-producer-subscriber")
 	producer.producer, err = producer.queue.CreateProducer()

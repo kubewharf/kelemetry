@@ -78,7 +78,7 @@ func newSpanReader(
 }
 
 func (reader *spanReader) Options() manager.Options        { return &reader.options }
-func (reader *spanReader) Init(ctx context.Context) error  { return nil }
+func (reader *spanReader) Init() error  { return nil }
 func (reader *spanReader) Start(ctx context.Context) error { return nil }
 func (reader *spanReader) Close(ctx context.Context) error { return nil }
 

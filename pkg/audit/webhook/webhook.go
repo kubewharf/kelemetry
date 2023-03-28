@@ -107,7 +107,7 @@ func (webhook *webhook) Options() manager.Options {
 	return &webhook.options
 }
 
-func (webhook *webhook) Init(ctx context.Context) error {
+func (webhook *webhook) Init() error {
 	webhook.requestMetric = webhook.metrics.New("audit_webhook_request", &requestMetric{})
 	webhook.sendRateMetric = webhook.metrics.New("audit_webhook_send_rate", &queueMetricTags{})
 

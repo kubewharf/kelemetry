@@ -52,7 +52,7 @@ func (p *DefaultProvider) MuxImplName() (name string, isDefault bool) { return "
 
 func (p *DefaultProvider) Options() manager.Options { return &manager.NoOptions{} }
 
-func (p *DefaultProvider) Init(ctx context.Context) error {
+func (p *DefaultProvider) Init() error {
 	p.registerDefaults()
 	return nil
 }

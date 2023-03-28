@@ -72,7 +72,7 @@ func (dumper *dumper) Options() manager.Options {
 	return &dumper.options
 }
 
-func (dumper *dumper) Init(ctx context.Context) (err error) {
+func (dumper *dumper) Init() (err error) {
 	dumper.stream, err = os.OpenFile(dumper.options.target, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
 	if err != nil {
 		return fmt.Errorf("cannot open file to dump audit events: %w", err)

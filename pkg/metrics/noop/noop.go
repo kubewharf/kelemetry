@@ -42,7 +42,7 @@ func (client *noop) Options() manager.Options {
 	return &manager.NoOptions{}
 }
 
-func (client *noop) Init(ctx context.Context) error { return nil }
+func (client *noop) Init() error { return nil }
 
 func (client *noop) Start(ctx context.Context) error { return nil }
 

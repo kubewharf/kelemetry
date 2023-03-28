@@ -134,7 +134,7 @@ func (decorator *decorator) Options() manager.Options {
 	return &decorator.options
 }
 
-func (decorator *decorator) Init(ctx context.Context) error {
+func (decorator *decorator) Init() error {
 	decorator.list.AddDecorator(decorator)
 	decorator.diffMetric = decorator.metrics.New("diff_decorator", &diffMetric{})
 	decorator.informerLatencyMetric = decorator.metrics.New("diff_informer_latency", &informerLatencyMetric{})

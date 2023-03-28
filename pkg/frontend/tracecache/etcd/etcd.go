@@ -73,7 +73,7 @@ func (_ *etcdCache) MuxImplName() (name string, isDefault bool) { return "etcd",
 
 func (cache *etcdCache) Options() manager.Options { return &cache.options }
 
-func (cache *etcdCache) Init(ctx context.Context) error {
+func (cache *etcdCache) Init() error {
 	if len(cache.options.endpoints) == 0 {
 		return fmt.Errorf("no etcd endpoints provided")
 	}
@@ -95,7 +95,7 @@ func (cache *etcdCache) Init(ctx context.Context) error {
 func (cache *etcdCache) Start(ctx context.Context) error { return nil }
 
 func (cache *etcdCache) Close(ctx context.Context) error {
-	if name, err := cache.deferList.Run(cache.logger); err != nil {
+	if name, err := cache.deferList.Run(ctx, cache.logger); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}
 

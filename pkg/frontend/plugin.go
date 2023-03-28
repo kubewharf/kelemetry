@@ -75,7 +75,7 @@ func (plugin *Plugin) Options() manager.Options {
 	return &plugin.options
 }
 
-func (plugin *Plugin) Init(ctx context.Context) error {
+func (plugin *Plugin) Init() error {
 	return nil
 }
 

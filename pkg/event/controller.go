@@ -165,7 +165,7 @@ func (ctrl *controller) Options() manager.Options {
 	return &ctrl.options
 }
 
-func (ctrl *controller) Init(ctx context.Context) (err error) {
+func (ctrl *controller) Init() (err error) {
 	ctrl.eventHandleMetric = ctrl.metrics.New("event_handle", &eventHandleMetric{})
 	ctrl.eventLatencyMetric = ctrl.metrics.New("event_latency", &eventLatencyMetric{})
 

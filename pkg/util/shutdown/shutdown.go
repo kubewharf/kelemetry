@@ -29,7 +29,7 @@ import (
 
 type DeferFunc struct {
 	name string
-	fn   func() error
+	fn   func(context.Context) error
 }
 
 type DeferList struct {
@@ -42,33 +42,36 @@ func NewDeferList() *DeferList {
 	return &DeferList{list: make([]DeferFunc, 0)}
 }
 
-func (list *DeferList) LockedDefer(name string, fn func() error) {
+func (list *DeferList) DeferContextWithLock(name string, fn func(ctx context.Context) error) {
+	list.mutex.Lock()
+	defer list.mutex.Unlock()
+	list.DeferContext(name, fn)
+}
+
+func (list *DeferList) DeferWithLock(name string, fn func() error) {
 	list.mutex.Lock()
 	defer list.mutex.Unlock()
 	list.Defer(name, fn)
 }
 
 func (list *DeferList) Defer(name string, fn func() error) {
+	list.DeferContext(name, func(ctx context.Context) error { return fn() })
+}
+
+func (list *DeferList) DeferContext(name string, fn func(context.Context) error) {
 	list.list = append(list.list, DeferFunc{name: name, fn: fn})
 }
 
-func (list *DeferList) DeferInfallible(name string, fn func()) {
-	list.list = append(list.list, DeferFunc{name: name, fn: func() error {
-		fn()
-		return nil
-	}})
-}
-
-func (list *DeferList) LockedRun(logger logrus.FieldLogger) (string, error) {
+func (list *DeferList) LockedRun(ctx context.Context, logger logrus.FieldLogger) (string, error) {
 	list.mutex.Lock()
 	defer list.mutex.Unlock()
-	return list.Run(logger)
+	return list.Run(ctx, logger)
 }
 
 // Run runs the defer list. Should be called from the Close function of components.
 // Returns a nonempty string containing the defer message and the error that occurred
 // upon error. Returns empty string and nil error upon success.
-func (list *DeferList) Run(logger logrus.FieldLogger) (string, error) {
+func (list *DeferList) Run(ctx context.Context, logger logrus.FieldLogger) (string, error) {
 	wasClosed := atomic.SwapInt32(&list.wasClosed, 1)
 	if wasClosed > 0 {
 		return "", nil
@@ -77,7 +80,7 @@ func (list *DeferList) Run(logger logrus.FieldLogger) (string, error) {
 	for i := len(list.list) - 1; i >= 0; i-- {
 		entry := &list.list[i]
 		logger.Infof("Shutdown: %s", entry.name)
-		if err := entry.fn(); err != nil {
+		if err := entry.fn(ctx); err != nil {
 			return entry.name, err
 		}
 	}
@@ -85,8 +88,8 @@ func (list *DeferList) Run(logger logrus.FieldLogger) (string, error) {
 	return "", nil
 }
 
-func (list *DeferList) RunWithChannel(logger logrus.FieldLogger, ch chan<- error) {
-	if name, err := list.Run(logger); err != nil {
+func (list *DeferList) RunWithChannel(ctx context.Context, logger logrus.FieldLogger, ch chan<- error) {
+	if name, err := list.Run(ctx, logger); err != nil {
 		ch <- fmt.Errorf("%s: %w", name, err)
 	} else {
 		ch <- nil

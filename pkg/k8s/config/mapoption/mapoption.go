@@ -67,7 +67,7 @@ func (*Provider) MuxImplName() (name string, isDefault bool) { return "mapoption
 
 func (provider *Provider) Options() manager.Options { return &provider.options }
 
-func (provider *Provider) Init(ctx context.Context) error {
+func (provider *Provider) Init() error {
 	names := map[string]struct{}{}
 	for name := range provider.options.master {
 		names[name] = struct{}{}

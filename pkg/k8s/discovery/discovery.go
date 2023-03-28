@@ -124,7 +124,7 @@ func NewDiscoveryCache(
 
 func (dc *discoveryCache) Options() manager.Options { return &dc.options }
 
-func (dc *discoveryCache) Init(ctx context.Context) error {
+func (dc *discoveryCache) Init() error {
 	dc.resyncMetric = dc.metrics.New("discovery_resync", &resyncMetric{})
 	return nil
 }

@@ -113,7 +113,7 @@ func (clients *clusterClients) Options() manager.Options {
 	return &clients.options
 }
 
-func (clients *clusterClients) Init(ctx context.Context) error {
+func (clients *clusterClients) Init() error {
 	klog.SetLogger(logWrapper(clients.logger))
 
 	var err error

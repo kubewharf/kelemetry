@@ -92,7 +92,7 @@ func (server *server) Options() manager.Options {
 	return &server.options
 }
 
-func (server *server) Init(ctx context.Context) error {
+func (server *server) Init() error {
 	server.requestMetric = server.metrics.New("redirect_request", &requestMetric{})
 
 	server.server.Routes().GET("/extensions/api/v1/trace", func(ctx *gin.Context) {

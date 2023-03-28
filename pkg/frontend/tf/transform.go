@@ -48,7 +48,7 @@ func newTransformer(configs tfconfig.Provider) *Transformer {
 }
 
 func (transformer *Transformer) Options() manager.Options        { return &transformer.options }
-func (transformer *Transformer) Init(ctx context.Context) error  { return nil }
+func (transformer *Transformer) Init() error  { return nil }
 func (transformer *Transformer) Start(ctx context.Context) error { return nil }
 func (transformer *Transformer) Close(ctx context.Context) error { return nil }
 

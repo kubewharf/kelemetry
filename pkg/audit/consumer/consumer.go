@@ -133,7 +133,7 @@ func (recv *receiver) Options() manager.Options {
 	return &recv.options
 }
 
-func (recv *receiver) Init(ctx context.Context) error {
+func (recv *receiver) Init() error {
 	recv.consumeMetric = recv.metrics.New("audit_consumer_event", &consumeMetric{})
 	recv.e2eLatencyMetric = recv.metrics.New("audit_consumer_e2e_latency", &e2eLatencyMetric{})
 

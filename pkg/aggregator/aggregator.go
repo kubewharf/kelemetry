@@ -175,7 +175,7 @@ func (aggregator *aggregator) Options() manager.Options {
 	return &aggregator.options
 }
 
-func (aggregator *aggregator) Init(ctx context.Context) error {
+func (aggregator *aggregator) Init() error {
 	if aggregator.options.spanFollowTtl > aggregator.options.spanTtl {
 		return fmt.Errorf("invalid option: --span-ttl must not be shorter than --span-follow-ttl")
 	}

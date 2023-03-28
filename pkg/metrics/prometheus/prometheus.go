@@ -80,7 +80,7 @@ func (_ *prom) MuxImplName() (name string, isDefault bool) { return "prom", fals
 
 func (prom *prom) Options() manager.Options { return &prom.options }
 
-func (prom *prom) Init(ctx context.Context) error {
+func (prom *prom) Init() error {
 	prom.registry = prometheus.NewRegistry()
 	prom.http = &http.Server{
 		Addr:              net.JoinHostPort(prom.options.address, fmt.Sprint(prom.options.port)),

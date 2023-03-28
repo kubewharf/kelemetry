@@ -75,11 +75,11 @@ type (
 	getMetric  struct{}
 )
 
-func (mux *mux) Init(ctx context.Context) error {
+func (mux *mux) Init() error {
 	mux.listMetric = mux.metrics.New("jaeger_backend_list", &listMetric{})
 	mux.getMetric = mux.metrics.New("jaeger_backend_get", &getMetric{})
 
-	return mux.Mux.Init(ctx)
+	return mux.Mux.Init()
 }
 
 func (mux *mux) List(ctx context.Context, query *spanstore.TraceQueryParameters) ([]*TraceThumbnail, error) {

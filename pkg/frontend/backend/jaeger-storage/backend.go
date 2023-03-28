@@ -121,7 +121,7 @@ func (backend *Backend) MuxImplName() (name string, isDefault bool) {
 
 func (backend *Backend) Options() manager.Options { return backend }
 
-func (backend *Backend) Init(ctx context.Context) error {
+func (backend *Backend) Init() error {
 	storageType := backend.viper.GetString("span-storage.type")
 	if len(storageType) == 0 {
 		return fmt.Errorf("option --jaeger-storage.span-storage.type or env JAEGER_STORAGE_SPAN_STORAGE_TYPE is required")

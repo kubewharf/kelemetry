@@ -136,8 +136,8 @@ type (
 	listMetric struct{}
 )
 
-func (mux *mux) Init(ctx context.Context) error {
-	if err := mux.Mux.Init(ctx); err != nil {
+func (mux *mux) Init() error {
+	if err := mux.Mux.Init(); err != nil {
 		return err
 	}
 

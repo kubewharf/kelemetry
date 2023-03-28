@@ -101,7 +101,7 @@ func NewObjectCache(
 
 func (oc *objectCache) Options() manager.Options { return &oc.options }
 
-func (oc *objectCache) Init(ctx context.Context) error {
+func (oc *objectCache) Init() error {
 	oc.cacheRequestMetric = oc.metrics.New("object_cache_request", &cacheRequestMetric{})
 	oc.cache = freecache.NewCache(oc.options.cacheSize)
 	oc.metrics.NewMonitor("object_cache_size", &cacheSizeMetric{}, func() int64 { return oc.cache.EntryCount() })

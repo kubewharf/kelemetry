@@ -88,7 +88,7 @@ func (comp *comp) Options() manager.Options {
 	return &comp.options
 }
 
-func (comp *comp) Init(ctx context.Context) error {
+func (comp *comp) Init() error {
 	comp.proxies = make([]*proxy, 0, len(comp.options.forwardUrls))
 	for upstreamName, url := range comp.options.forwardUrls {
 		proxy := newProxy(

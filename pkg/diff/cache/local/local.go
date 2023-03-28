@@ -63,7 +63,7 @@ func (_ *localCache) MuxImplName() (name string, isDefault bool) { return "local
 
 func (cache *localCache) Options() manager.Options { return &manager.NoOptions{} }
 
-func (lc *localCache) Init(ctx context.Context) error {
+func (lc *localCache) Init() error {
 	lc.snapshotCache = cache.NewTtlOnce(lc.GetCommonOptions().SnapshotTtl, lc.clock)
 	return nil
 }

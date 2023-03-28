@@ -86,7 +86,7 @@ func (server *server) Options() manager.Options {
 	return &server.options
 }
 
-func (server *server) Init(ctx context.Context) error {
+func (server *server) Init() error {
 	server.router = gin.New()
 
 	return nil

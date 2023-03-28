@@ -111,7 +111,7 @@ func (filter *filter) Options() manager.Options {
 	return &filter.options
 }
 
-func (filter *filter) Init(ctx context.Context) error {
+func (filter *filter) Init() error {
 	filter.excludeTypeHashTable = make(map[schema.GroupResource]struct{}, len(filter.options.excludedTypes))
 
 	for _, ty := range filter.options.excludedTypes {

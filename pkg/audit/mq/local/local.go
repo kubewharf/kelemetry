@@ -82,7 +82,7 @@ func (_ *localQueue) MuxImplName() (name string, isDefault bool) { return "local
 
 func (q *localQueue) Options() manager.Options { return &q.options }
 
-func (q *localQueue) Init(ctx context.Context) error {
+func (q *localQueue) Init() error {
 	return nil
 }
 

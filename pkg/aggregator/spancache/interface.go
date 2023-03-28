@@ -103,13 +103,13 @@ type (
 	setReservedMetric     struct{}
 )
 
-func (mux *mux) Init(ctx context.Context) error {
+func (mux *mux) Init() error {
 	mux.fetchOrReserveMetric = mux.metrics.New("spancache_fetch_or_reserve", &fetchOrReserveMetric{})
 	mux.fetchMetric = mux.metrics.New("spancache_fetch", &fetchMetric{})
 	mux.unsetAndReserveMetric = mux.metrics.New("spancache_unset_and_reserve", &unsetAndReserveMetric{})
 	mux.setReservedMetric = mux.metrics.New("spancache_set_reserved", &setReservedMetric{})
 
-	return mux.Mux.Init(ctx)
+	return mux.Mux.Init()
 }
 
 func (mux *mux) FetchOrReserve(ctx context.Context, key string, ttl time.Duration) (*Entry, error) {

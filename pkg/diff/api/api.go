@@ -92,7 +92,7 @@ func (api *api) Options() manager.Options {
 	return &api.options
 }
 
-func (api *api) Init(ctx context.Context) error {
+func (api *api) Init() error {
 	api.requestMetric = api.metrics.New("diff_api_request", &requestMetric{})
 	api.scanMetric = api.metrics.New("diff_api_scan", &scanMetric{})
 

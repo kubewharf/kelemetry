@@ -37,7 +37,7 @@ func (_ *AddressResolver) MuxImplName() (name string, isDefault bool) { return "
 
 func (resolver *AddressResolver) Options() manager.Options { return &manager.NoOptions{} }
 
-func (resolver *AddressResolver) Init(ctx context.Context) error { return nil }
+func (resolver *AddressResolver) Init() error { return nil }
 
 func (resolver *AddressResolver) Start(ctx context.Context) error { return nil }
 
