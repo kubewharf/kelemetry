@@ -102,7 +102,6 @@ type producer struct {
 	webhook       auditwebhook.Webhook
 	queue         mq.Queue
 	metrics       metrics.Client
-	ctx           context.Context
 	produceMetric metrics.Metric
 	subscriber    <-chan *audit.Message
 	producer      mq.Producer
@@ -133,7 +132,6 @@ func (producer *producer) Options() manager.Options {
 }
 
 func (producer *producer) Init(ctx context.Context) (err error) {
-	producer.ctx = ctx
 	producer.produceMetric = producer.metrics.New("audit_producer_produce", &produceMetric{})
 	producer.subscriber = producer.webhook.AddSubscriber("audit-producer-subscriber")
 	producer.producer, err = producer.queue.CreateProducer()
@@ -143,20 +141,20 @@ func (producer *producer) Init(ctx context.Context) (err error) {
 	return nil
 }
 
-func (producer *producer) Start(stopCh <-chan struct{}) error {
+func (producer *producer) Start(ctx context.Context) error {
 	for i := 0; i < producer.options.workerCount; i++ {
-		go producer.workerLoop(stopCh, i)
+		go producer.workerLoop(ctx, i)
 	}
 
 	return nil
 }
 
-func (producer *producer) workerLoop(stopCh <-chan struct{}, workerId int) {
+func (producer *producer) workerLoop(ctx context.Context, workerId int) {
 	defer shutdown.RecoverPanic(producer.logger)
 
 	for {
 		select {
-		case <-stopCh:
+		case <-ctx.Done():
 			return
 		case event, chanOpen := <-producer.subscriber:
 			if !chanOpen {
@@ -215,6 +213,6 @@ func (producer *producer) handleEvent(message *audit.Message) error {
 	return nil
 }
 
-func (producer *producer) Close() error {
+func (producer *producer) Close(ctx context.Context) error {
 	return nil
 }

@@ -79,7 +79,7 @@ func (plugin *Plugin) Init(ctx context.Context) error {
 	return nil
 }
 
-func (plugin *Plugin) Start(stopCh <-chan struct{}) error {
+func (plugin *Plugin) Start(ctx context.Context) error {
 	sharedPlugin := shared.StorageGRPCPlugin{
 		Impl: plugin,
 	}
@@ -106,7 +106,7 @@ func (plugin *Plugin) Start(stopCh <-chan struct{}) error {
 	return nil
 }
 
-func (plugin *Plugin) Close() error {
+func (plugin *Plugin) Close(ctx context.Context) error {
 	plugin.grpcServer.Stop()
 	return nil
 }

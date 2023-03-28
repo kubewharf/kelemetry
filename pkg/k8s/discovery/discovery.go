@@ -76,7 +76,10 @@ type discoveryCache struct {
 	clients k8s.Clients
 	metrics metrics.Client
 
-	stopCh       <-chan struct{}
+	// Discovery loops should run indefinitely but lazily.
+	// For now we do not consider the need for removing clusters.
+	ctx context.Context //nolint:containedctx
+
 	resyncMetric metrics.Metric
 
 	clusters sync.Map
@@ -126,12 +129,12 @@ func (dc *discoveryCache) Init(ctx context.Context) error {
 	return nil
 }
 
-func (dc *discoveryCache) Start(stopCh <-chan struct{}) error {
-	dc.stopCh = stopCh
+func (dc *discoveryCache) Start(ctx context.Context) error {
+	dc.ctx = ctx
 	return nil
 }
 
-func (dc *discoveryCache) Close() error { return nil }
+func (dc *discoveryCache) Close(ctx context.Context) error { return nil }
 
 func (dc *discoveryCache) ForCluster(cluster string) (ClusterDiscoveryCache, error) {
 	cacheAny, _ := dc.clusters.LoadOrStore(cluster, &clusterDiscoveryCache{})
@@ -151,12 +154,12 @@ func (dc *discoveryCache) ForCluster(cluster string) (ClusterDiscoveryCache, err
 		}
 
 		cdc.logger.Info("initialized cluster discovery cache")
-		go cdc.run(dc.stopCh)
+		go cdc.run(dc.ctx)
 	})
 	return cdc, cdc.initErr
 }
 
-func (cdc *clusterDiscoveryCache) run(stopCh <-chan struct{}) {
+func (cdc *clusterDiscoveryCache) run(ctx context.Context) {
 	defer shutdown.RecoverPanic(cdc.logger)
 
 	for {
@@ -165,7 +168,7 @@ func (cdc *clusterDiscoveryCache) run(stopCh <-chan struct{}) {
 		}
 
 		select {
-		case <-stopCh:
+		case <-ctx.Done():
 			return
 		case <-cdc.clock.After(cdc.options.resyncInterval):
 		case <-cdc.resyncRequestCh:

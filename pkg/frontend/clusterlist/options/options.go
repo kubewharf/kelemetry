@@ -54,8 +54,8 @@ func (lister *Lister) Options() manager.Options { return &lister.options }
 
 func (lister *Lister) Init(ctx context.Context) error { return nil }
 
-func (lister *Lister) Start(stopCh <-chan struct{}) error { return nil }
+func (lister *Lister) Start(ctx context.Context) error { return nil }
 
-func (lister *Lister) Close() error { return nil }
+func (lister *Lister) Close(ctx context.Context) error { return nil }
 
 func (lister *Lister) List() []string { return lister.options.clusters }

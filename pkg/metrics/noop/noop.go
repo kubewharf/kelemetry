@@ -44,9 +44,9 @@ func (client *noop) Options() manager.Options {
 
 func (client *noop) Init(ctx context.Context) error { return nil }
 
-func (client *noop) Start(stopCh <-chan struct{}) error { return nil }
+func (client *noop) Start(ctx context.Context) error { return nil }
 
-func (client *noop) Close() error { return nil }
+func (client *noop) Close(ctx context.Context) error { return nil }
 
 func (client *noop) New(name string, tagNames []string) metrics.MetricImpl {
 	return metric{}

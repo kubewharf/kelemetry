@@ -85,7 +85,6 @@ type decorator struct {
 	list    audit.DecoratorList
 	metrics metrics.Client
 
-	ctx                   context.Context
 	diffMetric            metrics.Metric
 	informerLatencyMetric metrics.Metric
 	retryCountMetric      metrics.Metric
@@ -136,7 +135,6 @@ func (decorator *decorator) Options() manager.Options {
 }
 
 func (decorator *decorator) Init(ctx context.Context) error {
-	decorator.ctx = ctx
 	decorator.list.AddDecorator(decorator)
 	decorator.diffMetric = decorator.metrics.New("diff_decorator", &diffMetric{})
 	decorator.informerLatencyMetric = decorator.metrics.New("diff_informer_latency", &informerLatencyMetric{})
@@ -144,15 +142,15 @@ func (decorator *decorator) Init(ctx context.Context) error {
 	return nil
 }
 
-func (decorator *decorator) Start(stopCh <-chan struct{}) error {
+func (decorator *decorator) Start(ctx context.Context) error {
 	return nil
 }
 
-func (decorator *decorator) Close() error {
+func (decorator *decorator) Close(ctx context.Context) error {
 	return nil
 }
 
-func (decorator *decorator) Decorate(message *audit.Message, event *aggregator.Event) {
+func (decorator *decorator) Decorate(ctx context.Context, message *audit.Message, event *aggregator.Event) {
 	logger := decorator.logger.
 		WithField("audit-id", message.AuditID).
 		WithField("title", event.Title).
@@ -170,7 +168,7 @@ func (decorator *decorator) Decorate(message *audit.Message, event *aggregator.E
 	}
 	defer decorator.diffMetric.DeferCount(decorator.clock.Now(), metric)
 
-	cacheHit, err := decorator.tryDecorate(logger, message, event)
+	cacheHit, err := decorator.tryDecorate(ctx, logger, message, event)
 	if err != nil {
 		event.Log(zconstants.LogTypeKelemetryError, err.Error())
 		metric.Error = err
@@ -195,6 +193,7 @@ const (
 )
 
 func (decorator *decorator) tryDecorate(
+	ctx context.Context,
 	logger logrus.FieldLogger,
 	message *audit.Message,
 	event *aggregator.Event,
@@ -278,7 +277,7 @@ func (decorator *decorator) tryDecorate(
 	}
 
 	// this context will interrupt the Fetch call
-	totalCtx, totalCancelFunc := context.WithTimeout(decorator.ctx, decorator.options.fetchTotalTimeout)
+	totalCtx, totalCancelFunc := context.WithTimeout(ctx, decorator.options.fetchTotalTimeout)
 	defer totalCancelFunc()
 
 	// this context only interrupts PollImmediateUntilWithContext

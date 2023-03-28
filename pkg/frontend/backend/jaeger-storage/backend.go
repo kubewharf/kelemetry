@@ -153,9 +153,9 @@ func (backend *Backend) Init(ctx context.Context) error {
 	return nil
 }
 
-func (backend *Backend) Start(stopCh <-chan struct{}) error { return nil }
+func (backend *Backend) Start(ctx context.Context) error { return nil }
 
-func (backend *Backend) Close() error { return nil }
+func (backend *Backend) Close(ctx context.Context) error { return nil }
 
 func (backend *Backend) List(
 	ctx context.Context,

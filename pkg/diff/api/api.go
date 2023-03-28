@@ -59,7 +59,6 @@ type api struct {
 	server      http.Server
 	clients     k8s.Clients
 
-	ctx           context.Context
 	requestMetric metrics.Metric
 	scanMetric    metrics.Metric
 }
@@ -94,7 +93,6 @@ func (api *api) Options() manager.Options {
 }
 
 func (api *api) Init(ctx context.Context) error {
-	api.ctx = ctx
 	api.requestMetric = api.metrics.New("diff_api_request", &requestMetric{})
 	api.scanMetric = api.metrics.New("diff_api_scan", &scanMetric{})
 
@@ -123,7 +121,7 @@ func (api *api) Init(ctx context.Context) error {
 	return nil
 }
 
-func (api *api) Start(stopCh <-chan struct{}) error { return nil }
+func (api *api) Start(ctx context.Context) error { return nil }
 
 func (api *api) handleGet(ctx *gin.Context) error {
 	group := ctx.Param("group")
@@ -217,4 +215,4 @@ func (api *api) handleScan(ctx *gin.Context) error {
 	return nil
 }
 
-func (api *api) Close() error { return nil }
+func (api *api) Close(ctx context.Context) error { return nil }

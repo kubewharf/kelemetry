@@ -68,24 +68,24 @@ func (lc *localCache) Init(ctx context.Context) error {
 	return nil
 }
 
-func (cache *localCache) Start(stopCh <-chan struct{}) error {
+func (cache *localCache) Start(ctx context.Context) error {
 	ttl := cache.GetAdditionalOptions().(*diffcache.CommonOptions).PatchTtl
 	if ttl > 0 {
-		go cache.runTrimLoop(ttl, time.Hour, stopCh)
+		go cache.runTrimLoop(ctx, ttl, time.Hour)
 	}
 
-	go cache.snapshotCache.RunCleanupLoop(stopCh, cache.logger)
+	go cache.snapshotCache.RunCleanupLoop(ctx, cache.logger)
 
 	return nil
 }
 
-func (cache *localCache) runTrimLoop(expiry time.Duration, interval time.Duration, stopCh <-chan struct{}) {
+func (cache *localCache) runTrimLoop(ctx context.Context, expiry time.Duration, interval time.Duration) {
 	logger := cache.logger.WithField("submod", "trimLoop")
 	defer shutdown.RecoverPanic(logger)
 
 	for {
 		select {
-		case <-stopCh:
+		case <-ctx.Done():
 			return
 		case <-cache.clock.After(interval):
 			cache.doTrim(expiry)
@@ -109,7 +109,7 @@ func (cache *localCache) doTrim(expiry time.Duration) {
 	}
 }
 
-func (cache *localCache) Close() error { return nil }
+func (cache *localCache) Close(ctx context.Context) error { return nil }
 
 func (cache *localCache) GetCommonOptions() *diffcache.CommonOptions {
 	return cache.GetAdditionalOptions().(*diffcache.CommonOptions)

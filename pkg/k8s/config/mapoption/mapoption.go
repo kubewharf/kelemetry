@@ -107,9 +107,9 @@ func (provider *Provider) Init(ctx context.Context) error {
 	return nil
 }
 
-func (provider *Provider) Start(stopCh <-chan struct{}) error { return nil }
+func (provider *Provider) Start(ctx context.Context) error { return nil }
 
-func (provider *Provider) Close() error { return nil }
+func (provider *Provider) Close(ctx context.Context) error { return nil }
 
 func (provider *Provider) ProvideTarget() *rest.Config { return provider.targetConfig }
 

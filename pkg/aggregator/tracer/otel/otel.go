@@ -65,7 +65,10 @@ type otelTracer struct {
 	logger    logrus.FieldLogger
 	deferList *shutdown.DeferList
 
-	ctx        context.Context
+	// Tracers are instantiated lazily.
+	// They persist as long as Start ctx does because they are module-based.
+	ctx context.Context //nolint:containedctx
+
 	exporter   *otlptrace.Exporter
 	tracers    sync.Map // equiv. map[string]*onceTracer
 	propagator propagation.TextMapPropagator
@@ -158,9 +161,9 @@ func (otel *otelTracer) createTracer(serviceName string) (oteltrace.Tracer, erro
 	return tp.Tracer(serviceName), nil
 }
 
-func (otel *otelTracer) Start(stopCh <-chan struct{}) error { return nil }
+func (otel *otelTracer) Start(ctx context.Context) error { return nil }
 
-func (otel *otelTracer) Close() error {
+func (otel *otelTracer) Close(ctx context.Context) error {
 	if name, err := otel.deferList.LockedRun(otel.logger); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}

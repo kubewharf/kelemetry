@@ -68,7 +68,6 @@ type webhook struct {
 	clusterNameResolver clustername.Resolver
 	server              http.Server
 
-	ctx            context.Context
 	requestMetric  metrics.Metric
 	sendRateMetric metrics.Metric
 	subscribers    []namedQueue[*audit.Message]
@@ -109,7 +108,6 @@ func (webhook *webhook) Options() manager.Options {
 }
 
 func (webhook *webhook) Init(ctx context.Context) error {
-	webhook.ctx = ctx
 	webhook.requestMetric = webhook.metrics.New("audit_webhook_request", &requestMetric{})
 	webhook.sendRateMetric = webhook.metrics.New("audit_webhook_send_rate", &queueMetricTags{})
 
@@ -180,9 +178,9 @@ func (webhook *webhook) handle(ctx *gin.Context, logger logrus.FieldLogger, metr
 	return nil
 }
 
-func (webhook *webhook) Start(stopCh <-chan struct{}) error { return nil }
+func (webhook *webhook) Start(ctx context.Context) error { return nil }
 
-func (webhook *webhook) Close() error {
+func (webhook *webhook) Close(ctx context.Context) error {
 	for _, subscriber := range webhook.subscribers {
 		subscriber.queue.Close()
 	}

@@ -92,7 +92,6 @@ type controller struct {
 	filter    filter.Filter
 	metrics   metrics.Client
 
-	ctx               context.Context
 	redactRegex       *regexp.Regexp
 	discoveryResyncCh <-chan struct{}
 	onUpdateMetric    metrics.Metric
@@ -143,8 +142,6 @@ func (ctrl *controller) Options() manager.Options {
 }
 
 func (ctrl *controller) Init(ctx context.Context) (err error) {
-	ctrl.ctx = ctx
-
 	ctrl.redactRegex, err = regexp.Compile(ctrl.options.redact)
 	if err != nil {
 		return fmt.Errorf("cannot compile --diff-controller-redact-pattern value: %w", err)
@@ -176,23 +173,23 @@ func (ctrl *controller) Init(ctx context.Context) (err error) {
 	return nil
 }
 
-func (ctrl *controller) Start(stopCh <-chan struct{}) error {
-	go ctrl.elector.Run(ctrl.resyncMonitorsLoop, stopCh)
-	go ctrl.elector.RunLeaderMetricLoop(stopCh)
+func (ctrl *controller) Start(ctx context.Context) error {
+	go ctrl.elector.Run(ctx, ctrl.resyncMonitorsLoop)
+	go ctrl.elector.RunLeaderMetricLoop(ctx)
 
 	for i := 0; i < ctrl.options.workerCount; i++ {
-		go runWorker(stopCh, ctrl.logger.WithField("worker", i), ctrl.taskPool)
+		go runWorker(ctx, ctrl.logger.WithField("worker", i), ctrl.taskPool)
 	}
 
 	return nil
 }
 
-func runWorker(stopCh <-chan struct{}, logger logrus.FieldLogger, taskPool *channel.UnboundedQueue[func()]) {
+func runWorker(ctx context.Context, logger logrus.FieldLogger, taskPool *channel.UnboundedQueue[func()]) {
 	defer shutdown.RecoverPanic(logger)
 
 	for {
 		select {
-		case <-stopCh:
+		case <-ctx.Done():
 			return
 		case task, ok := <-taskPool.Receiver():
 			if !ok {
@@ -204,9 +201,9 @@ func runWorker(stopCh <-chan struct{}, logger logrus.FieldLogger, taskPool *chan
 	}
 }
 
-func (ctrl *controller) Close() error { return nil }
+func (ctrl *controller) Close(ctx context.Context) error { return nil }
 
-func (ctrl *controller) resyncMonitorsLoop(stopCh <-chan struct{}) {
+func (ctrl *controller) resyncMonitorsLoop(ctx context.Context) {
 	logger := ctrl.logger.WithField("submod", "resync")
 
 	defer shutdown.RecoverPanic(logger)
@@ -215,7 +212,7 @@ func (ctrl *controller) resyncMonitorsLoop(stopCh <-chan struct{}) {
 		stopped := false
 
 		select {
-		case <-stopCh:
+		case <-ctx.Done():
 			stopped = true
 		case <-ctrl.discoveryResyncCh:
 		}
@@ -354,14 +351,14 @@ func (ctrl *controller) startMonitor(gvr schema.GroupVersionResource, apiResourc
 	logger := ctrl.logger.WithField("submod", "monitor").WithField("gvr", gvr)
 	logger.Debug("Starting")
 
-	stopCh := make(chan struct{})
+	ctx, cancelFunc := context.WithCancel(context.Background())
 
 	monitor := &monitor{
 		ctrl:        ctrl,
 		logger:      logger,
 		gvr:         gvr,
 		apiResource: apiResource,
-		stopCh:      stopCh,
+		cancelCtx:   cancelFunc,
 		onUpdateMetric: ctrl.onUpdateMetric.With(&onUpdateMetric{
 			ApiGroup: gvr.GroupVersion(),
 			Resource: gvr.Resource,
@@ -384,10 +381,10 @@ func (ctrl *controller) startMonitor(gvr schema.GroupVersionResource, apiResourc
 	// ctrl.taskPool.Send(func() { monitor.onCreateDelete(newObj, "creation") })
 	// }
 	store.OnUpdate = func(oldObj, newObj *unstructured.Unstructured) {
-		ctrl.taskPool.Send(func() { monitor.onUpdate(oldObj, newObj) })
+		ctrl.taskPool.Send(func() { monitor.onUpdate(ctx, oldObj, newObj) })
 	}
 	store.OnDelete = func(oldObj *unstructured.Unstructured) {
-		ctrl.taskPool.Send(func() { monitor.onNeedSnapshot(oldObj, diffcache.SnapshotNameDeletion) })
+		ctrl.taskPool.Send(func() { monitor.onNeedSnapshot(ctx, oldObj, diffcache.SnapshotNameDeletion) })
 	}
 
 	nsableReflectorClient := ctrl.clients.TargetCluster().DynamicClient().Resource(gvr)
@@ -400,10 +397,10 @@ func (ctrl *controller) startMonitor(gvr schema.GroupVersionResource, apiResourc
 
 	lw := &toolscache.ListWatch{
 		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-			return reflectorClient.List(ctrl.ctx, options)
+			return reflectorClient.List(ctx, options)
 		},
 		WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-			return reflectorClient.Watch(ctrl.ctx, options)
+			return reflectorClient.Watch(ctx, options)
 		},
 	}
 
@@ -421,7 +418,7 @@ func (ctrl *controller) startMonitor(gvr schema.GroupVersionResource, apiResourc
 
 	go func() {
 		defer shutdown.RecoverPanic(logger)
-		reflector.Run(stopCh)
+		reflector.Run(ctx.Done())
 	}()
 
 	return monitor
@@ -432,17 +429,20 @@ type monitor struct {
 	logger         logrus.FieldLogger
 	gvr            schema.GroupVersionResource
 	apiResource    *metav1.APIResource
-	stopCh         chan<- struct{}
+	cancelCtx      context.CancelFunc
 	onUpdateMetric metrics.TaggedMetric
 	onDeleteMetric metrics.TaggedMetric
 }
 
 func (monitor *monitor) close() {
 	monitor.logger.Info("Closing")
-	close(monitor.stopCh)
+	monitor.cancelCtx()
 }
 
-func (monitor *monitor) onUpdate(oldObj, newObj *unstructured.Unstructured) {
+func (monitor *monitor) onUpdate(
+	ctx context.Context,
+	oldObj, newObj *unstructured.Unstructured,
+) {
 	defer monitor.onUpdateMetric.DeferCount(monitor.ctrl.clock.Now())
 
 	if oldObj.GetResourceVersion() == newObj.GetResourceVersion() {
@@ -451,7 +451,7 @@ func (monitor *monitor) onUpdate(oldObj, newObj *unstructured.Unstructured) {
 	}
 
 	if oldDelTs, newDelTs := oldObj.GetDeletionTimestamp(), newObj.GetDeletionTimestamp(); oldDelTs.IsZero() && !newDelTs.IsZero() {
-		monitor.onNeedSnapshot(newObj, "deletion")
+		monitor.onNeedSnapshot(ctx, newObj, "deletion")
 	}
 
 	patch := &diffcache.Patch{
@@ -473,7 +473,7 @@ func (monitor *monitor) onUpdate(oldObj, newObj *unstructured.Unstructured) {
 		patch.DiffList = diffcmp.Compare(oldObj.Object, newObj.Object)
 	}
 
-	ctx, cancelFunc := context.WithTimeout(monitor.ctrl.ctx, monitor.ctrl.options.storeTimeout)
+	ctx, cancelFunc := context.WithTimeout(ctx, monitor.ctrl.options.storeTimeout)
 	defer cancelFunc()
 	monitor.ctrl.cache.Store(
 		ctx,
@@ -482,12 +482,16 @@ func (monitor *monitor) onUpdate(oldObj, newObj *unstructured.Unstructured) {
 	)
 }
 
-func (monitor *monitor) onNeedSnapshot(obj *unstructured.Unstructured, snapshotName string) {
+func (monitor *monitor) onNeedSnapshot(
+	ctx context.Context,
+	obj *unstructured.Unstructured,
+	snapshotName string,
+) {
 	defer monitor.onDeleteMetric.DeferCount(monitor.ctrl.clock.Now())
 
 	redacted := monitor.testRedacted(obj)
 
-	ctx, cancelFunc := context.WithTimeout(monitor.ctrl.ctx, monitor.ctrl.options.storeTimeout)
+	ctx, cancelFunc := context.WithTimeout(ctx, monitor.ctrl.options.storeTimeout)
 	defer cancelFunc()
 
 	objRaw, err := json.Marshal(obj)

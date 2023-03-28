@@ -60,6 +60,6 @@ func (server *pprofServer) Init(ctx context.Context) error {
 	return nil
 }
 
-func (server *pprofServer) Start(stopCh <-chan struct{}) error { return nil }
+func (server *pprofServer) Start(ctx context.Context) error { return nil }
 
-func (server *pprofServer) Close() error { return nil }
+func (server *pprofServer) Close(ctx context.Context) error { return nil }

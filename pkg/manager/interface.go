@@ -20,6 +20,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
@@ -36,17 +37,17 @@ type Component interface {
 	// Validates options. Initializes the component with a context. Registers inter-component connections.
 	Init(ctx context.Context) error
 	// Starts the component with a stop channel for shutdown.
-	Start(stopCh <-chan struct{}) error
+	Start(ctx context.Context) error
 	// Stops the component. This method should not return until all required workers have joined.
-	Close() error
+	Close(ctx context.Context) error
 }
 
 type BaseComponent struct{}
 
-func (*BaseComponent) Options() Options                   { return &NoOptions{} }
-func (*BaseComponent) Init(ctx context.Context) error     { return nil }
-func (*BaseComponent) Start(stopCh <-chan struct{}) error { return nil }
-func (*BaseComponent) Close() error                       { return nil }
+func (*BaseComponent) Options() Options                { return &NoOptions{} }
+func (*BaseComponent) Init(ctx context.Context) error  { return nil }
+func (*BaseComponent) Start(ctx context.Context) error { return nil }
+func (*BaseComponent) Close(ctx context.Context) error { return nil }
 
 // Options is an object that holds the flags.
 type Options interface {
@@ -85,6 +86,8 @@ type componentFactory struct {
 }
 
 type Manager struct {
+	shutdownTimeout time.Duration
+
 	utils map[reflect.Type]utilFactory
 
 	componentFactories map[reflect.Type]*componentFactory
@@ -345,6 +348,8 @@ func (manager *Manager) Dot() string {
 }
 
 func (manager *Manager) SetupFlags(fs *pflag.FlagSet) {
+	fs.DurationVar(&manager.shutdownTimeout, "shutdown-timeout", time.Second*15, "timeout for graceful shutdown after receiving SIGTERM")
+
 	for _, comp := range manager.components {
 		comp.component.Options().Setup(fs)
 	}
@@ -457,11 +462,11 @@ func (manager *Manager) Init(ctx context.Context, logger logrus.FieldLogger) err
 	return nil
 }
 
-func (manager *Manager) Start(logger logrus.FieldLogger, stopCh <-chan struct{}) error {
+func (manager *Manager) Start(logger logrus.FieldLogger, ctx context.Context) error {
 	for _, comp := range manager.orderedComponents {
 		logger.WithField("mod", comp.name).Info("Starting")
 
-		if err := comp.component.Start(stopCh); err != nil {
+		if err := comp.component.Start(ctx); err != nil {
 			return fmt.Errorf("error starting %q: %w", comp.name, err)
 		}
 	}
@@ -469,7 +474,10 @@ func (manager *Manager) Start(logger logrus.FieldLogger, stopCh <-chan struct{})
 	return nil
 }
 
-func (manager *Manager) Close(logger logrus.FieldLogger) error {
+func (manager *Manager) Close(ctx context.Context, logger logrus.FieldLogger) error {
+	ctx, cancelFunc := context.WithTimeout(ctx, manager.shutdownTimeout)
+	defer cancelFunc()
+
 	for offset := len(manager.orderedComponents) - 1; offset >= 0; offset-- {
 		comp := manager.orderedComponents[offset]
 		modLogger := logger.WithField("mod", comp.name)
@@ -479,10 +487,9 @@ func (manager *Manager) Close(logger logrus.FieldLogger) error {
 		okCh := make(chan struct{})
 		go func(okCh chan<- struct{}) {
 			defer close(okCh)
-
 			defer shutdown.RecoverPanic(modLogger)
 
-			if err := comp.component.Close(); err != nil {
+			if err := comp.component.Close(ctx); err != nil {
 				modLogger.WithError(err).Error("Error closing")
 			}
 		}(okCh)

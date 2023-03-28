@@ -155,7 +155,7 @@ func configureCallbacks(configs []*leaderelection.LeaderElectionConfig) <-chan e
 			// only the first event needs to get sent
 			// other goroutines should exit immediately to avoid leak
 			select {
-			case ch <- event{i: i, doneCh: ctx.Done()}:
+			case ch <- event{i: i, termCtx: ctx}:
 			default:
 			}
 		}
@@ -166,7 +166,7 @@ func configureCallbacks(configs []*leaderelection.LeaderElectionConfig) <-chan e
 	return ch
 }
 
-func (elector *Elector) Run(run func(doneCh <-chan struct{}), stopCh <-chan struct{}) {
+func (elector *Elector) Run(ctx context.Context, run func(ctx context.Context)) {
 	defer shutdown.RecoverPanic(elector.logger)
 
 	if !elector.enable {
@@ -178,7 +178,7 @@ func (elector *Elector) Run(run func(doneCh <-chan struct{}), stopCh <-chan stru
 				atomic.StoreUint32(&elector.isLeaderFlag[i], 1)
 				defer atomic.StoreUint32(&elector.isLeaderFlag[i], 0)
 				defer wg.Done()
-				run(stopCh)
+				run(ctx)
 			}(i)
 		}
 
@@ -188,13 +188,13 @@ func (elector *Elector) Run(run func(doneCh <-chan struct{}), stopCh <-chan stru
 	}
 
 	for {
-		if !elector.spinOnce(run, stopCh) {
+		if !elector.spinOnce(ctx, run) {
 			return
 		}
 	}
 }
 
-func (elector *Elector) RunLeaderMetricLoop(stopCh <-chan struct{}) {
+func (elector *Elector) RunLeaderMetricLoop(ctx context.Context) {
 	defer shutdown.RecoverPanic(elector.logger)
 
 	for {
@@ -207,7 +207,7 @@ func (elector *Elector) RunLeaderMetricLoop(stopCh <-chan struct{}) {
 					LeaderId:  leaderId,
 				}).Gauge(int64(flag))
 			}
-		case <-stopCh:
+		case <-ctx.Done():
 			for leaderId := range elector.isLeaderFlag {
 				elector.isLeaderMetric.With(&isLeaderMetric{
 					Component: elector.name,
@@ -219,17 +219,17 @@ func (elector *Elector) RunLeaderMetricLoop(stopCh <-chan struct{}) {
 	}
 }
 
-func (elector *Elector) spinOnce(run func(doneCh <-chan struct{}), stopCh <-chan struct{}) (shouldContinue bool) {
-	baseCtx, cancelFunc := context.WithCancel(context.Background())
+func (elector *Elector) spinOnce(ctx context.Context, run func(ctx context.Context)) (shouldContinue bool) {
+	baseCtx, cancelFunc := context.WithCancel(ctx)
 	defer cancelFunc()
 
-	leaderId, doneCh, err := elector.waitForLeader(baseCtx, stopCh)
+	leaderId, termCtx, err := elector.waitForLeader(baseCtx)
 	if err != nil {
 		elector.logger.WithError(err).Error("leader election error")
 		return true
 	}
 
-	if doneCh == nil {
+	if termCtx == nil {
 		return false
 	}
 
@@ -239,19 +239,19 @@ func (elector *Elector) spinOnce(run func(doneCh <-chan struct{}), stopCh <-chan
 		defer atomic.StoreUint32(&elector.isLeaderFlag[leaderId], 0)
 		defer cancelFunc() // if leader panics, release the lease
 
-		run(doneCh)
+		run(termCtx)
 	}()
 
 	select {
-	case <-doneCh:
+	case <-termCtx.Done():
 		elector.logger.Warn("lost leader lease")
 		return true
-	case <-stopCh:
+	case <-baseCtx.Done():
 		return false
 	}
 }
 
-func (elector *Elector) waitForLeader(baseCtx context.Context, stopCh <-chan struct{}) (leaderId int, doneCh <-chan struct{}, err error) {
+func (elector *Elector) waitForLeader(baseCtx context.Context) (leaderId int, termCtx context.Context, err error) {
 	configs, eventCh, err := elector.configCreator()
 	if err != nil {
 		return -1, nil, err
@@ -288,7 +288,7 @@ func (elector *Elector) waitForLeader(baseCtx context.Context, stopCh <-chan str
 
 	var event event
 	select {
-	case <-stopCh:
+	case <-baseCtx.Done():
 		return -1, nil, nil
 
 	case event = <-eventCh:
@@ -303,10 +303,12 @@ func (elector *Elector) waitForLeader(baseCtx context.Context, stopCh <-chan str
 
 	elector.logger.WithField("elector", event.i).Info("acquired leader lease")
 
-	return event.i, event.doneCh, nil
+	return event.i, event.termCtx, nil
 }
 
 type event struct {
-	i      int
-	doneCh <-chan struct{}
+	i int
+
+	// this is a value struct, so we are not leaking any contexts beyond function scope here.
+	termCtx context.Context //nolint:containedctx
 }

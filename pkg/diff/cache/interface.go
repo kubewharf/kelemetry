@@ -157,9 +157,9 @@ func (mux *mux) Init(ctx context.Context) error {
 	return nil
 }
 
-func (mux *mux) Start(stopCh <-chan struct{}) error {
+func (mux *mux) Start(ctx context.Context) error {
 	if wrapped, ok := mux.impl.(*CacheWrapper); ok {
-		go wrapped.patchCache.RunCleanupLoop(stopCh, mux.logger)
+		go wrapped.patchCache.RunCleanupLoop(ctx, mux.logger)
 	}
 
 	return nil

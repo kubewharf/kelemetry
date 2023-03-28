@@ -109,9 +109,9 @@ func (oc *objectCache) Init(ctx context.Context) error {
 	return nil
 }
 
-func (oc *objectCache) Start(stopCh <-chan struct{}) error { return nil }
+func (oc *objectCache) Start(ctx context.Context) error { return nil }
 
-func (oc *objectCache) Close() error { return nil }
+func (oc *objectCache) Close(ctx context.Context) error { return nil }
 
 func (oc *objectCache) Get(ctx context.Context, object util.ObjectRef) (*unstructured.Unstructured, error) {
 	metric := &cacheRequestMetric{Error: "Unknown"}

@@ -92,9 +92,9 @@ func (cache *etcdCache) Init(ctx context.Context) error {
 	return nil
 }
 
-func (cache *etcdCache) Start(stopCh <-chan struct{}) error { return nil }
+func (cache *etcdCache) Start(ctx context.Context) error { return nil }
 
-func (cache *etcdCache) Close() error {
+func (cache *etcdCache) Close(ctx context.Context) error {
 	if name, err := cache.deferList.Run(cache.logger); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}

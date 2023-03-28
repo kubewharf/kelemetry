@@ -163,10 +163,10 @@ func (mux *Mux) Init(ctx context.Context) error {
 	return nil
 }
 
-func (mux *Mux) Start(stopCh <-chan struct{}) error {
+func (mux *Mux) Start(ctx context.Context) error {
 	return nil
 }
 
-func (mux *Mux) Close() error {
+func (mux *Mux) Close(ctx context.Context) error {
 	return nil
 }

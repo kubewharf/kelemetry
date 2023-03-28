@@ -178,9 +178,9 @@ func getCollapseStep() tfconfig.Step {
 	}}
 }
 
-func (p *DefaultProvider) Start(stopCh <-chan struct{}) error { return nil }
+func (p *DefaultProvider) Start(ctx context.Context) error { return nil }
 
-func (p *DefaultProvider) Close() error { return nil }
+func (p *DefaultProvider) Close(ctx context.Context) error { return nil }
 
 func (p *DefaultProvider) Names() []string {
 	names := make([]string, 0, len(p.nameToConfigId))

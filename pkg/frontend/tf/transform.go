@@ -47,10 +47,10 @@ func newTransformer(configs tfconfig.Provider) *Transformer {
 	}
 }
 
-func (transformer *Transformer) Options() manager.Options           { return &transformer.options }
-func (transformer *Transformer) Init(ctx context.Context) error     { return nil }
-func (transformer *Transformer) Start(stopCh <-chan struct{}) error { return nil }
-func (transformer *Transformer) Close() error                       { return nil }
+func (transformer *Transformer) Options() manager.Options        { return &transformer.options }
+func (transformer *Transformer) Init(ctx context.Context) error  { return nil }
+func (transformer *Transformer) Start(ctx context.Context) error { return nil }
+func (transformer *Transformer) Close(ctx context.Context) error { return nil }
 
 func (transformer *Transformer) Transform(trace *model.Trace, rootSpan model.SpanID, configId tfconfig.Id) {
 	config := transformer.configs.GetById(configId)

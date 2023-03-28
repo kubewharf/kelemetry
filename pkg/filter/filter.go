@@ -151,12 +151,12 @@ func (filter *filter) Init(ctx context.Context) error {
 	return nil
 }
 
-func (filter *filter) Start(stopCh <-chan struct{}) error {
-	filter.configMapInformer.Start(stopCh)
+func (filter *filter) Start(ctx context.Context) error {
+	filter.configMapInformer.Start(ctx.Done())
 	return nil
 }
 
-func (filter *filter) Close() error { return nil }
+func (filter *filter) Close(ctx context.Context) error { return nil }
 
 func (filter *filter) setConfig(cm *corev1.ConfigMap) {
 	var c *config

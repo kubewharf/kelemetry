@@ -188,9 +188,9 @@ func (aggregator *aggregator) Init(ctx context.Context) error {
 	return nil
 }
 
-func (aggregator *aggregator) Start(stopCh <-chan struct{}) error { return nil }
+func (aggregator *aggregator) Start(ctx context.Context) error { return nil }
 
-func (aggregator *aggregator) Close() error { return nil }
+func (aggregator *aggregator) Close(ctx context.Context) error { return nil }
 
 func (aggregator *aggregator) Send(ctx context.Context, object util.ObjectRef, event *Event, subObjectId *SubObjectId) (err error) {
 	sendMetric := &sendMetric{Cluster: object.Cluster, TraceSource: event.TraceSource}

@@ -91,7 +91,7 @@ func (prom *prom) Init(ctx context.Context) error {
 	return nil
 }
 
-func (prom *prom) Start(stopCh <-chan struct{}) error {
+func (prom *prom) Start(ctx context.Context) error {
 	go func() {
 		if err := prom.http.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			prom.logger.WithError(err).Error()
@@ -101,7 +101,7 @@ func (prom *prom) Start(stopCh <-chan struct{}) error {
 	return nil
 }
 
-func (prom *prom) Close() error { return nil }
+func (prom *prom) Close(ctx context.Context) error { return nil }
 
 func (prom *prom) New(name string, tagNames []string) metrics.MetricImpl {
 	factory := promauto.With(prom.registry)

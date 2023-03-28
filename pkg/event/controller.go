@@ -114,7 +114,6 @@ type controller struct {
 	metrics        metrics.Client
 	discoveryCache discovery.DiscoveryCache
 
-	ctx                context.Context
 	eventHandleMetric  metrics.Metric
 	eventLatencyMetric metrics.Metric
 	elector            *multileader.Elector
@@ -167,8 +166,6 @@ func (ctrl *controller) Options() manager.Options {
 }
 
 func (ctrl *controller) Init(ctx context.Context) (err error) {
-	ctrl.ctx = ctx
-
 	ctrl.eventHandleMetric = ctrl.metrics.New("event_handle", &eventHandleMetric{})
 	ctrl.eventLatencyMetric = ctrl.metrics.New("event_latency", &eventLatencyMetric{})
 
@@ -191,25 +188,23 @@ func (ctrl *controller) Init(ctx context.Context) (err error) {
 	return nil
 }
 
-func (ctrl *controller) Start(stopCh <-chan struct{}) error {
-	go ctrl.elector.Run(ctrl.runLeader, stopCh)
-	go ctrl.elector.RunLeaderMetricLoop(stopCh)
+func (ctrl *controller) Start(ctx context.Context) error {
+	go ctrl.elector.Run(ctx, ctrl.runLeader)
+	go ctrl.elector.RunLeaderMetricLoop(ctx)
 
 	return nil
 }
 
-func (ctrl *controller) Close() error {
+func (ctrl *controller) Close(ctx context.Context) error {
 	ctrl.shutdownWg.Wait()
 	return nil
 }
 
-func (ctrl *controller) runLeader(stopCh <-chan struct{}) {
+func (ctrl *controller) runLeader(ctx context.Context) {
 	atomic.StoreUint32(&ctrl.isLeader, 1)
 	defer atomic.StoreUint32(&ctrl.isLeader, 0)
 
 	startReadyCh := make(chan struct{})
-
-	ctx := shutdown.ContextWithStopCh(ctrl.ctx, stopCh)
 
 	eventClient := ctrl.clients.TargetCluster().KubernetesClient().CoreV1().Events(metav1.NamespaceAll)
 	lw := toolscache.ListWatch{
@@ -240,24 +235,20 @@ func (ctrl *controller) runLeader(stopCh <-chan struct{}) {
 			for {
 				select {
 				case event := <-addCh:
-					ctrl.handleEvent(event)
+					ctrl.handleEvent(ctx, event)
 				case event := <-replaceCh:
-					ctrl.handleEvent(event)
-				case <-stopCh:
+					ctrl.handleEvent(ctx, event)
+				case <-ctx.Done():
 					return
 				}
 			}
 		}(workerId)
 	}
 
-	go func() {
-		<-stopCh
-	}()
-
-	ctrl.syncConfigMap(startReadyCh, stopCh)
+	ctrl.syncConfigMap(ctx, startReadyCh)
 }
 
-func (ctrl *controller) handleEvent(event *corev1.Event) {
+func (ctrl *controller) handleEvent(ctx context.Context, event *corev1.Event) {
 	isLeader := atomic.LoadUint32(&ctrl.isLeader)
 	if isLeader == 0 {
 		return
@@ -336,9 +327,6 @@ func (ctrl *controller) handleEvent(event *corev1.Event) {
 		Resource: gvr.Resource,
 	}).Histogram(ctrl.clock.Since(eventTime).Nanoseconds())
 
-	ctx, cancelFunc := context.WithCancel(ctrl.ctx)
-	defer cancelFunc()
-
 	if err := ctrl.aggregator.Send(ctx, util.ObjectRef{
 		Cluster:              clusterName,
 		GroupVersionResource: gvr,
@@ -354,7 +342,7 @@ func (ctrl *controller) handleEvent(event *corev1.Event) {
 	logger.Debug("Send")
 }
 
-func (ctrl *controller) syncConfigMap(startReadyCh chan<- struct{}, stopCh <-chan struct{}) {
+func (ctrl *controller) syncConfigMap(ctx context.Context, startReadyCh chan<- struct{}) {
 	logger := ctrl.logger.WithField("subcomponent", "syncConfigMap")
 
 	ctrl.shutdownWg.Add(1)
@@ -362,7 +350,7 @@ func (ctrl *controller) syncConfigMap(startReadyCh chan<- struct{}, stopCh <-cha
 
 	defer shutdown.RecoverPanic(logger)
 
-	ctx, cancelFunc := context.WithCancel(ctrl.ctx)
+	ctx, cancelFunc := context.WithCancel(ctx)
 	defer cancelFunc()
 
 	configMap, err := ctrl.configMapClient.Get(ctx, ctrl.options.configMapName, metav1.GetOptions{ResourceVersion: "0"})
@@ -396,7 +384,7 @@ func (ctrl *controller) syncConfigMap(startReadyCh chan<- struct{}, stopCh <-cha
 	close(startReadyCh) // worker queue can start running now
 
 	for {
-		changed, shutdown := ctrl.pollConfigLoop(stopCh, ctrl.options.configMapSyncInterval, configMap, ctrl.configMapUpdateCh)
+		changed, shutdown := ctrl.pollConfigLoop(ctx, ctrl.options.configMapSyncInterval, configMap, ctrl.configMapUpdateCh)
 
 		if shutdown {
 			break
@@ -429,7 +417,7 @@ func (ctrl *controller) syncConfigMap(startReadyCh chan<- struct{}, stopCh <-cha
 }
 
 func (ctrl *controller) pollConfigLoop(
-	stopCh <-chan struct{},
+	ctx context.Context,
 	interval time.Duration,
 	configMap *corev1.ConfigMap,
 	updateCh <-chan func(*corev1.ConfigMap),
@@ -439,7 +427,7 @@ func (ctrl *controller) pollConfigLoop(
 	for {
 		// stopCh and until have higher priority than updateCh
 		select {
-		case <-stopCh:
+		case <-ctx.Done():
 			shutdown = true
 			return
 		case <-until:
@@ -448,7 +436,7 @@ func (ctrl *controller) pollConfigLoop(
 		}
 
 		select {
-		case <-stopCh:
+		case <-ctx.Done():
 			shutdown = true
 			return
 		case <-until:

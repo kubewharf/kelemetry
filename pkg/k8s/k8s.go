@@ -85,7 +85,6 @@ type clusterClients struct {
 	logger  logrus.FieldLogger
 	config  k8sconfig.Config
 
-	ctx          context.Context
 	clientsLock  sync.RWMutex
 	clients      map[string]*client
 	targetClient Client
@@ -115,8 +114,6 @@ func (clients *clusterClients) Options() manager.Options {
 }
 
 func (clients *clusterClients) Init(ctx context.Context) error {
-	clients.ctx = ctx
-
 	klog.SetLogger(logWrapper(clients.logger))
 
 	var err error
@@ -128,13 +125,13 @@ func (clients *clusterClients) Init(ctx context.Context) error {
 	return nil
 }
 
-func (clients *clusterClients) Start(stopCh <-chan struct{}) error {
+func (clients *clusterClients) Start(ctx context.Context) error {
 	clients.clientsLock.RLock()
 	defer clients.clientsLock.RUnlock()
 
 	for _, client := range clients.clients {
-		client.informerFactory.Start(stopCh)
-		client.informerFactory.WaitForCacheSync(stopCh)
+		client.informerFactory.Start(ctx.Done())
+		client.informerFactory.WaitForCacheSync(ctx.Done())
 	}
 
 	atomic.StoreInt32(&clients.started, 1)
@@ -142,7 +139,7 @@ func (clients *clusterClients) Start(stopCh <-chan struct{}) error {
 	return nil
 }
 
-func (clients *clusterClients) Close() error {
+func (clients *clusterClients) Close(ctx context.Context) error {
 	return nil
 }
 

@@ -87,14 +87,14 @@ func (cache *Local) Options() manager.Options { return &cache.options }
 
 func (cache *Local) Init(ctx context.Context) error { return nil }
 
-func (cache *Local) Start(stopCh <-chan struct{}) error {
+func (cache *Local) Start(ctx context.Context) error {
 	go func() {
 		defer shutdown.RecoverPanic(cache.logger)
 		for {
 			select {
 			case <-cache.clock.After(cache.options.trimFrequency):
 				cache.Trim()
-			case <-stopCh:
+			case <-ctx.Done():
 				return
 			}
 		}
@@ -102,7 +102,7 @@ func (cache *Local) Start(stopCh <-chan struct{}) error {
 	return nil
 }
 
-func (cache *Local) Close() error { return nil }
+func (cache *Local) Close(ctx context.Context) error { return nil }
 
 func (cache *Local) Trim() {
 	cache.entriesLock.Lock()
