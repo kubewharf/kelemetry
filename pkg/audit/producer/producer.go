@@ -32,7 +32,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("audit-producer", New)
+	manager.Global.Provide("audit-producer", manager.Ptr(&producer{}))
 }
 
 type options struct {
@@ -97,13 +97,13 @@ func (ty *partitionKeyType) Type() string { return "partitionKeyType" }
 
 type producer struct {
 	options       options
-	logger        logrus.FieldLogger
-	clock         clock.Clock
-	webhook       auditwebhook.Webhook
-	queue         mq.Queue
-	metrics       metrics.Client
+	Logger        logrus.FieldLogger
+	Clock         clock.Clock
+	Webhook       auditwebhook.Webhook
+	Queue         mq.Queue
+	Metrics       metrics.Client
 	ctx           context.Context
-	produceMetric metrics.Metric
+	ProduceMetric *metrics.Metric[*produceMetric]
 	subscriber    <-chan *audit.Message
 	producer      mq.Producer
 }
@@ -112,21 +112,7 @@ type produceMetric struct {
 	Cluster string
 }
 
-func New(
-	logger logrus.FieldLogger,
-	clock clock.Clock,
-	webhook auditwebhook.Webhook,
-	queue mq.Queue,
-	metrics metrics.Client,
-) *producer {
-	return &producer{
-		logger:  logger,
-		clock:   clock,
-		webhook: webhook,
-		queue:   queue,
-		metrics: metrics,
-	}
-}
+func (*produceMetric) MetricName() string { return "audit_producer_produce" }
 
 func (producer *producer) Options() manager.Options {
 	return &producer.options
@@ -134,9 +120,8 @@ func (producer *producer) Options() manager.Options {
 
 func (producer *producer) Init(ctx context.Context) (err error) {
 	producer.ctx = ctx
-	producer.produceMetric = producer.metrics.New("audit_producer_produce", &produceMetric{})
-	producer.subscriber = producer.webhook.AddSubscriber("audit-producer-subscriber")
-	producer.producer, err = producer.queue.CreateProducer()
+	producer.subscriber = producer.Webhook.AddSubscriber("audit-producer-subscriber")
+	producer.producer, err = producer.Queue.CreateProducer()
 	if err != nil {
 		return fmt.Errorf("cannot create mq producer for audit producer: %w", err)
 	}
@@ -152,7 +137,7 @@ func (producer *producer) Start(stopCh <-chan struct{}) error {
 }
 
 func (producer *producer) workerLoop(stopCh <-chan struct{}, workerId int) {
-	defer shutdown.RecoverPanic(producer.logger)
+	defer shutdown.RecoverPanic(producer.Logger)
 
 	for {
 		select {
@@ -163,7 +148,7 @@ func (producer *producer) workerLoop(stopCh <-chan struct{}, workerId int) {
 				return
 			}
 
-			logger := producer.logger.
+			logger := producer.Logger.
 				WithField("cluster", event.Cluster).
 				WithField("auditId", event.Event.AuditID).
 				WithField("workerId", workerId)
@@ -176,7 +161,7 @@ func (producer *producer) workerLoop(stopCh <-chan struct{}, workerId int) {
 }
 
 func (producer *producer) handleEvent(message *audit.Message) error {
-	defer producer.produceMetric.DeferCount(producer.clock.Now(), &produceMetric{
+	defer producer.ProduceMetric.DeferCount(producer.Clock.Now(), &produceMetric{
 		Cluster: message.Cluster,
 	})
 

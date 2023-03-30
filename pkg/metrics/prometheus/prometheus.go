@@ -35,7 +35,7 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideMuxImpl("metrics/prom", newProm, metrics.Client.New)
+	manager.Global.ProvideMuxImpl("metrics/prom", manager.Ptr(&prom{}), func(metrics.Client) {})
 }
 
 type options struct {
@@ -62,8 +62,8 @@ func (options *options) EnableFlag() *bool { return nil }
 
 type prom struct {
 	manager.MuxImplBase
-	logger  logrus.FieldLogger
-	clock   clock.Clock
+	Logger  logrus.FieldLogger
+	Clock   clock.Clock
 	options options
 
 	registry *prometheus.Registry
@@ -71,10 +71,6 @@ type prom struct {
 }
 
 var _ metrics.Impl = &prom{}
-
-func newProm(logger logrus.FieldLogger, clock clock.Clock) *prom {
-	return &prom{logger: logger, clock: clock}
-}
 
 func (_ *prom) MuxImplName() (name string, isDefault bool) { return "prom", false }
 
@@ -94,7 +90,7 @@ func (prom *prom) Init(ctx context.Context) error {
 func (prom *prom) Start(stopCh <-chan struct{}) error {
 	go func() {
 		if err := prom.http.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			prom.logger.WithError(err).Error()
+			prom.Logger.WithError(err).Error()
 		}
 	}()
 
@@ -106,7 +102,7 @@ func (prom *prom) Close() error { return nil }
 func (prom *prom) New(name string, tagNames []string) metrics.MetricImpl {
 	factory := promauto.With(prom.registry)
 
-	return &metric{factory: factory, clock: prom.clock, name: name, tagNames: tagNames}
+	return &metric{factory: factory, clock: prom.Clock, name: name, tagNames: tagNames}
 }
 
 type metric struct {

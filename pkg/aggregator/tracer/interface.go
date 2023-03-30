@@ -22,7 +22,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("tracer", newMux)
+	manager.Global.Provide("tracer", manager.Ptr(newMux()))
 }
 
 type Tracer interface {

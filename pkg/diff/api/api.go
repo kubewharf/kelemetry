@@ -36,7 +36,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("diff-api", NewApi)
+	manager.Global.Provide("diff-api", manager.Ptr(&api{}))
 }
 
 type apiOptions struct {
@@ -50,18 +50,17 @@ func (options *apiOptions) Setup(fs *pflag.FlagSet) {
 func (options *apiOptions) EnableFlag() *bool { return &options.enable }
 
 type api struct {
-	options     apiOptions
-	logger      logrus.FieldLogger
-	clock       clock.Clock
-	diffCache   diffcache.Cache
-	objectCache objectcache.ObjectCache
-	metrics     metrics.Client
-	server      http.Server
-	clients     k8s.Clients
+	options       apiOptions
+	Logger        logrus.FieldLogger
+	Clock         clock.Clock
+	DiffCache     diffcache.Cache
+	ObjectCache   *objectcache.ObjectCache
+	Server        http.Server
+	Clients       k8s.Clients
+	RequestMetric *metrics.Metric[*requestMetric]
+	ScanMetric    *metrics.Metric[*scanMetric]
 
-	ctx           context.Context
-	requestMetric metrics.Metric
-	scanMetric    metrics.Metric
+	ctx context.Context
 }
 
 type (
@@ -69,25 +68,8 @@ type (
 	scanMetric    struct{}
 )
 
-func NewApi(
-	logger logrus.FieldLogger,
-	clock clock.Clock,
-	diffCache diffcache.Cache,
-	objectCache objectcache.ObjectCache,
-	metrics metrics.Client,
-	server http.Server,
-	clients k8s.Clients,
-) *api {
-	return &api{
-		logger:      logger,
-		clock:       clock,
-		diffCache:   diffCache,
-		objectCache: objectCache,
-		metrics:     metrics,
-		server:      server,
-		clients:     clients,
-	}
-}
+func (*requestMetric) MetricName() string { return "diff_api_request" }
+func (*scanMetric) MetricName() string    { return "diff_api_scan" }
 
 func (api *api) Options() manager.Options {
 	return &api.options
@@ -95,25 +77,23 @@ func (api *api) Options() manager.Options {
 
 func (api *api) Init(ctx context.Context) error {
 	api.ctx = ctx
-	api.requestMetric = api.metrics.New("diff_api_request", &requestMetric{})
-	api.scanMetric = api.metrics.New("diff_api_scan", &scanMetric{})
 
-	api.server.Routes().GET("/diff/:group/:version/:resource/:namespace/:name/:rv", func(ctx *gin.Context) {
-		logger := api.logger.WithField("source", ctx.Request.RemoteAddr)
+	api.Server.Routes().GET("/diff/:group/:version/:resource/:namespace/:name/:rv", func(ctx *gin.Context) {
+		logger := api.Logger.WithField("source", ctx.Request.RemoteAddr)
 		defer shutdown.RecoverPanic(logger)
 		metric := &requestMetric{}
-		defer api.requestMetric.DeferCount(api.clock.Now(), metric)
+		defer api.RequestMetric.DeferCount(api.Clock.Now(), metric)
 
 		if err := api.handleGet(ctx); err != nil {
 			logger.WithError(err).Error()
 		}
 	})
 
-	api.server.Routes().GET("/diff/:group/:version/:resource/:namespace/:name", func(ctx *gin.Context) {
-		logger := api.logger.WithField("source", ctx.Request.RemoteAddr)
+	api.Server.Routes().GET("/diff/:group/:version/:resource/:namespace/:name", func(ctx *gin.Context) {
+		logger := api.Logger.WithField("source", ctx.Request.RemoteAddr)
 		defer shutdown.RecoverPanic(logger)
 		metric := &scanMetric{}
-		defer api.scanMetric.DeferCount(api.clock.Now(), metric)
+		defer api.ScanMetric.DeferCount(api.Clock.Now(), metric)
 
 		if err := api.handleScan(ctx); err != nil {
 			logger.WithError(err).Error()
@@ -133,7 +113,7 @@ func (api *api) handleGet(ctx *gin.Context) error {
 	name := ctx.Param("name")
 	rv := ctx.Param("rv")
 
-	raw, err := api.objectCache.Get(ctx, util.ObjectRef{
+	raw, err := api.ObjectCache.Get(ctx, util.ObjectRef{
 		GroupVersionResource: schema.GroupVersionResource{
 			Group:    group,
 			Version:  version,
@@ -149,7 +129,7 @@ func (api *api) handleGet(ctx *gin.Context) error {
 		return ctx.AbortWithError(404, fmt.Errorf("object does not exist"))
 	}
 
-	object := util.ObjectRefFromUnstructured(raw, api.clients.TargetCluster().ClusterName(), schema.GroupVersionResource{
+	object := util.ObjectRefFromUnstructured(raw, api.Clients.TargetCluster().ClusterName(), schema.GroupVersionResource{
 		Group:    group,
 		Version:  version,
 		Resource: resource,
@@ -157,13 +137,13 @@ func (api *api) handleGet(ctx *gin.Context) error {
 
 	var oldRv string
 	var newRv *string
-	if api.diffCache.GetCommonOptions().UseOldResourceVersion {
+	if api.DiffCache.GetCommonOptions().UseOldResourceVersion {
 		oldRv = rv
 	} else {
 		newRv = &rv
 	}
 
-	patch, err := api.diffCache.Fetch(ctx, object, oldRv, newRv)
+	patch, err := api.DiffCache.Fetch(ctx, object, oldRv, newRv)
 	if err != nil || patch == nil {
 		return ctx.AbortWithError(404, fmt.Errorf("patch not found for rv: %w", err))
 	}
@@ -186,7 +166,7 @@ func (api *api) handleScan(ctx *gin.Context) error {
 		limit = parsedLimit
 	}
 
-	raw, err := api.objectCache.Get(ctx, util.ObjectRef{
+	raw, err := api.ObjectCache.Get(ctx, util.ObjectRef{
 		GroupVersionResource: schema.GroupVersionResource{
 			Group:    group,
 			Version:  version,
@@ -202,12 +182,12 @@ func (api *api) handleScan(ctx *gin.Context) error {
 		return ctx.AbortWithError(404, fmt.Errorf("object does not exist"))
 	}
 
-	object := util.ObjectRefFromUnstructured(raw, api.clients.TargetCluster().ClusterName(), schema.GroupVersionResource{
+	object := util.ObjectRefFromUnstructured(raw, api.Clients.TargetCluster().ClusterName(), schema.GroupVersionResource{
 		Group:    group,
 		Version:  version,
 		Resource: resource,
 	})
-	list, err := api.diffCache.List(ctx, object, limit)
+	list, err := api.DiffCache.List(ctx, object, limit)
 	if err != nil {
 		return err
 	}

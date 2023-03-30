@@ -32,7 +32,9 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideMuxImpl("mq/local", newLocal, mq.Queue.CreateProducer)
+	manager.Global.ProvideMuxImpl("mq/local", manager.Ptr(&localQueue{
+		consumers: map[mq.ConsumerGroup]map[mq.PartitionId]*localConsumer{},
+	}), mq.Queue.CreateProducer)
 }
 
 type localOptions struct {
@@ -54,10 +56,10 @@ type localQueue struct {
 	manager.MuxImplBase
 
 	options localOptions
-	logger  logrus.FieldLogger
-	metrics metrics.Client
-	ctx     context.Context
+	Logger  logrus.FieldLogger
+	Metrics metrics.Client
 
+	ctx           context.Context
 	producer      *localProducer
 	consumers     map[mq.ConsumerGroup]map[mq.PartitionId]*localConsumer
 	numPartitions int32
@@ -68,16 +70,7 @@ type lagMetric struct {
 	Partition     mq.PartitionId
 }
 
-func newLocal(
-	logger logrus.FieldLogger,
-	metrics metrics.Client,
-) *localQueue {
-	return &localQueue{
-		logger:    logger,
-		metrics:   metrics,
-		consumers: map[mq.ConsumerGroup]map[mq.PartitionId]*localConsumer{},
-	}
-}
+func (*lagMetric) MetricName() string { return "audit_mq_local_lag" }
 
 func (_ *localQueue) MuxImplName() (name string, isDefault bool) { return "local", true }
 
@@ -132,7 +125,7 @@ type localProducer struct {
 
 func (q *localQueue) newLocalProducer() *localProducer {
 	return &localProducer{
-		logger: q.logger.WithField("submod", "producer"),
+		logger: q.Logger.WithField("submod", "producer"),
 		queue:  q,
 	}
 }
@@ -174,7 +167,7 @@ func (q *localQueue) CreateConsumer(group mq.ConsumerGroup, partition mq.Partiti
 	}
 
 	consumer := q.newConsumer(group, partition, handler)
-	q.metrics.NewMonitor("audit_mq_local_lag", &lagMetric{
+	metrics.NewMonitor(q.Metrics, &lagMetric{
 		ConsumerGroup: group,
 		Partition:     partition,
 	}, func() int64 { return int64(consumer.uq.Length()) })
@@ -190,7 +183,7 @@ type localConsumer struct {
 
 func (q *localQueue) newConsumer(group mq.ConsumerGroup, partition mq.PartitionId, handler mq.MessageHandler) *localConsumer {
 	return &localConsumer{
-		logger:  q.logger.WithField("submod", "consumer").WithField("group", string(group)).WithField("partition", int32(partition)),
+		logger:  q.Logger.WithField("submod", "consumer").WithField("group", string(group)).WithField("partition", int32(partition)),
 		handler: handler,
 		uq:      channel.NewUnboundedQueue[localMessage](64),
 	}

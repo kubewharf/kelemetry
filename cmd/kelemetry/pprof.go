@@ -27,9 +27,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("pprof", func(logger logrus.FieldLogger) *pprofServer {
-		return &pprofServer{logger: logger}
-	})
+	manager.Global.Provide("pprof", manager.Ptr(&pprofServer{}))
 }
 
 type pprofOptions struct {
@@ -46,15 +44,15 @@ func (options *pprofOptions) EnableFlag() *bool { return &options.enable }
 
 type pprofServer struct {
 	options pprofOptions
-	logger  logrus.FieldLogger
+	Logger  logrus.FieldLogger
 }
 
 func (server *pprofServer) Options() manager.Options { return &server.options }
 
 func (server *pprofServer) Init(ctx context.Context) error {
 	go func() {
-		defer shutdown.RecoverPanic(server.logger)
-		server.logger.Error(http.ListenAndServe(server.options.addr, nil))
+		defer shutdown.RecoverPanic(server.Logger)
+		server.Logger.Error(http.ListenAndServe(server.options.addr, nil))
 	}()
 
 	return nil

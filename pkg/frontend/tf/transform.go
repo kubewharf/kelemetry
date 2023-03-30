@@ -26,7 +26,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("jaeger-transform", newTransformer)
+	manager.Global.Provide("jaeger-transform", manager.Ptr(&Transformer{}))
 }
 
 type TransformerOptions struct{}
@@ -38,13 +38,7 @@ func (options *TransformerOptions) EnableFlag() *bool { return nil }
 
 type Transformer struct {
 	options TransformerOptions
-	configs tfconfig.Provider
-}
-
-func newTransformer(configs tfconfig.Provider) *Transformer {
-	return &Transformer{
-		configs: configs,
-	}
+	Configs tfconfig.Provider
 }
 
 func (transformer *Transformer) Options() manager.Options           { return &transformer.options }
@@ -53,9 +47,9 @@ func (transformer *Transformer) Start(stopCh <-chan struct{}) error { return nil
 func (transformer *Transformer) Close() error                       { return nil }
 
 func (transformer *Transformer) Transform(trace *model.Trace, rootSpan model.SpanID, configId tfconfig.Id) {
-	config := transformer.configs.GetById(configId)
+	config := transformer.Configs.GetById(configId)
 	if config == nil {
-		config = transformer.configs.GetById(transformer.configs.DefaultId())
+		config = transformer.Configs.GetById(transformer.Configs.DefaultId())
 	}
 
 	tree := tftree.NewSpanTree(trace)

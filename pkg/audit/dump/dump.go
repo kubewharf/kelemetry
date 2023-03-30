@@ -31,7 +31,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("audit-dump", New)
+	manager.Global.Provide("audit-dump", manager.Ptr(&dumper{}))
 }
 
 type options struct {
@@ -49,23 +49,13 @@ func (options *options) EnableFlag() *bool {
 
 type dumper struct {
 	options options
-	logger  logrus.FieldLogger
-	webhook auditwebhook.Webhook
+	Logger  logrus.FieldLogger
+	Webhook auditwebhook.Webhook
 	stream  interface {
 		io.WriteCloser
 		Sync() error
 	}
 	recvCh <-chan *audit.Message
-}
-
-func New(
-	logger logrus.FieldLogger,
-	webhook auditwebhook.Webhook,
-) *dumper {
-	return &dumper{
-		logger:  logger,
-		webhook: webhook,
-	}
 }
 
 func (dumper *dumper) Options() manager.Options {
@@ -78,14 +68,14 @@ func (dumper *dumper) Init(ctx context.Context) (err error) {
 		return fmt.Errorf("cannot open file to dump audit events: %w", err)
 	}
 
-	dumper.recvCh = dumper.webhook.AddSubscriber("audit-dump-subscriber")
+	dumper.recvCh = dumper.Webhook.AddSubscriber("audit-dump-subscriber")
 
 	return nil
 }
 
 func (dumper *dumper) Start(stopCh <-chan struct{}) error {
 	go func() {
-		defer shutdown.RecoverPanic(dumper.logger)
+		defer shutdown.RecoverPanic(dumper.Logger)
 
 		flushCh := chan struct{}(nil)
 
@@ -95,7 +85,7 @@ func (dumper *dumper) Start(stopCh <-chan struct{}) error {
 				return
 			case <-flushCh:
 				if err := dumper.stream.Sync(); err != nil {
-					dumper.logger.WithError(err).Error("Cannot flush file")
+					dumper.Logger.WithError(err).Error("Cannot flush file")
 				}
 			case message, chOpen := <-dumper.recvCh:
 				if !chOpen {
@@ -103,7 +93,7 @@ func (dumper *dumper) Start(stopCh <-chan struct{}) error {
 				}
 
 				if err := dumper.handleEvent(message); err != nil {
-					dumper.logger.WithError(err).Error("Cannot append message")
+					dumper.Logger.WithError(err).Error("Cannot append message")
 				}
 			}
 		}

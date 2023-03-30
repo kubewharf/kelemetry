@@ -27,7 +27,9 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("spancache", newMux)
+	manager.Global.Provide("spancache", manager.Ptr[Cache](&mux{
+		Mux: manager.NewMux("span-cache", false),
+	}))
 }
 
 // Uid identifies an entry reservation.
@@ -79,50 +81,41 @@ type Cache interface {
 
 type mux struct {
 	*manager.Mux
-	clock   clock.Clock
-	metrics metrics.Client
+	Clock clock.Clock
 
-	fetchOrReserveMetric, fetchMetric, unsetAndReserveMetric, setReservedMetric metrics.Metric
+	FetchOrReserveMetric  *metrics.Metric[*fetchOrReserveMetric]
+	FetchMetric           *metrics.Metric[*fetchMetric]
+	UnsetAndReserveMetric *metrics.Metric[*unsetAndReserveMetric]
+	SetReservedMetric     *metrics.Metric[*setReservedMetric]
 }
 
-func newMux(
-	clock clock.Clock,
-	metrics metrics.Client,
-) Cache {
-	return &mux{
-		Mux:     manager.NewMux("span-cache", false),
-		clock:   clock,
-		metrics: metrics,
-	}
-}
+type fetchOrReserveMetric struct{}
 
-type (
-	fetchOrReserveMetric  struct{}
-	fetchMetric           struct{}
-	unsetAndReserveMetric struct{}
-	setReservedMetric     struct{}
-)
+func (*fetchOrReserveMetric) MetricName() string { return "spancache_fetch_or_reserve" }
 
-func (mux *mux) Init(ctx context.Context) error {
-	mux.fetchOrReserveMetric = mux.metrics.New("spancache_fetch_or_reserve", &fetchOrReserveMetric{})
-	mux.fetchMetric = mux.metrics.New("spancache_fetch", &fetchMetric{})
-	mux.unsetAndReserveMetric = mux.metrics.New("spancache_unset_and_reserve", &unsetAndReserveMetric{})
-	mux.setReservedMetric = mux.metrics.New("spancache_set_reserved", &setReservedMetric{})
+type fetchMetric struct{}
 
-	return mux.Mux.Init(ctx)
-}
+func (*fetchMetric) MetricName() string { return "spancache_fetch" }
+
+type unsetAndReserveMetric struct{}
+
+func (*unsetAndReserveMetric) MetricName() string { return "spancache_unset_and_reserve" }
+
+type setReservedMetric struct{}
+
+func (*setReservedMetric) MetricName() string { return "spancache_set_reserved" }
 
 func (mux *mux) FetchOrReserve(ctx context.Context, key string, ttl time.Duration) (*Entry, error) {
-	defer mux.fetchOrReserveMetric.DeferCount(mux.clock.Now(), &fetchOrReserveMetric{})
+	defer mux.FetchOrReserveMetric.DeferCount(mux.Clock.Now(), &fetchOrReserveMetric{})
 	return mux.Impl().(Cache).FetchOrReserve(ctx, key, ttl)
 }
 
 func (mux *mux) Fetch(ctx context.Context, key string) (*Entry, error) {
-	defer mux.fetchMetric.DeferCount(mux.clock.Now(), &fetchMetric{})
+	defer mux.FetchMetric.DeferCount(mux.Clock.Now(), &fetchMetric{})
 	return mux.Impl().(Cache).Fetch(ctx, key)
 }
 
 func (mux *mux) SetReserved(ctx context.Context, key string, value []byte, lastUid Uid, ttl time.Duration) error {
-	defer mux.setReservedMetric.DeferCount(mux.clock.Now(), &setReservedMetric{})
+	defer mux.SetReservedMetric.DeferCount(mux.Clock.Now(), &setReservedMetric{})
 	return mux.Impl().(Cache).SetReserved(ctx, key, value, lastUid, ttl)
 }

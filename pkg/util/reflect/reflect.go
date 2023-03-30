@@ -12,26 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package clustername
+package reflectutil
 
-import (
-	"github.com/kubewharf/kelemetry/pkg/manager"
-)
+import "reflect"
 
-func init() {
-	manager.Global.Provide("cluster-name", manager.Ptr[Resolver](&mux{
-		Mux: manager.NewMux("cluster-name-resolver", false),
-	}))
+func TypeOf[T any]() reflect.Type {
+	array := [0]T{}
+	arrayTy := reflect.TypeOf(array)
+	return arrayTy.Elem()
 }
 
-type Resolver interface {
-	Resolve(ip string) string
-}
-
-type mux struct {
-	*manager.Mux
-}
-
-func (mux *mux) Resolve(ip string) string {
-	return mux.Impl().(Resolver).Resolve(ip)
-}
+func ZeroOf[T any]() (_ T) { return }

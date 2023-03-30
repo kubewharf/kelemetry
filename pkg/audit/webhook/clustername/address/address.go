@@ -22,15 +22,11 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideMuxImpl("cluster-name/address", NewAddressResolver, clustername.Resolver.Resolve)
+	manager.Global.ProvideMuxImpl("cluster-name/address", manager.Ptr(&AddressResolver{}), clustername.Resolver.Resolve)
 }
 
 type AddressResolver struct {
 	manager.MuxImplBase
-}
-
-func NewAddressResolver() *AddressResolver {
-	return &AddressResolver{}
 }
 
 func (_ *AddressResolver) MuxImplName() (name string, isDefault bool) { return "address", true }

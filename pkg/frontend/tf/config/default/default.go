@@ -25,7 +25,10 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideMuxImpl("jaeger-transform-config/default", newProvider, tfconfig.Provider.DefaultId)
+	manager.Global.ProvideMuxImpl("jaeger-transform-config/default", manager.Ptr(&DefaultProvider{
+		configs:        make(map[tfconfig.Id]*tfconfig.Config),
+		nameToConfigId: make(map[string]tfconfig.Id),
+	}), tfconfig.Provider.DefaultId)
 }
 
 type DefaultProvider struct {
@@ -40,13 +43,6 @@ var (
 	_ manager.Component = &DefaultProvider{}
 	_ tfconfig.Provider = &DefaultProvider{}
 )
-
-func newProvider() *DefaultProvider {
-	return &DefaultProvider{
-		configs:        make(map[tfconfig.Id]*tfconfig.Config),
-		nameToConfigId: make(map[string]tfconfig.Id),
-	}
-}
 
 func (p *DefaultProvider) MuxImplName() (name string, isDefault bool) { return "default", true }
 

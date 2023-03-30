@@ -36,7 +36,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("jaeger-redirect-server", NewRedirectServer)
+	manager.Global.Provide("jaeger-redirect-server", manager.Ptr(&server{}))
 }
 
 type options struct {
@@ -51,41 +51,22 @@ func (options *options) EnableFlag() *bool { return &options.enable }
 
 type server struct {
 	options          options
-	logger           logrus.FieldLogger
-	clock            clock.Clock
-	server           pkghttp.Server
-	metrics          metrics.Client
-	spanReader       jaegerreader.Interface
-	clusterList      clusterlist.Lister
-	transformConfigs tfconfig.Provider
+	Logger           logrus.FieldLogger
+	Clock            clock.Clock
+	Server           pkghttp.Server
+	SpanReader       jaegerreader.Interface
+	ClusterList      clusterlist.Lister
+	TransformConfigs tfconfig.Provider
 
 	ctx           context.Context
-	requestMetric metrics.Metric
+	RequestMetric *metrics.Metric[*requestMetric]
 }
 
 type requestMetric struct {
 	Error metrics.LabeledError
 }
 
-func NewRedirectServer(
-	logger logrus.FieldLogger,
-	clock clock.Clock,
-	httpServer pkghttp.Server,
-	metrics metrics.Client,
-	spanReader jaegerreader.Interface,
-	clusterList clusterlist.Lister,
-	transformConfigs tfconfig.Provider,
-) *server {
-	return &server{
-		logger:           logger,
-		clock:            clock,
-		server:           httpServer,
-		metrics:          metrics,
-		spanReader:       spanReader,
-		clusterList:      clusterList,
-		transformConfigs: transformConfigs,
-	}
-}
+func (*requestMetric) MetricName() string { return "redirect_request" }
 
 func (server *server) Options() manager.Options {
 	return &server.options
@@ -93,13 +74,12 @@ func (server *server) Options() manager.Options {
 
 func (server *server) Init(ctx context.Context) error {
 	server.ctx = ctx
-	server.requestMetric = server.metrics.New("redirect_request", &requestMetric{})
 
-	server.server.Routes().GET("/redirect", func(ctx *gin.Context) {
-		logger := server.logger.WithField("source", ctx.Request.RemoteAddr)
+	server.Server.Routes().GET("/redirect", func(ctx *gin.Context) {
+		logger := server.Logger.WithField("source", ctx.Request.RemoteAddr)
 		defer shutdown.RecoverPanic(logger)
 		metric := &requestMetric{}
-		defer server.requestMetric.DeferCount(server.clock.Now(), metric)
+		defer server.RequestMetric.DeferCount(server.Clock.Now(), metric)
 
 		logger.WithField("query", ctx.Request.URL.RawQuery).Infof("GET /redirect %v", ctx.Request.URL.Query())
 
@@ -128,7 +108,7 @@ func (server *server) handleGet(ctx *gin.Context, metric *requestMetric) (code i
 	}
 
 	var hasCluster bool
-	for _, knownCluster := range server.clusterList.List() {
+	for _, knownCluster := range server.ClusterList.List() {
 		if strings.EqualFold(strings.ToLower(knownCluster), strings.ToLower(cluster)) {
 			hasCluster = true
 		}
@@ -153,13 +133,13 @@ func (server *server) handleGet(ctx *gin.Context, metric *requestMetric) (code i
 	}
 
 	parameters := &spanstore.TraceQueryParameters{
-		ServiceName:   server.transformConfigs.DefaultName(),
+		ServiceName:   server.TransformConfigs.DefaultName(),
 		OperationName: cluster,
 		Tags:          tags,
 		StartTimeMin:  timestamp.Truncate(time.Minute * 30),
 		StartTimeMax:  timestamp.Truncate(time.Minute * 30).Add(time.Minute * 30),
 	}
-	traceIDs, err := server.spanReader.FindTraceIDs(context.Background(), parameters)
+	traceIDs, err := server.SpanReader.FindTraceIDs(context.Background(), parameters)
 	if err != nil {
 		metric.Error = metrics.MakeLabeledError("TraceError")
 		return 500, fmt.Errorf("failed to find trace ids %w", err)

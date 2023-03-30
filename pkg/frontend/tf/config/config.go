@@ -20,7 +20,9 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("jaeger-transform-config", newMux)
+	manager.Global.Provide("jaeger-transform-config", manager.Ptr[Provider](&mux{
+		Mux: manager.NewMux("jaeger-transform-config", false),
+	}))
 }
 
 type Provider interface {
@@ -51,12 +53,6 @@ type Step struct {
 
 type mux struct {
 	*manager.Mux
-}
-
-func newMux() Provider {
-	return &mux{
-		Mux: manager.NewMux("jaeger-transform-config", false),
-	}
 }
 
 func (mux *mux) Names() []string               { return mux.Impl().(Provider).Names() }

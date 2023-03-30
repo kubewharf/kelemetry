@@ -16,10 +16,8 @@ package main
 
 import (
 	"github.com/kubewharf/kelemetry/cmd/kelemetry"
-	_ "github.com/kubewharf/kelemetry/pkg"
+	_ "github.com/kubewharf/kelemetry/pkg" // include default packages
 )
-
-// include default packages
 
 func main() {
 	kelemetry.Main()

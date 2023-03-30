@@ -25,30 +25,99 @@ import (
 
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util/errors"
+	reflectutil "github.com/kubewharf/kelemetry/pkg/util/reflect"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
 )
 
 const MonitorPeriod = time.Second * 30
 
 func init() {
-	manager.Global.Provide("metrics", newMux)
+	manager.Global.Provide("metrics", manager.Ptr[Client](&mux{
+		Mux:        manager.NewMux("metrics", false),
+		metricPool: map[string]AnyMetric{},
+	}))
 }
 
 type Client interface {
-	New(name string, tagsType any) Metric
-	NewMonitor(name string, tags any, getter func() int64)
+	impl() *mux
 }
 
-type Metric struct {
-	impl    MetricImpl
-	tagType reflect.Type
+type Metric[T Tags] struct {
+	impl MetricImpl
 }
 
-func (metric Metric) getTagValues(tags any) []string {
-	tagsValue := reflect.ValueOf(tags).Elem()
-	if tagsValue.Type() != metric.tagType {
-		panic(fmt.Sprintf("metric tag type is inconsistent (%s != %s)", tagsValue.Type(), metric.tagType))
+func (*Metric[T]) ImplementsGenericUtilMarker() {}
+func (*Metric[T]) UtilReqs() []reflect.Type {
+	return []reflect.Type{
+		reflectutil.TypeOf[*manager.UtilContext](),
+		reflectutil.TypeOf[Client](),
 	}
+}
+
+func (gm *Metric[T]) Construct(values []reflect.Value) error {
+	ctx := values[0].Interface().(*manager.UtilContext)
+	mux := values[1].Interface().(Client).impl()
+
+	ctx.AddOnInit(func() error {
+		initGenericMetric(gm, mux)
+		return nil
+	})
+
+	return nil
+}
+
+func initGenericMetric[T Tags](gm *Metric[T], mux *mux) {
+	name := reflectutil.ZeroOf[T]().MetricName()
+	tagsTy := reflectutil.TypeOf[T]()
+	if tagsTy.Kind() == reflect.Pointer {
+		tagsTy = tagsTy.Elem()
+	}
+
+	if metric, exists := mux.metricPool[name]; exists {
+		if metric.MetricType() != tagsTy {
+			panic(fmt.Sprintf("cannot reuse metric name %q for types %v and %v", name, tagsTy, metric.MetricType()))
+		}
+
+		gm.impl = metric.MetricImpl()
+		return
+	}
+
+	tagNames := []string{}
+
+	for i := 0; i < tagsTy.NumField(); i++ {
+		field := tagsTy.Field(i)
+		tagName, exists := field.Tag.Lookup("metric")
+		if !exists {
+			tagName = field.Name
+			tagName = strings.ToLower(tagName[0:1]) + tagName[1:]
+		}
+		tagNames = append(tagNames, tagName)
+	}
+
+	gm.impl = mux.Impl().(Impl).New(name, tagNames)
+	mux.metricPool[name] = gm
+}
+
+func (*Metric[T]) MetricType() reflect.Type {
+	ty := reflectutil.TypeOf[T]()
+	if ty.Kind() == reflect.Pointer {
+		ty = ty.Elem()
+	}
+	return ty
+}
+func (gm *Metric[T]) MetricImpl() MetricImpl { return gm.impl }
+
+type AnyMetric interface {
+	MetricType() reflect.Type
+	MetricImpl() MetricImpl
+}
+
+type Tags interface {
+	MetricName() string
+}
+
+func (metric *Metric[T]) getTagValues(tags T) []string {
+	tagsValue := reflect.ValueOf(tags).Elem()
 
 	values := make([]string, tagsValue.NumField())
 	for i := 0; i < tagsValue.NumField(); i++ {
@@ -71,7 +140,11 @@ func (metric Metric) getTagValues(tags any) []string {
 	return values
 }
 
-func (metric Metric) With(tags any) TaggedMetric {
+func (metric *Metric[T]) With(tags T) TaggedMetric {
+	if metric.impl == nil {
+		panic(fmt.Sprintf("metric %q was not initialized", tags.MetricName()))
+	}
+
 	tagValues := metric.getTagValues(tags)
 	return TaggedMetric{
 		impl:      metric.impl,
@@ -79,7 +152,7 @@ func (metric Metric) With(tags any) TaggedMetric {
 	}
 }
 
-func (metric Metric) DeferCount(start time.Time, tags any) {
+func (metric *Metric[T]) DeferCount(start time.Time, tags T) {
 	tagged := metric.With(tags)
 	tagged.Count(1)
 	tagged.Defer(start)
@@ -113,49 +186,24 @@ func (metric TaggedMetric) DeferCount(start time.Time) {
 
 type mux struct {
 	*manager.Mux
-	logger     logrus.FieldLogger
+	Logger     logrus.FieldLogger
 	monitors   []func(stopCh <-chan struct{})
-	metricPool map[string]Metric
+	metricPool map[string]AnyMetric
 }
 
-func newMux(logger logrus.FieldLogger) Client {
-	return &mux{
-		Mux:        manager.NewMux("metrics", false),
-		logger:     logger,
-		metricPool: map[string]Metric{},
-	}
+func (mux *mux) impl() *mux { return mux }
+
+func New[T Tags](client Client) *Metric[T] {
+	gm := &Metric[T]{}
+	initGenericMetric(gm, client.impl())
+	return gm
 }
 
-func (mux *mux) New(name string, tagsType any) Metric {
-	if metric, exists := mux.metricPool[name]; exists {
-		return metric
-	}
-
-	tagNames := []string{}
-	ty := reflect.TypeOf(tagsType).Elem()
-	for i := 0; i < ty.NumField(); i++ {
-		field := ty.Field(i)
-		tagName, exists := field.Tag.Lookup("metric")
-		if !exists {
-			tagName = field.Name
-			tagName = strings.ToLower(tagName[0:1]) + tagName[1:]
-		}
-		tagNames = append(tagNames, tagName)
-	}
-
-	impl := mux.Impl().(Impl).New(name, tagNames)
-	metric := Metric{
-		impl:    impl,
-		tagType: ty,
-	}
-	mux.metricPool[name] = metric
-	return metric
-}
-
-func (mux *mux) NewMonitor(name string, tags any, getter func() int64) {
-	tagged := mux.New(name, tags).With(tags)
+func NewMonitor[T Tags](client Client, tags T, getter func() int64) {
+	mux := client.impl()
+	tagged := New[T](client).With(tags)
 	loop := func(stopCh <-chan struct{}) {
-		defer shutdown.RecoverPanic(mux.logger)
+		defer shutdown.RecoverPanic(mux.Logger)
 
 		wait.Until(func() {
 			value := getter()

@@ -32,7 +32,9 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideMuxImpl("spancache/local", NewLocal, spancache.Cache.Fetch)
+	manager.Global.ProvideMuxImpl("spancache/local", manager.Ptr(&Local{
+		entries: map[string]*localEntry{},
+	}), spancache.Cache.Fetch)
 }
 
 type options struct {
@@ -56,27 +58,16 @@ type Local struct {
 	manager.MuxImplBase
 	options options
 
-	logger      logrus.FieldLogger
-	clock       clock.Clock
+	Logger      logrus.FieldLogger
+	Clock       clock.Clock
 	entriesLock sync.Mutex
 	entries     map[string]*localEntry
 }
 
-func NewLocal(
-	logger logrus.FieldLogger,
-	clock clock.Clock,
-) *Local {
-	return &Local{
-		logger:  logger,
-		clock:   clock,
-		entries: map[string]*localEntry{},
-	}
-}
-
 func NewMockLocal(clock clock.Clock) spancache.Cache {
 	return &Local{
-		logger:  logrus.New(),
-		clock:   clock,
+		Logger:  logrus.New(),
+		Clock:   clock,
 		entries: map[string]*localEntry{},
 	}
 }
@@ -89,10 +80,10 @@ func (cache *Local) Init(ctx context.Context) error { return nil }
 
 func (cache *Local) Start(stopCh <-chan struct{}) error {
 	go func() {
-		defer shutdown.RecoverPanic(cache.logger)
+		defer shutdown.RecoverPanic(cache.Logger)
 		for {
 			select {
-			case <-cache.clock.After(cache.options.trimFrequency):
+			case <-cache.Clock.After(cache.options.trimFrequency):
 				cache.Trim()
 			case <-stopCh:
 				return
@@ -109,7 +100,7 @@ func (cache *Local) Trim() {
 	defer cache.entriesLock.Unlock()
 
 	for key, ent := range cache.entries {
-		if ent.expired(cache.clock) {
+		if ent.expired(cache.Clock) {
 			delete(cache.entries, key)
 		}
 	}
@@ -147,7 +138,7 @@ func (cache *Local) getOrInsertEntry(key string, expiry time.Time) (*localEntry,
 			return nil, false, err
 		}
 
-		cache.entries[key] = &localEntry{creation: cache.clock.Now(), expiry: expiry, uid: uid}
+		cache.entries[key] = &localEntry{creation: cache.Clock.Now(), expiry: expiry, uid: uid}
 		isNew = true
 	}
 
@@ -155,7 +146,7 @@ func (cache *Local) getOrInsertEntry(key string, expiry time.Time) (*localEntry,
 }
 
 func (cache *Local) FetchOrReserve(ctx context.Context, key string, ttl time.Duration) (*spancache.Entry, error) {
-	expiry := cache.clock.Now().Add(ttl)
+	expiry := cache.Clock.Now().Add(ttl)
 	ent, isInsert, err := cache.getOrInsertEntry(key, expiry)
 	if err != nil {
 		return nil, fmt.Errorf("create cache entry: %w", err)
@@ -173,7 +164,7 @@ func (cache *Local) FetchOrReserve(ctx context.Context, key string, ttl time.Dur
 	}
 
 	if !isInsert {
-		return nil, fmt.Errorf("%w for %s", spancache.ErrAlreadyReserved, cache.clock.Now().Sub(ent.creation))
+		return nil, fmt.Errorf("%w for %s", spancache.ErrAlreadyReserved, cache.Clock.Now().Sub(ent.creation))
 	}
 
 	return &spancache.Entry{
@@ -208,7 +199,7 @@ func (cache *Local) SetReserved(ctx context.Context, key string, value []byte, l
 	ent.lock.Lock()
 	defer ent.lock.Unlock()
 
-	if ent.value != nil || ent.expiry.Before(cache.clock.Now()) {
+	if ent.value != nil || ent.expiry.Before(cache.Clock.Now()) {
 		return spancache.ErrInvalidKey
 	}
 
@@ -221,7 +212,7 @@ func (cache *Local) SetReserved(ctx context.Context, key string, value []byte, l
 		return err
 	}
 
-	ent.expiry = cache.clock.Now().Add(ttl)
+	ent.expiry = cache.Clock.Now().Add(ttl)
 	ent.value = value
 	ent.uid = newUid // new version
 

@@ -51,7 +51,9 @@ const (
 )
 
 func init() {
-	manager.Global.Provide("event-informer", New)
+	manager.Global.Provide("event-informer", manager.Ptr(&controller{
+		configMapUpdateCh: make(chan func(*corev1.ConfigMap), 50),
+	}))
 }
 
 type options struct {
@@ -106,17 +108,17 @@ func (options *options) EnableFlag() *bool { return &options.enable }
 
 type controller struct {
 	options        options
-	logger         logrus.FieldLogger
-	clock          clock.Clock
-	aggregator     aggregator.Aggregator
-	clients        k8s.Clients
-	filter         filter.Filter
-	metrics        metrics.Client
-	discoveryCache discovery.DiscoveryCache
+	Logger         logrus.FieldLogger
+	Clock          clock.Clock
+	Aggregator     aggregator.Aggregator
+	Clients        k8s.Clients
+	Filter         filter.Filter
+	Metrics        metrics.Client
+	DiscoveryCache discovery.DiscoveryCache
 
 	ctx                context.Context
-	eventHandleMetric  metrics.Metric
-	eventLatencyMetric metrics.Metric
+	EventHandleMetric  *metrics.Metric[*eventHandleMetric]
+	EventLatencyMetric *metrics.Metric[*eventLatencyMetric]
 	elector            *multileader.Elector
 	isLeader           uint32
 	shutdownWg         sync.WaitGroup
@@ -127,27 +129,6 @@ type controller struct {
 
 var _ manager.Component = &controller{}
 
-func New(
-	logger logrus.FieldLogger,
-	clock clock.Clock,
-	aggregator aggregator.Aggregator,
-	clients k8s.Clients,
-	discoveryCache discovery.DiscoveryCache,
-	filter filter.Filter,
-	metrics metrics.Client,
-) *controller {
-	return &controller{
-		logger:            logger,
-		clock:             clock,
-		aggregator:        aggregator,
-		clients:           clients,
-		discoveryCache:    discoveryCache,
-		filter:            filter,
-		metrics:           metrics,
-		configMapUpdateCh: make(chan func(*corev1.ConfigMap), 50),
-	}
-}
-
 type eventHandleMetric struct {
 	Group         string
 	Version       string
@@ -156,11 +137,16 @@ type eventHandleMetric struct {
 	TimestampType string
 	Error         metrics.LabeledError
 }
+
+func (*eventHandleMetric) MetricName() string { return "event_handle" }
+
 type eventLatencyMetric struct {
 	Group    string
 	Version  string
 	Resource string
 }
+
+func (*eventLatencyMetric) MetricName() string { return "event_latency" }
 
 func (ctrl *controller) Options() manager.Options {
 	return &ctrl.options
@@ -169,18 +155,15 @@ func (ctrl *controller) Options() manager.Options {
 func (ctrl *controller) Init(ctx context.Context) (err error) {
 	ctrl.ctx = ctx
 
-	ctrl.eventHandleMetric = ctrl.metrics.New("event_handle", &eventHandleMetric{})
-	ctrl.eventLatencyMetric = ctrl.metrics.New("event_latency", &eventLatencyMetric{})
-
-	client := ctrl.clients.TargetCluster()
+	client := ctrl.Clients.TargetCluster()
 
 	ctrl.elector, err = multileader.NewElector(
 		"kelemetry-event-controller",
-		ctrl.logger.WithField("submod", "leader-elector"),
-		ctrl.clock,
+		ctrl.Logger.WithField("submod", "leader-elector"),
+		ctrl.Clock,
 		&ctrl.options.electorOptions,
 		client,
-		ctrl.metrics,
+		ctrl.Metrics,
 	)
 	if err != nil {
 		return fmt.Errorf("cannot create leader elector: %w", err)
@@ -211,7 +194,7 @@ func (ctrl *controller) runLeader(stopCh <-chan struct{}) {
 
 	ctx := shutdown.ContextWithStopCh(ctrl.ctx, stopCh)
 
-	eventClient := ctrl.clients.TargetCluster().KubernetesClient().CoreV1().Events(metav1.NamespaceAll)
+	eventClient := ctrl.Clients.TargetCluster().KubernetesClient().CoreV1().Events(metav1.NamespaceAll)
 	lw := toolscache.ListWatch{
 		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 			return eventClient.List(ctx, options)
@@ -227,13 +210,13 @@ func (ctrl *controller) runLeader(stopCh <-chan struct{}) {
 
 	reflector := toolscache.NewReflector(&lw, &corev1.Event{}, store, 0)
 	go func() {
-		defer shutdown.RecoverPanic(ctrl.logger)
+		defer shutdown.RecoverPanic(ctrl.Logger)
 		reflector.Run(ctx.Done())
 	}()
 
 	for workerId := 0; workerId < ctrl.options.workerCount; workerId++ {
 		go func(workerId int) {
-			defer shutdown.RecoverPanic(ctrl.logger.WithField("worker", workerId))
+			defer shutdown.RecoverPanic(ctrl.Logger.WithField("worker", workerId))
 
 			<-startReadyCh
 
@@ -268,9 +251,9 @@ func (ctrl *controller) handleEvent(event *corev1.Event) {
 		Version: event.InvolvedObject.GroupVersionKind().Version,
 		Kind:    event.InvolvedObject.Kind,
 	}
-	defer ctrl.eventHandleMetric.DeferCount(ctrl.clock.Now(), metric)
+	defer ctrl.EventHandleMetric.DeferCount(ctrl.Clock.Now(), metric)
 
-	logger := ctrl.logger.WithField("event", event.Name).WithField("subject", event.InvolvedObject)
+	logger := ctrl.Logger.WithField("event", event.Name).WithField("subject", event.InvolvedObject)
 
 	eventTime := event.EventTime.Time
 	metric.TimestampType = "EventTime"
@@ -290,7 +273,7 @@ func (ctrl *controller) handleEvent(event *corev1.Event) {
 		return
 	}
 
-	if ctrl.clock.Since(eventTime) > 5*time.Minute {
+	if ctrl.Clock.Since(eventTime) > 5*time.Minute {
 		metric.Error = metrics.MakeLabeledError("EventTooOld")
 		return
 	}
@@ -303,9 +286,9 @@ func (ctrl *controller) handleEvent(event *corev1.Event) {
 		}
 	}
 
-	clusterName := ctrl.clients.TargetCluster().ClusterName()
+	clusterName := ctrl.Clients.TargetCluster().ClusterName()
 
-	if !ctrl.filter.TestGvk(clusterName, event.InvolvedObject.GroupVersionKind()) {
+	if !ctrl.Filter.TestGvk(clusterName, event.InvolvedObject.GroupVersionKind()) {
 		metric.Error = metrics.MakeLabeledError("Filtered")
 		return
 	}
@@ -315,7 +298,7 @@ func (ctrl *controller) handleEvent(event *corev1.Event) {
 		WithTag("action", event.Action).
 		Log(zconstants.LogTypeEventMessage, event.Message)
 
-	cdc, err := ctrl.discoveryCache.ForCluster(clusterName)
+	cdc, err := ctrl.DiscoveryCache.ForCluster(clusterName)
 	if err != nil {
 		logger.WithError(err).Error("cannot init discovery cache for target cluster")
 		metric.Error = metrics.MakeLabeledError("invalid cluster")
@@ -330,16 +313,16 @@ func (ctrl *controller) handleEvent(event *corev1.Event) {
 
 	metric.Resource = gvr.Resource
 
-	ctrl.eventLatencyMetric.With(&eventLatencyMetric{
+	ctrl.EventLatencyMetric.With(&eventLatencyMetric{
 		Group:    gvr.Group,
 		Version:  gvr.Version,
 		Resource: gvr.Resource,
-	}).Histogram(ctrl.clock.Since(eventTime).Nanoseconds())
+	}).Histogram(ctrl.Clock.Since(eventTime).Nanoseconds())
 
 	ctx, cancelFunc := context.WithCancel(ctrl.ctx)
 	defer cancelFunc()
 
-	if err := ctrl.aggregator.Send(ctx, util.ObjectRef{
+	if err := ctrl.Aggregator.Send(ctx, util.ObjectRef{
 		Cluster:              clusterName,
 		GroupVersionResource: gvr,
 		Namespace:            event.InvolvedObject.Namespace,
@@ -355,7 +338,7 @@ func (ctrl *controller) handleEvent(event *corev1.Event) {
 }
 
 func (ctrl *controller) syncConfigMap(startReadyCh chan<- struct{}, stopCh <-chan struct{}) {
-	logger := ctrl.logger.WithField("subcomponent", "syncConfigMap")
+	logger := ctrl.Logger.WithField("subcomponent", "syncConfigMap")
 
 	ctrl.shutdownWg.Add(1)
 	defer ctrl.shutdownWg.Done()
@@ -373,7 +356,7 @@ func (ctrl *controller) syncConfigMap(startReadyCh chan<- struct{}, stopCh <-cha
 				Name:      ctrl.options.configMapName,
 			},
 			Data: map[string]string{
-				configMapLastEventKey: ctrl.clock.Now().Format(time.RFC3339),
+				configMapLastEventKey: ctrl.Clock.Now().Format(time.RFC3339),
 			},
 		}
 		configMap, err = ctrl.configMapClient.Create(ctx, configMap, metav1.CreateOptions{})
@@ -389,7 +372,7 @@ func (ctrl *controller) syncConfigMap(startReadyCh chan<- struct{}, stopCh <-cha
 	ctrl.lastEventTime, err = time.Parse(time.RFC3339, configMap.Data[configMapLastEventKey])
 	if err != nil {
 		logger.WithError(err).Error("Previous event time was invalid, resetting to current timestamp")
-		ctrl.lastEventTime = ctrl.clock.Now()
+		ctrl.lastEventTime = ctrl.Clock.Now()
 	}
 	logger.WithField("startEventTime", ctrl.lastEventTime).Info("Start tracing events")
 
@@ -403,7 +386,7 @@ func (ctrl *controller) syncConfigMap(startReadyCh chan<- struct{}, stopCh <-cha
 		}
 
 		if changed { // TODO delete this, only for testing
-			configMap.Data[configMapLastUpdatedKey] = ctrl.clock.Now().Format(time.RFC3339)
+			configMap.Data[configMapLastUpdatedKey] = ctrl.Clock.Now().Format(time.RFC3339)
 			newConfigMap, err := ctrl.configMapClient.Update(ctx, configMap, metav1.UpdateOptions{})
 			if err != nil {
 				logger.WithField("resourceVersion", configMap.ResourceVersion).WithError(err).Error("Cannot update ConfigMap")
@@ -434,7 +417,7 @@ func (ctrl *controller) pollConfigLoop(
 	configMap *corev1.ConfigMap,
 	updateCh <-chan func(*corev1.ConfigMap),
 ) (changed, shutdown bool) {
-	until := ctrl.clock.After(interval)
+	until := ctrl.Clock.After(interval)
 
 	for {
 		// stopCh and until have higher priority than updateCh
