@@ -17,8 +17,8 @@ package local
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 	"sync"
 	"time"
 
@@ -127,22 +127,30 @@ func (cache *Local) getEntry(key string) *localEntry {
 	return cache.entries[key]
 }
 
-func (cache *Local) getOrInsertEntry(key string, expiry time.Time) (*localEntry, bool) {
+func (cache *Local) getOrInsertEntry(key string, expiry time.Time) (*localEntry, bool, error) {
 	cache.entriesLock.Lock()
 	defer cache.entriesLock.Unlock()
 
 	isNew := false
 	if ent := cache.entries[key]; ent == nil {
-		cache.entries[key] = &localEntry{creation: cache.Clock.Now(), expiry: expiry, uid: randUid()}
+		uid, err := randUid()
+		if err != nil {
+			return nil, false, err
+		}
+
+		cache.entries[key] = &localEntry{creation: cache.Clock.Now(), expiry: expiry, uid: uid}
 		isNew = true
 	}
 
-	return cache.entries[key], isNew
+	return cache.entries[key], isNew, nil
 }
 
 func (cache *Local) FetchOrReserve(ctx context.Context, key string, ttl time.Duration) (*spancache.Entry, error) {
 	expiry := cache.Clock.Now().Add(ttl)
-	ent, isInsert := cache.getOrInsertEntry(key, expiry)
+	ent, isInsert, err := cache.getOrInsertEntry(key, expiry)
+	if err != nil {
+		return nil, fmt.Errorf("create cache entry: %w", err)
+	}
 
 	ent.lock.RLock()
 	defer ent.lock.RUnlock()
@@ -199,16 +207,24 @@ func (cache *Local) SetReserved(ctx context.Context, key string, value []byte, l
 		return spancache.ErrUidMismatch
 	}
 
+	newUid, err := randUid()
+	if err != nil {
+		return err
+	}
+
 	ent.expiry = cache.Clock.Now().Add(ttl)
 	ent.value = value
-	ent.uid = randUid() // new version
+	ent.uid = newUid // new version
 
 	return nil
 }
 
-func randUid() spancache.Uid {
+func randUid() (spancache.Uid, error) {
 	entropy := make([]byte, 16)
-	_, _ = rand.Read(entropy)
+	_, err := rand.Read(entropy)
+	if err != nil {
+		return nil, fmt.Errorf("error getting random value: %w", err)
+	}
 
-	return spancache.Uid(entropy)
+	return spancache.Uid(entropy), nil
 }
