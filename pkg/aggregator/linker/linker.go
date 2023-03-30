@@ -42,12 +42,6 @@ type linkerList struct {
 	linkers []Linker
 }
 
-func NewLinkerList() LinkerList {
-	return &linkerList{
-		linkers: []Linker{},
-	}
-}
-
 func (list *linkerList) AddLinker(linker Linker) {
 	list.linkers = append(list.linkers, linker)
 }

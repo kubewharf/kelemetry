@@ -29,10 +29,6 @@ type AddressResolver struct {
 	manager.MuxImplBase
 }
 
-func NewAddressResolver() *AddressResolver {
-	return &AddressResolver{}
-}
-
 func (_ *AddressResolver) MuxImplName() (name string, isDefault bool) { return "address", true }
 
 func (resolver *AddressResolver) Options() manager.Options { return &manager.NoOptions{} }

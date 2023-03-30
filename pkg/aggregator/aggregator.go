@@ -132,24 +132,6 @@ type aggregator struct {
 	LazySpanRetryCountMetric *metrics.Metric[*lazySpanRetryCountMetric]
 }
 
-func New(
-	logger logrus.FieldLogger,
-	clock clock.Clock,
-	spanCache spancache.Cache,
-	linkers linker.LinkerList,
-	tracer tracer.Tracer,
-	metrics metrics.Client,
-) Aggregator {
-	return &aggregator{
-		Clock:     clock,
-		Linkers:   linkers,
-		Logger:    logger,
-		SpanCache: spanCache,
-		Tracer:    tracer,
-		Metrics:   metrics,
-	}
-}
-
 type sendMetric struct {
 	Cluster        string
 	TraceSource    string
