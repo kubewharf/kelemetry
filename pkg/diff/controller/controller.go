@@ -53,7 +53,10 @@ const (
 )
 
 func init() {
-	manager.Global.Provide("diff-controller", newController)
+	manager.Global.Provide("diff-controller", manager.Ptr(&controller{
+		monitors: map[schema.GroupVersionResource]*monitor{},
+		taskPool: channel.NewUnboundedQueue[func()](16),
+	}))
 }
 
 type ctrlOptions struct {
@@ -84,18 +87,18 @@ func (options *ctrlOptions) EnableFlag() *bool { return &options.enable }
 
 type controller struct {
 	options   ctrlOptions
-	logger    logrus.FieldLogger
-	clock     clock.Clock
-	clients   k8s.Clients
-	discovery discovery.DiscoveryCache
-	cache     diffcache.Cache
-	filter    filter.Filter
-	metrics   metrics.Client
+	Logger    logrus.FieldLogger
+	Clock     clock.Clock
+	Clients   k8s.Clients
+	Discovery discovery.DiscoveryCache
+	Cache     diffcache.Cache
+	Filter    filter.Filter
+	Metrics   metrics.Client
 
 	redactRegex       *regexp.Regexp
 	discoveryResyncCh <-chan struct{}
-	onUpdateMetric    metrics.Metric
-	onDeleteMetric    metrics.Metric
+	OnUpdateMetric    *metrics.Metric[*onUpdateMetric]
+	OnDeleteMetric    *metrics.Metric[*onDeleteMetric]
 	elector           *multileader.Elector
 	monitors          map[schema.GroupVersionResource]*monitor
 	monitorsLock      sync.RWMutex
@@ -104,38 +107,23 @@ type controller struct {
 
 var _ manager.Component = &controller{}
 
-func newController(
-	logger logrus.FieldLogger,
-	clock clock.Clock,
-	clients k8s.Clients,
-	discovery discovery.DiscoveryCache,
-	cache diffcache.Cache,
-	filter filter.Filter,
-	metrics metrics.Client,
-) *controller {
-	return &controller{
-		logger:    logger,
-		clock:     clock,
-		clients:   clients,
-		discovery: discovery,
-		cache:     cache,
-		filter:    filter,
-		metrics:   metrics,
-		monitors:  map[schema.GroupVersionResource]*monitor{},
-		taskPool:  channel.NewUnboundedQueue[func()](16),
-	}
-}
-
 type onUpdateMetric struct {
 	ApiGroup schema.GroupVersion
 	Resource string
 }
+
+func (*onUpdateMetric) MetricName() string { return "diff_controller_on_update" }
+
 type onDeleteMetric struct {
 	ApiGroup schema.GroupVersion
 	Resource string
 }
 
+func (*onDeleteMetric) MetricName() string { return "diff_controller_on_delete" }
+
 type taskPoolMetric struct{}
+
+func (*taskPoolMetric) MetricName() string { return "diff_controller_task_pool" }
 
 func (ctrl *controller) Options() manager.Options {
 	return &ctrl.options
@@ -147,28 +135,26 @@ func (ctrl *controller) Init() (err error) {
 		return fmt.Errorf("cannot compile --diff-controller-redact-pattern value: %w", err)
 	}
 
-	cdc, err := ctrl.discovery.ForCluster(ctrl.clients.TargetCluster().ClusterName())
+	cdc, err := ctrl.Discovery.ForCluster(ctrl.Clients.TargetCluster().ClusterName())
 	if err != nil {
 		return fmt.Errorf("cannot initialize discovery cache for target cluster: %w", err)
 	}
 
 	ctrl.discoveryResyncCh = cdc.AddResyncHandler()
-	ctrl.onUpdateMetric = ctrl.metrics.New("diff_controller_on_update", &onUpdateMetric{})
-	ctrl.onDeleteMetric = ctrl.metrics.New("diff_controller_on_delete", &onDeleteMetric{})
 
 	ctrl.elector, err = multileader.NewElector(
 		"kelemetry-diff-controller",
-		ctrl.logger.WithField("submod", "leader-elector"),
-		ctrl.clock,
+		ctrl.Logger.WithField("submod", "leader-elector"),
+		ctrl.Clock,
 		&ctrl.options.electorOptions,
-		ctrl.clients.TargetCluster(),
-		ctrl.metrics,
+		ctrl.Clients.TargetCluster(),
+		ctrl.Metrics,
 	)
 	if err != nil {
 		return fmt.Errorf("cannot create leader elector: %w", err)
 	}
 
-	ctrl.taskPool.InitMetricLoop(ctrl.metrics, "diff_controller_task_pool", &taskPoolMetric{})
+	channel.InitMetricLoop(ctrl.taskPool, ctrl.Metrics, &taskPoolMetric{})
 
 	return nil
 }
@@ -178,7 +164,7 @@ func (ctrl *controller) Start(ctx context.Context) error {
 	go ctrl.elector.RunLeaderMetricLoop(ctx)
 
 	for i := 0; i < ctrl.options.workerCount; i++ {
-		go runWorker(ctx, ctrl.logger.WithField("worker", i), ctrl.taskPool)
+		go runWorker(ctx, ctrl.Logger.WithField("worker", i), ctrl.taskPool)
 	}
 
 	return nil
@@ -204,7 +190,7 @@ func runWorker(ctx context.Context, logger logrus.FieldLogger, taskPool *channel
 func (ctrl *controller) Close(ctx context.Context) error { return nil }
 
 func (ctrl *controller) resyncMonitorsLoop(ctx context.Context) {
-	logger := ctrl.logger.WithField("submod", "resync")
+	logger := ctrl.Logger.WithField("submod", "resync")
 
 	defer shutdown.RecoverPanic(logger)
 
@@ -252,7 +238,7 @@ func (ctrl *controller) shouldMonitorType(gvr schema.GroupVersionResource, apiRe
 		return false
 	}
 
-	if !ctrl.filter.TestGvr(gvr) {
+	if !ctrl.Filter.TestGvr(gvr) {
 		return false
 	}
 
@@ -265,12 +251,12 @@ func (ctrl *controller) shouldMonitorObject(gvr schema.GroupVersionResource, nam
 }
 
 func (ctrl *controller) resyncMonitors() error {
-	cdc, err := ctrl.discovery.ForCluster(ctrl.clients.TargetCluster().ClusterName())
+	cdc, err := ctrl.Discovery.ForCluster(ctrl.Clients.TargetCluster().ClusterName())
 	if err != nil {
 		return fmt.Errorf("cannot get discovery cache for target cluster: %w", err)
 	}
 	expected := cdc.GetAll()
-	ctrl.logger.WithField("expectedLength", len(expected)).Info("resync monitors")
+	ctrl.Logger.WithField("expectedLength", len(expected)).Info("resync monitors")
 
 	toStart, toStop := ctrl.compareMonitors(expected)
 
@@ -348,7 +334,7 @@ func (ctrl *controller) drainAllMonitors() []*monitor {
 }
 
 func (ctrl *controller) startMonitor(gvr schema.GroupVersionResource, apiResource *metav1.APIResource) *monitor {
-	logger := ctrl.logger.WithField("submod", "monitor").WithField("gvr", gvr)
+	logger := ctrl.Logger.WithField("submod", "monitor").WithField("gvr", gvr)
 	logger.Debug("Starting")
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -359,11 +345,11 @@ func (ctrl *controller) startMonitor(gvr schema.GroupVersionResource, apiResourc
 		gvr:         gvr,
 		apiResource: apiResource,
 		cancelCtx:   cancelFunc,
-		onUpdateMetric: ctrl.onUpdateMetric.With(&onUpdateMetric{
+		onUpdateMetric: ctrl.OnUpdateMetric.With(&onUpdateMetric{
 			ApiGroup: gvr.GroupVersion(),
 			Resource: gvr.Resource,
 		}),
-		onDeleteMetric: ctrl.onDeleteMetric.With(&onDeleteMetric{
+		onDeleteMetric: ctrl.OnDeleteMetric.With(&onDeleteMetric{
 			ApiGroup: gvr.GroupVersion(),
 			Resource: gvr.Resource,
 		}),
@@ -387,7 +373,7 @@ func (ctrl *controller) startMonitor(gvr schema.GroupVersionResource, apiResourc
 		ctrl.taskPool.Send(func() { monitor.onNeedSnapshot(ctx, oldObj, diffcache.SnapshotNameDeletion) })
 	}
 
-	nsableReflectorClient := ctrl.clients.TargetCluster().DynamicClient().Resource(gvr)
+	nsableReflectorClient := ctrl.Clients.TargetCluster().DynamicClient().Resource(gvr)
 	var reflectorClient dynamic.ResourceInterface
 	if apiResource.Namespaced {
 		reflectorClient = nsableReflectorClient.Namespace(metav1.NamespaceAll)
@@ -443,7 +429,7 @@ func (monitor *monitor) onUpdate(
 	ctx context.Context,
 	oldObj, newObj *unstructured.Unstructured,
 ) {
-	defer monitor.onUpdateMetric.DeferCount(monitor.ctrl.clock.Now())
+	defer monitor.onUpdateMetric.DeferCount(monitor.ctrl.Clock.Now())
 
 	if oldObj.GetResourceVersion() == newObj.GetResourceVersion() {
 		// no change
@@ -455,7 +441,7 @@ func (monitor *monitor) onUpdate(
 	}
 
 	patch := &diffcache.Patch{
-		InformerTime:       monitor.ctrl.clock.Now(),
+		InformerTime:       monitor.ctrl.Clock.Now(),
 		OldResourceVersion: oldObj.GetResourceVersion(),
 		NewResourceVersion: newObj.GetResourceVersion(),
 	}
@@ -475,9 +461,9 @@ func (monitor *monitor) onUpdate(
 
 	ctx, cancelFunc := context.WithTimeout(ctx, monitor.ctrl.options.storeTimeout)
 	defer cancelFunc()
-	monitor.ctrl.cache.Store(
+	monitor.ctrl.Cache.Store(
 		ctx,
-		util.ObjectRefFromUnstructured(newObj, monitor.ctrl.clients.TargetCluster().ClusterName(), monitor.gvr),
+		util.ObjectRefFromUnstructured(newObj, monitor.ctrl.Clients.TargetCluster().ClusterName(), monitor.gvr),
 		patch,
 	)
 }
@@ -487,7 +473,7 @@ func (monitor *monitor) onNeedSnapshot(
 	obj *unstructured.Unstructured,
 	snapshotName string,
 ) {
-	defer monitor.onDeleteMetric.DeferCount(monitor.ctrl.clock.Now())
+	defer monitor.onDeleteMetric.DeferCount(monitor.ctrl.Clock.Now())
 
 	redacted := monitor.testRedacted(obj)
 
@@ -503,9 +489,9 @@ func (monitor *monitor) onNeedSnapshot(
 			Error("cannot re-marshal unstructured object")
 	}
 
-	monitor.ctrl.cache.StoreSnapshot(
+	monitor.ctrl.Cache.StoreSnapshot(
 		ctx,
-		util.ObjectRefFromUnstructured(obj, monitor.ctrl.clients.TargetCluster().ClusterName(), monitor.gvr),
+		util.ObjectRefFromUnstructured(obj, monitor.ctrl.Clients.TargetCluster().ClusterName(), monitor.gvr),
 		snapshotName,
 		&diffcache.Snapshot{
 			ResourceVersion: obj.GetResourceVersion(),

@@ -38,10 +38,10 @@ func TestGet(t *testing.T) {
 	clock := clock.RealClock{} // the clock is unused
 	metricsClient, metricsOutput := metrics.NewMock(clock)
 
-	cache := objectcache.NewObjectCache(
-		logrus.New(),
-		clock,
-		&k8s.MockClients{
+	cache := &objectcache.ObjectCache{
+		Logger: logrus.New(),
+		Clock:  clock,
+		Clients: &k8s.MockClients{
 			TargetClusterName: "test-cluster",
 			Clients: map[string]*k8s.MockClient{
 				"test-cluster": {
@@ -62,11 +62,12 @@ func TestGet(t *testing.T) {
 				},
 			},
 		},
-		metricsClient,
-		nil, // TODO
-	)
+		Metrics:            metricsClient,
+		DiffCache:          nil, // TODO
+		CacheRequestMetric: metrics.New[*objectcache.CacheRequestMetric](metricsClient),
+	}
 
-	assert.NoError(cache.Init(context.Background()))
+	assert.NoError(cache.Init())
 
 	for i := 0; i < 2; i++ {
 		uns, err := cache.Get(context.Background(), util.ObjectRef{

@@ -33,7 +33,9 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideMuxImpl("spancache/etcd", NewEtcd, spancache.Cache.Fetch)
+	manager.Global.ProvideMuxImpl("spancache/etcd", manager.Ptr(&Etcd{
+		deferList: shutdown.NewDeferList(),
+	}), spancache.Cache.Fetch)
 }
 
 type etcdOptions struct {
@@ -54,24 +56,13 @@ type Etcd struct {
 	manager.MuxImplBase
 
 	options   etcdOptions
-	logger    logrus.FieldLogger
-	clock     clock.Clock
+	Logger    logrus.FieldLogger
+	Clock     clock.Clock
 	client    *etcdv3.Client
 	deferList *shutdown.DeferList
 }
 
 var _ spancache.Cache = &Etcd{}
-
-func NewEtcd(
-	logger logrus.FieldLogger,
-	clock clock.Clock,
-) *Etcd {
-	return &Etcd{
-		logger:    logger,
-		clock:     clock,
-		deferList: shutdown.NewDeferList(),
-	}
-}
 
 func (_ *Etcd) MuxImplName() (name string, isDefault bool) { return "etcd", false }
 
@@ -101,7 +92,7 @@ func (cache *Etcd) Start(ctx context.Context) error {
 }
 
 func (cache *Etcd) Close(ctx context.Context) error {
-	if name, err := cache.deferList.Run(ctx, cache.logger); err != nil {
+	if name, err := cache.deferList.Run(ctx, cache.Logger); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}
 
@@ -145,7 +136,7 @@ func (cache *Etcd) FetchOrReserve(ctx context.Context, key string, ttl time.Dura
 			}
 			reserveTime := time.UnixMilli(reserveTimeUnix)
 
-			return nil, fmt.Errorf("%w for %s", spancache.ErrAlreadyReserved, cache.clock.Since(reserveTime))
+			return nil, fmt.Errorf("%w for %s", spancache.ErrAlreadyReserved, cache.Clock.Since(reserveTime))
 		case 1:
 			// already initialized
 
@@ -265,6 +256,6 @@ func DecodeInt64(b [8]byte) int64 {
 }
 
 func (cache *Etcd) ReservedVarintTime() []byte {
-	now := EncodeInt64(cache.clock.Now().UnixMilli())
+	now := EncodeInt64(cache.Clock.Now().UnixMilli())
 	return append([]byte{0}, now[:]...)
 }

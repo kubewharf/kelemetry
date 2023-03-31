@@ -22,7 +22,9 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("jaeger-trace-cache", newCache)
+	manager.Global.Provide("jaeger-trace-cache", manager.Ptr[Cache](&mux{
+		Mux: manager.NewMux("jaeger-trace-cache", false),
+	}))
 }
 
 type Cache interface {
@@ -37,12 +39,6 @@ type Entry struct {
 
 type mux struct {
 	*manager.Mux
-}
-
-func newCache() Cache {
-	return &mux{
-		Mux: manager.NewMux("jaeger-trace-cache", false),
-	}
 }
 
 func (mux *mux) Persist(ctx context.Context, entries []Entry) error {

@@ -33,7 +33,9 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideMuxImpl("diff-cache/etcd", NewEtcd, diffcache.Cache.Store)
+	manager.Global.ProvideMuxImpl("diff-cache/etcd", manager.Ptr(&Etcd{
+		deferList: shutdown.NewDeferList(),
+	}), diffcache.Cache.Store)
 }
 
 type etcdOptions struct {
@@ -58,20 +60,14 @@ func (options *etcdOptions) EnableFlag() *bool { return nil }
 type Etcd struct {
 	manager.MuxImplBase
 
-	options   etcdOptions
-	logger    logrus.FieldLogger
+	options etcdOptions
+	Logger  logrus.FieldLogger
+
 	client    *etcdv3.Client
 	deferList *shutdown.DeferList
 }
 
 var _ diffcache.Cache = &Etcd{}
-
-func NewEtcd(logger logrus.FieldLogger) *Etcd {
-	return &Etcd{
-		logger:    logger,
-		deferList: shutdown.NewDeferList(),
-	}
-}
 
 func (_ *Etcd) MuxImplName() (name string, isDefault bool) { return "etcd", false }
 
@@ -101,7 +97,7 @@ func (cache *Etcd) Start(ctx context.Context) error {
 }
 
 func (cache *Etcd) Close(ctx context.Context) error {
-	if name, err := cache.deferList.Run(ctx, cache.logger); err != nil {
+	if name, err := cache.deferList.Run(ctx, cache.Logger); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}
 
@@ -115,20 +111,20 @@ func (cache *Etcd) GetCommonOptions() *diffcache.CommonOptions {
 func (cache *Etcd) Store(ctx context.Context, object util.ObjectRef, patch *diffcache.Patch) {
 	patchJson, err := json.Marshal(patch)
 	if err != nil {
-		cache.logger.WithError(err).Error("cannot marshal patch")
+		cache.Logger.WithError(err).Error("cannot marshal patch")
 		return
 	}
 
 	lease, err := cache.client.Lease.Grant(ctx, int64(cache.GetCommonOptions().PatchTtl.Seconds()))
 	if err != nil {
-		cache.logger.WithError(err).Error("cannot grant lease for diff cache")
+		cache.Logger.WithError(err).Error("cannot grant lease for diff cache")
 		return
 	}
 
 	keyRv, _ := cache.GetCommonOptions().ChooseResourceVersion(patch.OldResourceVersion, &patch.NewResourceVersion)
 	_, err = cache.client.KV.Put(ctx, cache.cacheKey(object, keyRv), string(patchJson), etcdv3.WithLease(lease.ID))
 	if err != nil {
-		cache.logger.WithError(err).Error("cannot write cache")
+		cache.Logger.WithError(err).Error("cannot write cache")
 		return
 	}
 }
@@ -148,7 +144,7 @@ func (cache *Etcd) Fetch(
 
 	resp, err := cache.client.KV.Get(ctx, key)
 	if err != nil {
-		cache.logger.WithError(err).Error("cannot fetch cache")
+		cache.Logger.WithError(err).Error("cannot fetch cache")
 		return nil, metrics.LabelError(err, "UnknownEtcd")
 	}
 
@@ -159,7 +155,7 @@ func (cache *Etcd) Fetch(
 	jsonBuf := resp.Kvs[0].Value
 	patch := &diffcache.Patch{}
 	if err := json.Unmarshal(jsonBuf, patch); err != nil {
-		cache.logger.WithError(err).Error("cannot decode etcd result")
+		cache.Logger.WithError(err).Error("cannot decode etcd result")
 		return nil, metrics.LabelError(err, "EtcdValueError")
 	}
 
@@ -169,20 +165,20 @@ func (cache *Etcd) Fetch(
 func (cache *Etcd) StoreSnapshot(ctx context.Context, object util.ObjectRef, snapshotName string, snapshot *diffcache.Snapshot) {
 	snapshotJson, err := json.Marshal(snapshot)
 	if err != nil {
-		cache.logger.WithError(err).Error("cannot marshal snapshot")
+		cache.Logger.WithError(err).Error("cannot marshal snapshot")
 		return
 	}
 
 	lease, err := cache.client.Lease.Grant(ctx, int64(cache.GetCommonOptions().SnapshotTtl.Seconds()))
 	if err != nil {
-		cache.logger.WithError(err).Error("cannot grant lease for diff cache")
+		cache.Logger.WithError(err).Error("cannot grant lease for diff cache")
 		return
 	}
 
 	key := cache.snapshotKey(object, snapshotName)
 	_, err = cache.client.KV.Put(ctx, key, string(snapshotJson), etcdv3.WithLease(lease.ID))
 	if err != nil {
-		cache.logger.WithError(err).Error("cannot write cache")
+		cache.Logger.WithError(err).Error("cannot write cache")
 		return
 	}
 }
@@ -191,7 +187,7 @@ func (cache *Etcd) FetchSnapshot(ctx context.Context, object util.ObjectRef, sna
 	key := cache.snapshotKey(object, snapshotName)
 	resp, err := cache.client.KV.Get(ctx, key)
 	if err != nil {
-		cache.logger.WithError(err).Error("cannot fetch cache")
+		cache.Logger.WithError(err).Error("cannot fetch cache")
 		return nil, metrics.LabelError(err, "UnknownEtcd")
 	}
 
@@ -202,7 +198,7 @@ func (cache *Etcd) FetchSnapshot(ctx context.Context, object util.ObjectRef, sna
 	jsonBuf := resp.Kvs[0].Value
 	snapshot := &diffcache.Snapshot{}
 	if err := json.Unmarshal(jsonBuf, snapshot); err != nil {
-		cache.logger.WithError(err).Error("cannot decode etcd result")
+		cache.Logger.WithError(err).Error("cannot decode etcd result")
 		return nil, metrics.LabelError(err, "EtcdValueError")
 	}
 

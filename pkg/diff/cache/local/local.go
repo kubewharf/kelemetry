@@ -31,14 +31,16 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideMuxImpl("diff-cache/local", newLocal, diffcache.Cache.Store)
+	manager.Global.ProvideMuxImpl("diff-cache/local", manager.Ptr(&localCache{
+		data: map[string]*history{},
+	}), diffcache.Cache.Store)
 }
 
 type localCache struct {
 	manager.MuxImplBase
 
-	logger logrus.FieldLogger
-	clock  clock.Clock
+	Logger logrus.FieldLogger
+	Clock  clock.Clock
 
 	data     map[string]*history
 	dataLock sync.RWMutex
@@ -51,20 +53,12 @@ type history struct {
 	patches    map[string]*diffcache.Patch
 }
 
-func newLocal(logger logrus.FieldLogger, clock clock.Clock) *localCache {
-	return &localCache{
-		logger: logger,
-		clock:  clock,
-		data:   map[string]*history{},
-	}
-}
-
 func (_ *localCache) MuxImplName() (name string, isDefault bool) { return "local", true }
 
 func (cache *localCache) Options() manager.Options { return &manager.NoOptions{} }
 
 func (lc *localCache) Init() error {
-	lc.snapshotCache = cache.NewTtlOnce(lc.GetCommonOptions().SnapshotTtl, lc.clock)
+	lc.snapshotCache = cache.NewTtlOnce(lc.GetCommonOptions().SnapshotTtl, lc.Clock)
 	return nil
 }
 
@@ -74,20 +68,20 @@ func (cache *localCache) Start(ctx context.Context) error {
 		go cache.runTrimLoop(ctx, ttl, time.Hour)
 	}
 
-	go cache.snapshotCache.RunCleanupLoop(ctx, cache.logger)
+	go cache.snapshotCache.RunCleanupLoop(ctx, cache.Logger)
 
 	return nil
 }
 
 func (cache *localCache) runTrimLoop(ctx context.Context, expiry time.Duration, interval time.Duration) {
-	logger := cache.logger.WithField("submod", "trimLoop")
+	logger := cache.Logger.WithField("submod", "trimLoop")
 	defer shutdown.RecoverPanic(logger)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-cache.clock.After(interval):
+		case <-cache.Clock.After(interval):
 			cache.doTrim(expiry)
 		}
 	}
@@ -99,7 +93,7 @@ func (cache *localCache) doTrim(expiry time.Duration) {
 
 	removals := []string{}
 	for k, v := range cache.data {
-		if cache.clock.Since(v.lastModify) > expiry {
+		if cache.Clock.Since(v.lastModify) > expiry {
 			removals = append(removals, k)
 		}
 	}
@@ -124,7 +118,7 @@ func (cache *localCache) Store(ctx context.Context, object util.ObjectRef, patch
 	}
 
 	patches := cache.data[object.String()]
-	patches.lastModify = cache.clock.Now()
+	patches.lastModify = cache.Clock.Now()
 
 	keyRv, _ := cache.GetCommonOptions().ChooseResourceVersion(patch.OldResourceVersion, &patch.NewResourceVersion)
 	patches.patches[keyRv] = patch
@@ -159,7 +153,7 @@ func (cache *localCache) Fetch(
 		}
 	}
 
-	cache.logger.WithField("object", object).Debugf("Cannot locate %v from %v", keyRv, keys)
+	cache.Logger.WithField("object", object).Debugf("Cannot locate %v from %v", keyRv, keys)
 
 	return nil, nil
 }

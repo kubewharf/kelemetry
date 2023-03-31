@@ -30,7 +30,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("diff-cache", newCache)
+	manager.Global.Provide("diff-cache", manager.Ptr(newCache()))
 }
 
 type Patch struct {
@@ -97,44 +97,56 @@ type Cache interface {
 type mux struct {
 	options *CommonOptions
 	*manager.Mux
-	metrics metrics.Client
-	logger  logrus.FieldLogger
-	clock   clock.Clock
+	Metrics metrics.Client
+	Logger  logrus.FieldLogger
+	Clock   clock.Clock
 
 	impl Cache
 
-	storeDiffMetric     metrics.Metric
-	fetchDiffMetric     metrics.Metric
-	storeSnapshotMetric metrics.Metric
-	fetchSnapshotMetric metrics.Metric
-	listMetric          metrics.Metric
+	StoreDiffMetric     *metrics.Metric[*storeDiffMetric]
+	FetchDiffMetric     *metrics.Metric[*fetchDiffMetric]
+	StoreSnapshotMetric *metrics.Metric[*storeSnapshotMetric]
+	FetchSnapshotMetric *metrics.Metric[*fetchSnapshotMetric]
+	ListMetric          *metrics.Metric[*listMetric]
 }
 
-func newCache(
-	logger logrus.FieldLogger,
-	clock clock.Clock,
-	metrics metrics.Client,
-) Cache {
+func newCache() Cache {
 	options := &CommonOptions{}
 	return &mux{
 		options: options,
 		Mux:     manager.NewMux("diff-cache", false).WithAdditionalOptions(options),
-		logger:  logger,
-		clock:   clock,
-		metrics: metrics,
 	}
 }
 
-type (
-	storeMetric struct {
-		Redacted bool
-	}
-	fetchMetric struct {
-		Found bool
-		Error metrics.LabeledError
-	}
-	listMetric struct{}
-)
+type storeDiffMetric struct {
+	Redacted bool
+}
+
+func (*storeDiffMetric) MetricName() string { return "diff_cache_store" }
+
+type fetchDiffMetric struct {
+	Found bool
+	Error metrics.LabeledError
+}
+
+func (*fetchDiffMetric) MetricName() string { return "diff_cache_fetch" }
+
+type storeSnapshotMetric struct {
+	Redacted bool
+}
+
+func (*storeSnapshotMetric) MetricName() string { return "diff_cache_store_snapshot" }
+
+type fetchSnapshotMetric struct {
+	Found bool
+	Error metrics.LabeledError
+}
+
+func (*fetchSnapshotMetric) MetricName() string { return "diff_cache_fetch_snapshot" }
+
+type listMetric struct{}
+
+func (*listMetric) MetricName() string { return "diff_cache_list" }
 
 func (mux *mux) Init() error {
 	if err := mux.Mux.Init(); err != nil {
@@ -143,23 +155,17 @@ func (mux *mux) Init() error {
 
 	mux.impl = mux.Impl().(Cache)
 	if mux.options.EnableCacheWrapper {
-		wrapper := newCacheWrapper(mux.options, mux.impl, mux.clock, mux.metrics)
-		wrapper.initMetricsLoop(mux.metrics)
+		wrapper := newCacheWrapper(mux.options, mux.impl, mux.Clock)
+		wrapper.initMetricsLoop(mux.Metrics)
 		mux.impl = wrapper
 	}
-
-	mux.storeDiffMetric = mux.metrics.New("diff_cache_store", &storeMetric{})
-	mux.fetchDiffMetric = mux.metrics.New("diff_cache_fetch", &fetchMetric{})
-	mux.storeSnapshotMetric = mux.metrics.New("diff_cache_store_snapshot", &storeMetric{})
-	mux.fetchSnapshotMetric = mux.metrics.New("diff_cache_fetch_snapshot", &fetchMetric{})
-	mux.listMetric = mux.metrics.New("diff_cache_list", &listMetric{})
 
 	return nil
 }
 
 func (mux *mux) Start(ctx context.Context) error {
 	if wrapped, ok := mux.impl.(*CacheWrapper); ok {
-		go wrapped.patchCache.RunCleanupLoop(ctx, mux.logger)
+		go wrapped.patchCache.RunCleanupLoop(ctx, mux.Logger)
 	}
 
 	return nil
@@ -170,13 +176,13 @@ func (mux *mux) GetCommonOptions() *CommonOptions {
 }
 
 func (mux *mux) Store(ctx context.Context, object util.ObjectRef, patch *Patch) {
-	defer mux.storeDiffMetric.DeferCount(mux.clock.Now(), &storeMetric{Redacted: patch.Redacted})
+	defer mux.StoreDiffMetric.DeferCount(mux.Clock.Now(), &storeDiffMetric{Redacted: patch.Redacted})
 	mux.Impl().(Cache).Store(ctx, object, patch)
 }
 
 func (mux *mux) Fetch(ctx context.Context, object util.ObjectRef, oldResourceVersion string, newResourceVersion *string) (*Patch, error) {
-	metric := &fetchMetric{}
-	defer mux.fetchDiffMetric.DeferCount(mux.clock.Now(), metric)
+	metric := &fetchDiffMetric{}
+	defer mux.FetchDiffMetric.DeferCount(mux.Clock.Now(), metric)
 
 	patch, err := mux.Impl().(Cache).Fetch(ctx, object, oldResourceVersion, newResourceVersion)
 	if err != nil {
@@ -189,13 +195,13 @@ func (mux *mux) Fetch(ctx context.Context, object util.ObjectRef, oldResourceVer
 }
 
 func (mux *mux) StoreSnapshot(ctx context.Context, object util.ObjectRef, snapshotName string, snapshot *Snapshot) {
-	defer mux.storeSnapshotMetric.DeferCount(mux.clock.Now(), &storeMetric{Redacted: snapshot.Redacted})
+	defer mux.StoreSnapshotMetric.DeferCount(mux.Clock.Now(), &storeSnapshotMetric{Redacted: snapshot.Redacted})
 	mux.Impl().(Cache).StoreSnapshot(ctx, object, snapshotName, snapshot)
 }
 
 func (mux *mux) FetchSnapshot(ctx context.Context, object util.ObjectRef, snapshotName string) (*Snapshot, error) {
-	metric := &fetchMetric{}
-	defer mux.fetchSnapshotMetric.DeferCount(mux.clock.Now(), metric)
+	metric := &fetchSnapshotMetric{}
+	defer mux.FetchSnapshotMetric.DeferCount(mux.Clock.Now(), metric)
 
 	snapshot, err := mux.Impl().(Cache).FetchSnapshot(ctx, object, snapshotName)
 	if err != nil {
@@ -208,6 +214,6 @@ func (mux *mux) FetchSnapshot(ctx context.Context, object util.ObjectRef, snapsh
 }
 
 func (mux *mux) List(ctx context.Context, object util.ObjectRef, limit int) ([]string, error) {
-	defer mux.listMetric.DeferCount(mux.clock.Now(), &listMetric{})
+	defer mux.ListMetric.DeferCount(mux.Clock.Now(), &listMetric{})
 	return mux.Impl().(Cache).List(ctx, object, limit)
 }

@@ -16,8 +16,8 @@ package objectcache
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 	"time"
 
 	"github.com/coocood/freecache"
@@ -37,7 +37,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("kube-object-cache", NewObjectCache)
+	manager.Global.Provide("kube-object-cache", manager.Ptr(&ObjectCache{}))
 }
 
 type objectCacheOptions struct {
@@ -54,72 +54,57 @@ func (options *objectCacheOptions) Setup(fs *pflag.FlagSet) {
 
 func (options *objectCacheOptions) EnableFlag() *bool { return nil }
 
-type ObjectCache interface {
-	manager.Component
-
-	// Get retrieves an object from the cache, or requests it from the apiserver if it is not in the active cache.
-	Get(ctx context.Context, object util.ObjectRef) (*unstructured.Unstructured, error)
-}
-
-type objectCache struct {
+type ObjectCache struct {
 	options   objectCacheOptions
-	logger    logrus.FieldLogger
-	clock     clock.Clock
-	clients   k8s.Clients
-	metrics   metrics.Client
-	diffCache diffcache.Cache
+	Logger    logrus.FieldLogger
+	Clock     clock.Clock
+	Clients   k8s.Clients
+	Metrics   metrics.Client
+	DiffCache diffcache.Cache
 
-	cacheRequestMetric metrics.Metric
+	CacheRequestMetric *metrics.Metric[*CacheRequestMetric]
 
 	cache *freecache.Cache
 }
 
 type cacheSizeMetric struct{}
 
+func (*cacheSizeMetric) MetricName() string { return "object_cache_size" }
+
 type cacheEvictionMetric struct{}
 
-type cacheRequestMetric struct {
+func (*cacheEvictionMetric) MetricName() string { return "object_cache_eviction" }
+
+type CacheRequestMetric struct {
 	Hit   bool
 	Error string
 }
 
-func NewObjectCache(
-	logger logrus.FieldLogger,
-	clock clock.Clock,
-	clients k8s.Clients,
-	metrics metrics.Client,
-	diffCache diffcache.Cache,
-) ObjectCache {
-	return &objectCache{
-		logger:    logger,
-		clock:     clock,
-		clients:   clients,
-		metrics:   metrics,
-		diffCache: diffCache,
-	}
-}
+func (*CacheRequestMetric) MetricName() string { return "object_cache_request" }
 
-func (oc *objectCache) Options() manager.Options { return &oc.options }
+func (oc *ObjectCache) Options() manager.Options { return &oc.options }
 
-func (oc *objectCache) Init() error {
-	oc.cacheRequestMetric = oc.metrics.New("object_cache_request", &cacheRequestMetric{})
+func (oc *ObjectCache) Init() error {
 	oc.cache = freecache.NewCache(oc.options.cacheSize)
-	oc.metrics.NewMonitor("object_cache_size", &cacheSizeMetric{}, func() int64 { return oc.cache.EntryCount() })
-	oc.metrics.NewMonitor("object_cache_eviction", &cacheEvictionMetric{}, func() int64 { return oc.cache.EvacuateCount() })
+	metrics.NewMonitor(oc.Metrics, &cacheSizeMetric{}, func() int64 { return oc.cache.EntryCount() })
+	metrics.NewMonitor(oc.Metrics, &cacheEvictionMetric{}, func() int64 { return oc.cache.EvacuateCount() })
 	return nil
 }
 
-func (oc *objectCache) Start(ctx context.Context) error { return nil }
+func (oc *ObjectCache) Start(ctx context.Context) error { return nil }
 
-func (oc *objectCache) Close(ctx context.Context) error { return nil }
+func (oc *ObjectCache) Close(ctx context.Context) error { return nil }
 
-func (oc *objectCache) Get(ctx context.Context, object util.ObjectRef) (*unstructured.Unstructured, error) {
-	metric := &cacheRequestMetric{Error: "Unknown"}
-	defer oc.cacheRequestMetric.DeferCount(oc.clock.Now(), metric)
+func (oc *ObjectCache) Get(ctx context.Context, object util.ObjectRef) (*unstructured.Unstructured, error) {
+	metric := &CacheRequestMetric{Error: "Unknown"}
+	defer oc.CacheRequestMetric.DeferCount(oc.Clock.Now(), metric)
 
 	key := objectKey(object)
 	randomId := [5]byte{0, 0, 0, 0, 0}
-	_, _ = rand.Read(randomId[1:])
+	_, err := rand.Read(randomId[1:])
+	if err != nil {
+		return nil, fmt.Errorf("generate random initial value: %w", err)
+	}
 
 	for {
 		cached, _ := oc.cache.GetOrSet(key, randomId[:], int(oc.options.fetchTimeout.Seconds()))
@@ -129,7 +114,7 @@ func (oc *objectCache) Get(ctx context.Context, object util.ObjectRef) (*unstruc
 
 			if cached[0] == 0 {
 				// pending; JSON never starts with a NUL byte
-				oc.clock.Sleep(time.Millisecond * 100) // constant backoff, up to 50 times by default
+				oc.Clock.Sleep(time.Millisecond * 100) // constant backoff, up to 50 times by default
 				continue
 			}
 
@@ -150,7 +135,7 @@ func (oc *objectCache) Get(ctx context.Context, object util.ObjectRef) (*unstruc
 
 	metric.Hit = false
 
-	clusterClient, err := oc.clients.Cluster(object.Cluster)
+	clusterClient, err := oc.Clients.Cluster(object.Cluster)
 	if err != nil {
 		return nil, fmt.Errorf("cannot initialize clients for cluster %q: %w", object.Cluster, err)
 	}
@@ -189,7 +174,7 @@ func (oc *objectCache) Get(ctx context.Context, object util.ObjectRef) (*unstruc
 
 	metric.Error = "DeletionSnapshot"
 
-	snapshot, err := oc.diffCache.FetchSnapshot(ctx, object, diffcache.SnapshotNameDeletion)
+	snapshot, err := oc.DiffCache.FetchSnapshot(ctx, object, diffcache.SnapshotNameDeletion)
 	if err != nil {
 		return nil, metrics.LabelError(fmt.Errorf("cannot fallback to snapshot: %w", err), "SnapshotFetch")
 	}

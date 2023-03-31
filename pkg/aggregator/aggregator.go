@@ -36,7 +36,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("aggregator", New)
+	manager.Global.Provide("aggregator", manager.Ptr[Aggregator](&aggregator{}))
 }
 
 const ObjectField = "object"
@@ -119,35 +119,17 @@ type SubObjectId struct {
 
 type aggregator struct {
 	options   options
-	clock     clock.Clock
-	linkers   linker.LinkerList
-	logger    logrus.FieldLogger
-	spanCache spancache.Cache
-	tracer    tracer.Tracer
-	metrics   metrics.Client
+	Clock     clock.Clock
+	Linkers   linker.LinkerList
+	Logger    logrus.FieldLogger
+	SpanCache spancache.Cache
+	Tracer    tracer.Tracer
+	Metrics   metrics.Client
 
-	sendMetric               metrics.Metric
-	sinceEventMetric         metrics.Metric
-	lazySpanMetric           metrics.Metric
-	lazySpanRetryCountMetric metrics.Metric
-}
-
-func New(
-	logger logrus.FieldLogger,
-	clock clock.Clock,
-	spanCache spancache.Cache,
-	linkers linker.LinkerList,
-	tracer tracer.Tracer,
-	metrics metrics.Client,
-) Aggregator {
-	return &aggregator{
-		clock:     clock,
-		linkers:   linkers,
-		logger:    logger,
-		spanCache: spanCache,
-		tracer:    tracer,
-		metrics:   metrics,
-	}
+	SendMetric               *metrics.Metric[*sendMetric]
+	SinceEventMetric         *metrics.Metric[*sinceEventMetric]
+	LazySpanMetric           *metrics.Metric[*lazySpanMetric]
+	LazySpanRetryCountMetric *metrics.Metric[*lazySpanRetryCountMetric]
 }
 
 type sendMetric struct {
@@ -160,16 +142,26 @@ type sendMetric struct {
 	Error          metrics.LabeledError
 }
 
+func (*sendMetric) MetricName() string { return "aggregator_send" }
+
 type sinceEventMetric struct {
 	Cluster     string
 	TraceSource string
 }
+
+func (*sinceEventMetric) MetricName() string { return "aggregator_send_since_event" }
 
 type lazySpanMetric struct {
 	Cluster string
 	Field   string
 	Result  string
 }
+
+func (*lazySpanMetric) MetricName() string { return "aggregator_lazy_span" }
+
+type lazySpanRetryCountMetric lazySpanMetric
+
+func (*lazySpanRetryCountMetric) MetricName() string { return "aggregator_lazy_span_retry_count" }
 
 func (aggregator *aggregator) Options() manager.Options {
 	return &aggregator.options
@@ -180,11 +172,6 @@ func (aggregator *aggregator) Init() error {
 		return fmt.Errorf("invalid option: --span-ttl must not be shorter than --span-follow-ttl")
 	}
 
-	aggregator.sendMetric = aggregator.metrics.New("aggregator_send", &sendMetric{})
-	aggregator.sinceEventMetric = aggregator.metrics.New("aggregator_send_since_event", &sinceEventMetric{})
-	aggregator.lazySpanMetric = aggregator.metrics.New("aggregator_lazy_span", &lazySpanMetric{})
-	aggregator.lazySpanRetryCountMetric = aggregator.metrics.New("aggregator_lazy_span_retry_count", &lazySpanMetric{})
-
 	return nil
 }
 
@@ -194,11 +181,11 @@ func (aggregator *aggregator) Close(ctx context.Context) error { return nil }
 
 func (aggregator *aggregator) Send(ctx context.Context, object util.ObjectRef, event *Event, subObjectId *SubObjectId) (err error) {
 	sendMetric := &sendMetric{Cluster: object.Cluster, TraceSource: event.TraceSource}
-	defer aggregator.sendMetric.DeferCount(aggregator.clock.Now(), sendMetric)
+	defer aggregator.SendMetric.DeferCount(aggregator.Clock.Now(), sendMetric)
 
-	aggregator.sinceEventMetric.
+	aggregator.SinceEventMetric.
 		With(&sinceEventMetric{Cluster: object.Cluster, TraceSource: event.TraceSource}).
-		Histogram(aggregator.clock.Since(event.Time).Nanoseconds())
+		Histogram(aggregator.Clock.Since(event.Time).Nanoseconds())
 
 	var parentSpan tracer.SpanContext
 
@@ -219,14 +206,14 @@ func (aggregator *aggregator) Send(ctx context.Context, object util.ObjectRef, e
 			defer cancelFunc()
 
 			if err := wait.PollImmediateUntil(aggregator.options.subObjectPrimaryPollInterval, func() (done bool, err error) {
-				entry, err := aggregator.spanCache.Fetch(pollCtx, cacheKey)
+				entry, err := aggregator.SpanCache.Fetch(pollCtx, cacheKey)
 				if err != nil {
 					sendMetric.Error = metrics.LabelError(err, "PrimaryEventPoll")
 					return false, fmt.Errorf("%w during primary event poll", err)
 				}
 
 				if entry != nil {
-					parentSpan, err = aggregator.tracer.ExtractCarrier(entry.Value)
+					parentSpan, err = aggregator.Tracer.ExtractCarrier(entry.Value)
 					if err != nil {
 						sendMetric.Error = metrics.LabelError(err, "ExtractPrimaryCarrier")
 						return false, fmt.Errorf("%w during decoding primary span", err)
@@ -240,7 +227,7 @@ func (aggregator *aggregator) Send(ctx context.Context, object util.ObjectRef, e
 				if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, wait.ErrWaitTimeout) {
 					if sendMetric.Error == nil {
 						sendMetric.Error = metrics.LabelError(err, "UnknownPrimaryPoll")
-						aggregator.logger.
+						aggregator.Logger.
 							WithField("object", object).
 							WithField("event", event.Title).
 							WithError(err).
@@ -259,7 +246,7 @@ func (aggregator *aggregator) Send(ctx context.Context, object util.ObjectRef, e
 		if parentSpan == nil {
 			// either object ID is primary, or primary poll expired, in which case we should promote
 			if err := retry.OnError(retry.DefaultBackoff, spancache.ShouldRetry, func() error {
-				entry, err := aggregator.spanCache.FetchOrReserve(ctx, cacheKey, aggregator.options.reserveTtl)
+				entry, err := aggregator.SpanCache.FetchOrReserve(ctx, cacheKey, aggregator.options.reserveTtl)
 				if err != nil {
 					sendMetric.Error = metrics.LabelError(err, "PrimaryReserve")
 					return fmt.Errorf("%w during primary event fetch-or-reserve", err)
@@ -273,7 +260,7 @@ func (aggregator *aggregator) Send(ctx context.Context, object util.ObjectRef, e
 						fmt.Sprintf("Kelemetry: multiple primary events for %s sent, demoted later event", subObjectId.Id),
 					)
 
-					parentSpan, err = aggregator.tracer.ExtractCarrier(entry.Value)
+					parentSpan, err = aggregator.Tracer.ExtractCarrier(entry.Value)
 					if err != nil {
 						sendMetric.Error = metrics.LabelError(err, "ExtractAltPrimaryCarrier")
 						return fmt.Errorf("%w during decoding primary span", err)
@@ -330,20 +317,20 @@ func (aggregator *aggregator) Send(ctx context.Context, object util.ObjectRef, e
 		span.Tags[tagKey] = tagValue
 	}
 
-	sentSpan, err := aggregator.tracer.CreateSpan(span)
+	sentSpan, err := aggregator.Tracer.CreateSpan(span)
 	if err != nil {
 		sendMetric.Error = metrics.LabelError(err, "CreateSpan")
 		return fmt.Errorf("cannot create span: %w", err)
 	}
 
 	if reservedPrimary != nil {
-		sentSpanRaw, err := aggregator.tracer.InjectCarrier(sentSpan)
+		sentSpanRaw, err := aggregator.Tracer.InjectCarrier(sentSpan)
 		if err != nil {
 			sendMetric.Error = metrics.LabelError(err, "InjectCarrier")
 			return fmt.Errorf("%w during serializing sent span ID", err)
 		}
 
-		if err := aggregator.spanCache.SetReserved(
+		if err := aggregator.SpanCache.SetReserved(
 			ctx,
 			reservedPrimary.cacheKey,
 			sentSpanRaw,
@@ -357,7 +344,7 @@ func (aggregator *aggregator) Send(ctx context.Context, object util.ObjectRef, e
 
 	sendMetric.Success = true
 
-	aggregator.logger.WithField("object", object).
+	aggregator.Logger.WithField("object", object).
 		WithField("event", event.Title).
 		WithField("logs", len(event.Logs)).
 		Debug("CreateSpan")
@@ -383,7 +370,7 @@ func (aggregator *aggregator) ensureObjectSpan(
 ) (tracer.SpanContext, error) {
 	return aggregator.getOrCreateSpan(ctx, object, "object", eventTime, func() (_ tracer.SpanContext, err error) {
 		// try to associate a parent object
-		parent := aggregator.linkers.Lookup(ctx, object)
+		parent := aggregator.Linkers.Lookup(ctx, object)
 		if parent == nil {
 			return nil, nil
 		}
@@ -415,11 +402,11 @@ func (aggregator *aggregator) getOrCreateSpan(
 		Field:   field,
 		Result:  "error",
 	}
-	defer aggregator.lazySpanMetric.DeferCount(aggregator.clock.Now(), lazySpanMetric)
+	defer aggregator.LazySpanMetric.DeferCount(aggregator.Clock.Now(), lazySpanMetric)
 
 	cacheKey := aggregator.expiringSpanCacheKey(object, field, eventTime)
 
-	logger := aggregator.logger.
+	logger := aggregator.Logger.
 		WithField("step", "getOrCreateSpan").
 		WithField("object", object).
 		WithField("field", field)
@@ -435,7 +422,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 	retries := int64(0)
 	if err := retry.OnError(retry.DefaultBackoff, spancache.ShouldRetry, func() error {
 		retries += 1
-		entry, err := aggregator.spanCache.FetchOrReserve(ctx, cacheKey, aggregator.options.reserveTtl)
+		entry, err := aggregator.SpanCache.FetchOrReserve(ctx, cacheKey, aggregator.options.reserveTtl)
 		if err != nil {
 			return metrics.LabelError(fmt.Errorf("%w during initial fetch-or-reserve", err), "FetchOrReserve")
 		}
@@ -444,7 +431,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 			// the entry already exists, no additional logic required
 			reserveUid = []byte{}
 			followsFrom = nil
-			returnSpan, err = aggregator.tracer.ExtractCarrier(entry.Value)
+			returnSpan, err = aggregator.Tracer.ExtractCarrier(entry.Value)
 			if err != nil {
 				return metrics.LabelError(fmt.Errorf("persisted span contains invalid data: %w", err), "BadCarrier")
 			}
@@ -466,7 +453,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 			return nil
 		}
 
-		followsEntry, err := aggregator.spanCache.Fetch(ctx, followsKey)
+		followsEntry, err := aggregator.SpanCache.Fetch(ctx, followsKey)
 		if err != nil {
 			return metrics.LabelError(fmt.Errorf("error fetching followed entry: %w", err), "FetchFollow")
 		}
@@ -481,7 +468,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 		}
 
 		// we have a following target
-		followsFrom, err = aggregator.tracer.ExtractCarrier(followsEntry.Value)
+		followsFrom, err = aggregator.Tracer.ExtractCarrier(followsEntry.Value)
 		if err != nil {
 			return metrics.LabelError(fmt.Errorf("followed persisted span contains invalid data: %w", err), "BadFollowCarrier")
 		}
@@ -491,7 +478,10 @@ func (aggregator *aggregator) getOrCreateSpan(
 		return nil, metrics.LabelError(fmt.Errorf("cannot reserve or fetch span %q: %w", cacheKey, err), "ReserveRetryLoop")
 	}
 
-	defer func() { aggregator.lazySpanRetryCountMetric.With(lazySpanMetric).Histogram(retries) }() // take the value of lazySpanMetric later
+	retryCountMetric := lazySpanRetryCountMetric(*lazySpanMetric)
+	defer func() {
+		aggregator.LazySpanRetryCountMetric.With(&retryCountMetric).Histogram(retries)
+	}() // take the value of lazySpanMetric later
 
 	logger = logger.
 		WithField("returnSpan", returnSpan != nil).
@@ -504,7 +494,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 	}
 
 	// we have a new reservation, need to initialize it now
-	startTime := aggregator.clock.Now()
+	startTime := aggregator.Clock.Now()
 
 	parent, err := parentGetter()
 	if err != nil {
@@ -516,18 +506,18 @@ func (aggregator *aggregator) getOrCreateSpan(
 		return nil, metrics.LabelError(fmt.Errorf("cannot create span: %w", err), "CreateSpan")
 	}
 
-	entryValue, err := aggregator.tracer.InjectCarrier(span)
+	entryValue, err := aggregator.Tracer.InjectCarrier(span)
 	if err != nil {
 		return nil, metrics.LabelError(fmt.Errorf("cannot serialize span context: %w", err), "InjectCarrier")
 	}
 
 	totalTtl := aggregator.options.spanTtl + aggregator.options.spanFollowTtl + aggregator.options.spanExtraTtl
-	err = aggregator.spanCache.SetReserved(ctx, cacheKey, entryValue, reserveUid, totalTtl)
+	err = aggregator.SpanCache.SetReserved(ctx, cacheKey, entryValue, reserveUid, totalTtl)
 	if err != nil {
 		return nil, metrics.LabelError(fmt.Errorf("cannot persist reserved value: %w", err), "PersistCarrier")
 	}
 
-	logger.WithField("duration", aggregator.clock.Since(startTime)).Debug("Created new span")
+	logger.WithField("duration", aggregator.Clock.Since(startTime)).Debug("Created new span")
 
 	if followsFrom != nil {
 		lazySpanMetric.Result = "renew"
@@ -569,12 +559,12 @@ func (aggregator *aggregator) createSpan(
 		span.Tags[tagKey] = tagValue
 	}
 
-	spanContext, err := aggregator.tracer.CreateSpan(span)
+	spanContext, err := aggregator.Tracer.CreateSpan(span)
 	if err != nil {
 		return nil, metrics.LabelError(fmt.Errorf("cannot create span: %w", err), "CreateSpan")
 	}
 
-	aggregator.logger.WithField("object", object).WithField("field", field).WithField("parent", parent).Debug("CreateSpan")
+	aggregator.Logger.WithField("object", object).WithField("field", field).WithField("parent", parent).Debug("CreateSpan")
 
 	return spanContext, nil
 }

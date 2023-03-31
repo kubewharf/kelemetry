@@ -27,23 +27,18 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideMuxImpl("jaeger-trace-cache/local", newLocal, tracecache.Cache.Persist)
+	manager.Global.ProvideMuxImpl("jaeger-trace-cache/local", manager.Ptr(&localCache{
+		data: map[uint64]json.RawMessage{},
+	}), tracecache.Cache.Persist)
 }
 
 type localCache struct {
 	manager.MuxImplBase
 
-	logger logrus.FieldLogger
+	Logger logrus.FieldLogger
 
 	data     map[uint64]json.RawMessage
 	dataLock sync.RWMutex
-}
-
-func newLocal(logger logrus.FieldLogger) *localCache {
-	return &localCache{
-		logger: logger,
-		data:   map[uint64]json.RawMessage{},
-	}
 }
 
 func (_ *localCache) MuxImplName() (name string, isDefault bool) { return "local", true }

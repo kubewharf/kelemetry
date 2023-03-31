@@ -68,7 +68,7 @@ type Elector struct {
 	name           string
 	logger         logrus.FieldLogger
 	clock          clock.Clock
-	isLeaderMetric metrics.Metric
+	isLeaderMetric *metrics.Metric[*isLeaderMetric]
 	isLeaderFlag   []uint32
 	Identity       string
 
@@ -80,13 +80,15 @@ type isLeaderMetric struct {
 	LeaderId  int
 }
 
+func (*isLeaderMetric) MetricName() string { return "is_leader" }
+
 func NewElector(
 	component string,
 	logger logrus.FieldLogger,
 	clock clock.Clock,
 	config *Config,
 	client k8s.Client,
-	metrics metrics.Client,
+	metricsClient metrics.Client,
 ) (*Elector, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -105,7 +107,7 @@ func NewElector(
 		name:           component,
 		logger:         logger.WithField("identity", identity),
 		clock:          clock,
-		isLeaderMetric: metrics.New("is_leader", &isLeaderMetric{}),
+		isLeaderMetric: metrics.New[*isLeaderMetric](metricsClient),
 		isLeaderFlag:   make([]uint32, config.NumLeaders),
 		Identity:       identity,
 		configCreator: func() ([]*leaderelection.LeaderElectionConfig, <-chan event, error) {

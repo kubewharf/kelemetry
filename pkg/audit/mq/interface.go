@@ -23,7 +23,9 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("mq", newMux)
+	manager.Global.Provide("mq", manager.Ptr[Queue](&mux{
+		Mux: manager.NewMux("mq", false),
+	}))
 }
 
 type (
@@ -45,12 +47,6 @@ type Consumer any
 
 type mux struct {
 	*manager.Mux
-}
-
-func newMux() Queue {
-	return &mux{
-		Mux: manager.NewMux("mq", false),
-	}
 }
 
 func (mux *mux) CreateProducer() (Producer, error) {

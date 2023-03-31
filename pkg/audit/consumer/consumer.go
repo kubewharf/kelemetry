@@ -42,7 +42,9 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("audit-consumer", New)
+	manager.Global.Provide("audit-consumer", manager.Ptr(&receiver{
+		consumers: map[mq.PartitionId]mq.Consumer{},
+	}))
 }
 
 type options struct {
@@ -77,18 +79,19 @@ func (options *options) EnableFlag() *bool { return &options.enable }
 
 type receiver struct {
 	options        options
-	logger         logrus.FieldLogger
-	clock          clock.Clock
-	aggregator     aggregator.Aggregator
-	mq             mq.Queue
-	decoratorList  audit.DecoratorList
-	filter         filter.Filter
-	metrics        metrics.Client
-	discoveryCache discovery.DiscoveryCache
+	Logger         logrus.FieldLogger
+	Clock          clock.Clock
+	Aggregator     aggregator.Aggregator
+	Mq             mq.Queue
+	DecoratorList  audit.DecoratorList
+	Filter         filter.Filter
+	Metrics        metrics.Client
+	DiscoveryCache discovery.DiscoveryCache
 
-	consumeMetric    metrics.Metric
-	e2eLatencyMetric metrics.Metric
-	consumers        map[mq.PartitionId]mq.Consumer
+	ConsumeMetric    *metrics.Metric[*consumeMetric]
+	E2eLatencyMetric *metrics.Metric[*e2eLatencyMetric]
+
+	consumers map[mq.PartitionId]mq.Consumer
 }
 
 var _ manager.Component = &receiver{}
@@ -100,47 +103,25 @@ type consumeMetric struct {
 	HasTrace      bool
 }
 
+func (*consumeMetric) MetricName() string { return "audit_consumer_event" }
+
 type e2eLatencyMetric struct {
 	Cluster  string
 	ApiGroup schema.GroupVersion
 	Resource string
 }
 
-func New(
-	logger logrus.FieldLogger,
-	clock clock.Clock,
-	aggregator aggregator.Aggregator,
-	queue mq.Queue,
-	decoratorList audit.DecoratorList,
-	filter filter.Filter,
-	metrics metrics.Client,
-	discoveryCache discovery.DiscoveryCache,
-) *receiver {
-	return &receiver{
-		logger:         logger,
-		clock:          clock,
-		aggregator:     aggregator,
-		mq:             queue,
-		decoratorList:  decoratorList,
-		filter:         filter,
-		metrics:        metrics,
-		discoveryCache: discoveryCache,
-		consumers:      map[mq.PartitionId]mq.Consumer{},
-	}
-}
+func (*e2eLatencyMetric) MetricName() string { return "audit_consumer_e2e_latency" }
 
 func (recv *receiver) Options() manager.Options {
 	return &recv.options
 }
 
 func (recv *receiver) Init() error {
-	recv.consumeMetric = recv.metrics.New("audit_consumer_event", &consumeMetric{})
-	recv.e2eLatencyMetric = recv.metrics.New("audit_consumer_e2e_latency", &e2eLatencyMetric{})
-
 	for _, partition := range recv.options.partitions {
 		group := mq.ConsumerGroup(recv.options.consumerGroup)
 		partition := mq.PartitionId(partition)
-		consumer, err := recv.mq.CreateConsumer(
+		consumer, err := recv.Mq.CreateConsumer(
 			group,
 			partition,
 			func(ctx context.Context, fieldLogger logrus.FieldLogger, msgKey []byte, msgValue []byte) {
@@ -161,7 +142,7 @@ func (recv *receiver) Start(ctx context.Context) error {
 }
 
 func (recv *receiver) Close(ctx context.Context) error {
-	recv.logger.Info("receiver close")
+	recv.Logger.Info("receiver close")
 	return nil
 }
 
@@ -179,7 +160,7 @@ func (recv *receiver) handleMessage(
 		ConsumerGroup: consumerGroup,
 		Partition:     partition,
 	}
-	defer recv.consumeMetric.DeferCount(recv.clock.Now(), metric)
+	defer recv.ConsumeMetric.DeferCount(recv.Clock.Now(), metric)
 
 	// The first part of the message key is always the cluster no matter what partitioning method we use.
 	cluster := strings.SplitN(string(msgKey), "/", 2)[0]
@@ -221,7 +202,7 @@ func (recv *receiver) handleItem(
 		return
 	}
 
-	if !recv.filter.TestAuditEvent(&message.Event) {
+	if !recv.Filter.TestAuditEvent(&message.Event) {
 		return
 	}
 
@@ -264,7 +245,7 @@ func (recv *receiver) handleItem(
 		field = "deletion"
 	}
 
-	e2eLatency := recv.clock.Since(message.StageTimestamp.Time)
+	e2eLatency := recv.Clock.Since(message.StageTimestamp.Time)
 
 	fieldLogger := logger.
 		WithField("verb", message.Verb).
@@ -296,9 +277,9 @@ func (recv *receiver) handleItem(
 		WithTag("apiserver", message.SourceAddr).
 		WithTag("tag", message.Verb)
 
-	recv.decoratorList.Decorate(ctx, message, event)
+	recv.DecoratorList.Decorate(ctx, message, event)
 
-	recv.e2eLatencyMetric.With(&e2eLatencyMetric{
+	recv.E2eLatencyMetric.With(&e2eLatencyMetric{
 		Cluster:  message.Cluster,
 		ApiGroup: objectRef.GroupVersion(),
 		Resource: objectRef.Resource,
@@ -312,7 +293,7 @@ func (recv *receiver) handleItem(
 		}
 	}
 
-	err := recv.aggregator.Send(ctx, objectRef, event, subObjectId)
+	err := recv.Aggregator.Send(ctx, objectRef, event, subObjectId)
 	if err != nil {
 		fieldLogger.WithError(err).Error()
 	} else {
@@ -334,7 +315,7 @@ func (receiver *receiver) inferObjectRef(message *audit.Message) error {
 			return fmt.Errorf("object has invalid GroupVersion: %w", err)
 		}
 
-		cdc, err := receiver.discoveryCache.ForCluster(message.Cluster)
+		cdc, err := receiver.DiscoveryCache.ForCluster(message.Cluster)
 		if err != nil {
 			return fmt.Errorf("no ClusterDiscoveryCache: %w", err)
 		}

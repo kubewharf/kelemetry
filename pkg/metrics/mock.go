@@ -32,7 +32,7 @@ func NewMock(clock clock.Clock) (Client, *Mock) {
 
 	return &mux{
 		Mux:        manager.NewMockMux("metrics", "mock", recorder),
-		metricPool: map[string]Metric{},
+		metricPool: map[string]AnyMetric{},
 	}, recorder
 }
 

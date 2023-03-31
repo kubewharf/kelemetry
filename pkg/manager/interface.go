@@ -25,6 +25,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 
+	"github.com/kubewharf/kelemetry/pkg/util/reflect"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
 )
 
@@ -45,7 +46,7 @@ type Component interface {
 type BaseComponent struct{}
 
 func (*BaseComponent) Options() Options                { return &NoOptions{} }
-func (*BaseComponent) Init() error  { return nil }
+func (*BaseComponent) Init() error                     { return nil }
 func (*BaseComponent) Start(ctx context.Context) error { return nil }
 func (*BaseComponent) Close(ctx context.Context) error { return nil }
 
@@ -67,17 +68,24 @@ func (*NoOptions) EnableFlag() *bool       { return nil }
 type UtilContext struct {
 	ComponentName string
 	ComponentType reflect.Type
+
+	// Adds a closure that is called before calling Init() on the referencing component
+	AddOnInit func(func() error)
 }
 
 type componentInfo struct {
 	name         string
+	ty           reflect.Type
 	component    Component
 	order        int
 	dependents   uint
 	dependencies map[reflect.Type]*componentInfo
 }
 
-type utilFactory = func(UtilContext) (any, error)
+type utilFactory struct {
+	constructor func([]reflect.Value) (any, error)
+	reqs        []reflect.Type
+}
 
 type componentFactory struct {
 	name     string
@@ -92,6 +100,7 @@ type Manager struct {
 
 	componentFactories map[reflect.Type]*componentFactory
 	preBuildTasks      []func()
+	onInitHooks        map[reflect.Type][]func() error
 
 	components map[reflect.Type]*componentInfo
 
@@ -102,6 +111,7 @@ func New() *Manager {
 	return &Manager{
 		utils:              map[reflect.Type]utilFactory{},
 		componentFactories: map[reflect.Type]*componentFactory{},
+		onInitHooks:        map[reflect.Type][]func() error{},
 	}
 }
 
@@ -109,13 +119,22 @@ func New() *Manager {
 // The factory should be in the form `func(reflect.Type) (T, error)`,
 // where the input is the type of the requesting component and T is the type of root.
 func (manager *Manager) ProvideUtil(factory any) {
-	manager.utils[reflect.TypeOf(factory).Out(0)] = func(ctx UtilContext) (any, error) {
-		out := reflect.ValueOf(factory).Call([]reflect.Value{reflect.ValueOf(ctx)})
-		if len(out) >= 2 && !out[1].IsNil() {
-			return nil, out[1].Interface().(error)
-		}
+	factoryTy := reflect.TypeOf(factory)
 
-		return out[0].Interface(), nil
+	reqs := make([]reflect.Type, factoryTy.NumIn())
+	for i := range reqs {
+		reqs[i] = factoryTy.In(i)
+	}
+	manager.utils[factoryTy.Out(0)] = utilFactory{
+		constructor: func(args []reflect.Value) (any, error) {
+			out := reflect.ValueOf(factory).Call(args)
+			if len(out) >= 2 && !out[1].IsNil() {
+				return nil, out[1].Interface().(error)
+			}
+
+			return out[0].Interface(), nil
+		},
+		reqs: reqs,
 	}
 }
 
@@ -123,13 +142,104 @@ func (manager *Manager) ProvideUtil(factory any) {
 // The factory can accept any number of parameters with types that were provided as roots or components,
 // and return either `T` or `(T, error)`, where `T` is the type of component.
 // The parameter type must be identical to the return type explicitly declared in the factory (not subtypes/supertypes).
-func (manager *Manager) Provide(name string, factory any) {
+func (manager *Manager) Provide(name string, factory ComponentFactory) {
 	manager.provideComponent(name, factory)
 }
 
-func (manager *Manager) provideComponent(name string, factory any) reflect.Type {
-	factoryType := reflect.TypeOf(factory)
-	compTy := factoryType.Out(0)
+type ComponentFactory interface {
+	ComponentType() reflect.Type
+	Params() []reflect.Type
+	Call([]reflect.Value) []reflect.Value
+}
+
+func Func(closure any) ComponentFactory {
+	return &closureComponentFactory{closure: closure}
+}
+
+type closureComponentFactory struct {
+	closure any
+}
+
+func (factory *closureComponentFactory) ComponentType() reflect.Type {
+	return reflect.TypeOf(factory.closure).Out(0)
+}
+
+func (factory *closureComponentFactory) Params() []reflect.Type {
+	factoryTy := reflect.TypeOf(factory.closure)
+	params := make([]reflect.Type, factoryTy.NumIn())
+	for i := range params {
+		params[i] = factoryTy.In(i)
+	}
+	return params
+}
+
+func (factory *closureComponentFactory) Call(values []reflect.Value) []reflect.Value {
+	return reflect.ValueOf(factory.closure).Call(values)
+}
+
+func Ptr[CompTy any](obj CompTy) ComponentFactory {
+	compTy := reflectutil.TypeOf[CompTy]()
+
+	objTy := reflect.TypeOf(obj)
+	if !(objTy.Kind() == reflect.Ptr && objTy.Elem().Kind() == reflect.Struct) {
+		panic("manager.Pointer() only accepts pointer-to-struct")
+	}
+
+	structTy := objTy.Elem()
+	structValue := reflect.ValueOf(obj).Elem()
+
+	params := []reflect.Type{}
+	valueHandlers := []func(reflect.Value){}
+	for i := 0; i < structTy.NumField(); i++ {
+		i := i
+
+		field := structTy.Field(i)
+		if field.IsExported() && !field.Anonymous && structValue.Field(i).IsZero() {
+			if _, skipFill := field.Tag.Lookup("managerSkipFill"); !skipFill {
+				params = append(params, field.Type)
+				valueHandlers = append(valueHandlers, func(value reflect.Value) {
+					structValue.Field(i).Set(value)
+				})
+			}
+		}
+	}
+
+	return &pointerComponentFactory{
+		obj:           obj,
+		compTy:        compTy,
+		params:        params,
+		valueHandlers: valueHandlers,
+	}
+}
+
+type pointerComponentFactory struct {
+	obj           any
+	compTy        reflect.Type
+	params        []reflect.Type
+	valueHandlers []func(reflect.Value)
+}
+
+func (factory *pointerComponentFactory) ComponentType() reflect.Type { return factory.compTy }
+func (factory *pointerComponentFactory) Params() []reflect.Type      { return factory.params }
+func (factory *pointerComponentFactory) Call(values []reflect.Value) []reflect.Value {
+	for i, value := range values {
+		factory.valueHandlers[i](value)
+	}
+
+	if constructor, ok := factory.obj.(ComponentConstruct); ok {
+		constructor.ComponentConstruct()
+	}
+
+	return []reflect.Value{reflect.ValueOf(factory.obj)}
+}
+
+type ComponentConstruct interface {
+	ComponentConstruct()
+}
+
+func (manager *Manager) provideComponent(name string, factory ComponentFactory) reflect.Type {
+	compTy := factory.ComponentType()
+	params := factory.Params()
 
 	cf := &componentFactory{
 		name:     name,
@@ -140,13 +250,16 @@ func (manager *Manager) provideComponent(name string, factory any) reflect.Type 
 		ctx := UtilContext{
 			ComponentName: name,
 			ComponentType: compTy,
+			AddOnInit: func(f func() error) {
+				manager.onInitHooks[compTy] = append(manager.onInitHooks[compTy], f)
+			},
 		}
 
 		deps := map[reflect.Type]*componentInfo{}
 
-		args := make([]reflect.Value, factoryType.NumIn())
+		args := make([]reflect.Value, len(params))
 		for i := 0; i < len(args); i++ {
-			arg, err := manager.resolve(factoryType.In(i), &ctx, deps)
+			arg, err := manager.resolve(params[i], &ctx, deps)
 			if err != nil {
 				return nil, err
 			}
@@ -163,7 +276,7 @@ func (manager *Manager) provideComponent(name string, factory any) reflect.Type 
 			impls = append(impls, impl.(MuxImpl))
 		}
 
-		out := reflect.ValueOf(factory).Call(args)
+		out := factory.Call(args)
 
 		if len(out) >= 2 && !out[1].IsNil() {
 			return nil, out[1].Interface().(error)
@@ -181,6 +294,7 @@ func (manager *Manager) provideComponent(name string, factory any) reflect.Type 
 
 		return &componentInfo{
 			name:         name,
+			ty:           compTy,
 			component:    comp,
 			order:        len(manager.components),
 			dependents:   0,
@@ -196,7 +310,7 @@ func (manager *Manager) provideComponent(name string, factory any) reflect.Type 
 // ProvideMuxImpl provides a MuxImpl factory.
 // It is similar to Manager.Provide(), but with an additional parameter interfaceFunc,
 // where the argument is in the form `Interface.AnyFunc`.
-func (manager *Manager) ProvideMuxImpl(name string, factory any, interfaceFunc any) {
+func (manager *Manager) ProvideMuxImpl(name string, factory ComponentFactory, interfaceFunc any) {
 	compTy := manager.provideComponent(name, factory)
 	itfTy := reflect.TypeOf(interfaceFunc).In(0)
 
@@ -206,13 +320,70 @@ func (manager *Manager) ProvideMuxImpl(name string, factory any, interfaceFunc a
 	})
 }
 
+// A generic type that implements GenericUtil can be used as a component parameter.
+type GenericUtil interface {
+	ImplementsGenericUtilMarker()
+
+	// The parameters requested by the util type.
+	UtilReqs() []reflect.Type
+	// Constructs the util type, where the args have types same as the return value of `UtilReqs`.
+	Construct(args []reflect.Value) error
+}
+
 func (manager *Manager) resolve(
 	req reflect.Type,
 	ctx *UtilContext,
 	deps map[reflect.Type]*componentInfo,
 ) (any, error) {
-	if factory, exists := manager.utils[req]; exists {
-		return factory(*ctx)
+	if req == reflect.TypeOf(manager) {
+		return manager, nil
+	}
+	if req == reflect.TypeOf(ctx) {
+		return ctx, nil
+	}
+
+	factory, hasUtilFactory := manager.utils[req]
+	if req.Implements(reflectutil.TypeOf[GenericUtil]()) {
+		if req.Kind() != reflect.Pointer {
+			panic("GenericUtil must be implemented on pointer receivers")
+		}
+
+		// Do not reuse this value in the constructor to avoid sharing states.
+		reqs := reflect.Zero(req).Interface().(GenericUtil).UtilReqs()
+
+		factory = utilFactory{
+			constructor: func(values []reflect.Value) (any, error) {
+				instance := reflect.New(req.Elem()).Interface().(GenericUtil)
+				err := instance.Construct(values)
+				if err != nil {
+					return nil, fmt.Errorf("cannot construct util %T for %v: %w", instance, req, err)
+				}
+				return instance, nil
+			},
+			reqs: reqs,
+		}
+
+		hasUtilFactory = true
+	}
+
+	if hasUtilFactory {
+		utilArgs := []reflect.Value{}
+
+		for _, utilReq := range factory.reqs {
+			utilArg, err := manager.resolve(utilReq, ctx, deps)
+			if err != nil {
+				return nil, fmt.Errorf("resolving dependency %v for util %v: %w", utilReq, req, err)
+			}
+
+			utilArgs = append(utilArgs, reflect.ValueOf(utilArg))
+		}
+
+		ret, err := factory.constructor(utilArgs)
+		if err != nil {
+			return nil, fmt.Errorf("constructing util %v: %w", req, err)
+		}
+
+		return ret, nil
 	}
 
 	if factory, exists := manager.componentFactories[req]; exists {
@@ -220,7 +391,7 @@ func (manager *Manager) resolve(
 
 		comp, err := factory.build(manager)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("building component %v: %w", req, err)
 		}
 
 		manager.components[req] = comp
@@ -235,7 +406,7 @@ func (manager *Manager) resolve(
 		return info.component, nil
 	}
 
-	return nil, fmt.Errorf("unknown dependency type %s", req)
+	return nil, fmt.Errorf("unknown dependency type %v", req)
 }
 
 // Build constructs all components.
@@ -453,6 +624,12 @@ func (manager *Manager) TrimDisabled(logger logrus.FieldLogger) {
 func (manager *Manager) Init(ctx context.Context, logger logrus.FieldLogger) error {
 	for _, comp := range manager.orderedComponents {
 		logger.WithField("mod", comp.name).Info("Initializing")
+
+		for _, onInit := range manager.onInitHooks[comp.ty] {
+			if err := onInit(); err != nil {
+				return fmt.Errorf("error calling on-init hook for %q: %w", comp.name, err)
+			}
+		}
 
 		if err := comp.component.Init(); err != nil {
 			return fmt.Errorf("error initializing %q: %w", comp.name, err)

@@ -38,7 +38,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("trace-server", NewTraceServer)
+	manager.Global.Provide("trace-server", manager.Ptr(&server{}))
 }
 
 type options struct {
@@ -53,53 +53,32 @@ func (options *options) EnableFlag() *bool { return &options.enable }
 
 type server struct {
 	options          options
-	logger           logrus.FieldLogger
-	clock            clock.Clock
-	server           pkghttp.Server
-	metrics          metrics.Client
-	spanReader       jaegerreader.Interface
-	clusterList      clusterlist.Lister
-	transformConfigs tfconfig.Provider
+	Logger           logrus.FieldLogger
+	Clock            clock.Clock
+	Server           pkghttp.Server
+	SpanReader       jaegerreader.Interface
+	ClusterList      clusterlist.Lister
+	TransformConfigs tfconfig.Provider
 
-	requestMetric metrics.Metric
+	RequestMetric *metrics.Metric[*requestMetric]
 }
 
 type requestMetric struct {
 	Error metrics.LabeledError
 }
 
-func NewTraceServer(
-	logger logrus.FieldLogger,
-	clock clock.Clock,
-	httpServer pkghttp.Server,
-	metrics metrics.Client,
-	spanReader jaegerreader.Interface,
-	clusterList clusterlist.Lister,
-	transformConfigs tfconfig.Provider,
-) *server {
-	return &server{
-		logger:           logger,
-		clock:            clock,
-		server:           httpServer,
-		metrics:          metrics,
-		spanReader:       spanReader,
-		clusterList:      clusterList,
-		transformConfigs: transformConfigs,
-	}
-}
+func (*requestMetric) MetricName() string { return "extension_trace_request" }
 
 func (server *server) Options() manager.Options {
 	return &server.options
 }
 
 func (server *server) Init() error {
-	server.requestMetric = server.metrics.New("redirect_request", &requestMetric{})
-
-	server.server.Routes().GET("/extensions/api/v1/trace", func(ctx *gin.Context) {
-		logger := server.logger.WithField("source", ctx.Request.RemoteAddr)
+	server.Server.Routes().GET("/extensions/api/v1/trace", func(ctx *gin.Context) {
+		logger := server.Logger.WithField("source", ctx.Request.RemoteAddr)
 		defer shutdown.RecoverPanic(logger)
 		metric := &requestMetric{}
-		defer server.requestMetric.DeferCount(server.clock.Now(), metric)
+		defer server.RequestMetric.DeferCount(server.Clock.Now(), metric)
 
 		logger.WithField("query", ctx.Request.URL.RawQuery).Infof("GET /extensions/api/v1/trace %v", ctx.Request.URL.Query())
 
@@ -138,7 +117,7 @@ func (server *server) handleTrace(ctx *gin.Context, metric *requestMetric) (code
 		}
 	}
 	if !hasLogs && len(trace.Spans) > 0 {
-		trace, err = server.spanReader.GetTrace(context.Background(), trace.Spans[0].TraceID)
+		trace, err = server.SpanReader.GetTrace(context.Background(), trace.Spans[0].TraceID)
 		if err != nil {
 			metric.Error = metrics.MakeLabeledError("TraceError")
 			return 500, fmt.Errorf("failed to find trace ids %w", err)
@@ -190,7 +169,7 @@ func (server *server) findTrace(metric *requestMetric, serviceName string, query
 	}
 
 	var hasCluster bool
-	for _, knownCluster := range server.clusterList.List() {
+	for _, knownCluster := range server.ClusterList.List() {
 		if strings.EqualFold(strings.ToLower(knownCluster), strings.ToLower(cluster)) {
 			hasCluster = true
 		}
@@ -221,7 +200,7 @@ func (server *server) findTrace(metric *requestMetric, serviceName string, query
 		StartTimeMin:  timestamp.Truncate(time.Minute * 30),
 		StartTimeMax:  timestamp.Truncate(time.Minute * 30).Add(time.Minute * 30),
 	}
-	traces, err := server.spanReader.FindTraces(context.Background(), parameters)
+	traces, err := server.SpanReader.FindTraces(context.Background(), parameters)
 	if err != nil {
 		metric.Error = metrics.MakeLabeledError("TraceError")
 		return nil, 500, fmt.Errorf("failed to find trace ids %w", err)

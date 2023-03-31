@@ -19,7 +19,9 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("jaeger-cluster-list", newLister)
+	manager.Global.Provide("jaeger-cluster-list", manager.Ptr[Lister](&mux{
+		Mux: manager.NewMux("jaeger-cluster-list", false),
+	}))
 }
 
 type Lister interface {
@@ -28,12 +30,6 @@ type Lister interface {
 
 type mux struct {
 	*manager.Mux
-}
-
-func newLister() Lister {
-	return &mux{
-		Mux: manager.NewMux("jaeger-cluster-list", false),
-	}
 }
 
 func (mux *mux) List() []string {

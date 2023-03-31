@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package jaeger
+package frontend
 
 import (
 	"context"
@@ -35,7 +35,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("jaeger-storage-plugin", New)
+	manager.Global.Provide("jaeger-storage-plugin", manager.Ptr(&Plugin{}))
 }
 
 type options struct {
@@ -51,9 +51,9 @@ func (options *options) Setup(fs *pflag.FlagSet) {
 func (options *options) EnableFlag() *bool { return &options.enable }
 
 type Plugin struct {
-	options    options
-	logger     logrus.FieldLogger
-	spanReader spanstore.Reader
+	options     options
+	Logger      logrus.FieldLogger
+	SpanReader_ jaegerreader.Interface
 
 	grpcServer *grpc.Server
 }
@@ -65,8 +65,8 @@ func New(
 	spanReader jaegerreader.Interface,
 ) *Plugin {
 	plugin := &Plugin{
-		logger:     logger,
-		spanReader: spanReader,
+		Logger:      logger,
+		SpanReader_: spanReader,
 	}
 	return plugin
 }
@@ -94,10 +94,10 @@ func (plugin *Plugin) Start(ctx context.Context) error {
 	}
 
 	go func() {
-		shutdown.RecoverPanic(plugin.logger)
+		shutdown.RecoverPanic(plugin.Logger)
 		err := grpcServer.Serve(listener)
 		if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-			plugin.logger.WithError(err).Error()
+			plugin.Logger.WithError(err).Error()
 		}
 	}()
 
@@ -113,11 +113,11 @@ func (plugin *Plugin) Close(ctx context.Context) error {
 
 func (plugin *Plugin) DependencyReader() dependencystore.Reader { return nilDepReader{} }
 
-func (plugin *Plugin) SpanReader() spanstore.Reader { return plugin.spanReader }
+func (plugin *Plugin) SpanReader() spanstore.Reader { return plugin.SpanReader_ }
 
 func (plugin *Plugin) SpanWriter() spanstore.Writer { return noopWriter{} }
 
-func (plugin *Plugin) ArchiveSpanReader() spanstore.Reader { return plugin.spanReader }
+func (plugin *Plugin) ArchiveSpanReader() spanstore.Reader { return plugin.SpanReader_ }
 
 func (plugin *Plugin) ArchiveSpanWriter() spanstore.Writer { return noopWriter{} }
 

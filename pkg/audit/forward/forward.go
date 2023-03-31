@@ -36,7 +36,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("audit-forward", New)
+	manager.Global.Provide("audit-forward", manager.Ptr(&comp{}))
 }
 
 type options struct {
@@ -55,27 +55,14 @@ func (options *options) EnableFlag() *bool {
 }
 
 type comp struct {
-	options options
-	logger  logrus.FieldLogger
-	clock   clock.Clock
-	webhook auditwebhook.Webhook
-	metrics metrics.Client
+	options     options
+	Logger      logrus.FieldLogger
+	Clock       clock.Clock
+	Webhook     auditwebhook.Webhook
+	ProxyMetric *metrics.Metric[*proxyMetric]
+
 	proxies []*proxy
 	stopWg  sync.WaitGroup
-}
-
-func New(
-	logger logrus.FieldLogger,
-	clock clock.Clock,
-	webhook auditwebhook.Webhook,
-	metrics metrics.Client,
-) *comp {
-	return &comp{
-		logger:  logger,
-		clock:   clock,
-		webhook: webhook,
-		metrics: metrics,
-	}
 }
 
 type proxyMetric struct {
@@ -83,6 +70,8 @@ type proxyMetric struct {
 	Cluster  string
 	Success  bool
 }
+
+func (*proxyMetric) MetricName() string { return "audit_forward_proxy" }
 
 func (comp *comp) Options() manager.Options {
 	return &comp.options
@@ -92,13 +81,13 @@ func (comp *comp) Init() error {
 	comp.proxies = make([]*proxy, 0, len(comp.options.forwardUrls))
 	for upstreamName, url := range comp.options.forwardUrls {
 		proxy := newProxy(
-			comp.logger.WithField("url", url).WithField("upstream", upstreamName),
-			comp.clock,
-			comp.metrics.New("audit_forward_proxy", &proxyMetric{}),
+			comp.Logger.WithField("url", url).WithField("upstream", upstreamName),
+			comp.Clock,
+			comp.ProxyMetric,
 			&comp.options,
 			upstreamName,
 			url,
-			comp.webhook.AddRawSubscriber(fmt.Sprintf("audit-forward-%s-subscriber", upstreamName)),
+			comp.Webhook.AddRawSubscriber(fmt.Sprintf("audit-forward-%s-subscriber", upstreamName)),
 		)
 		comp.proxies = append(comp.proxies, proxy)
 	}
@@ -124,7 +113,7 @@ func (comp *comp) Close(ctx context.Context) error {
 type proxy struct {
 	logger       logrus.FieldLogger
 	clock        clock.Clock
-	metric       metrics.Metric
+	metric       *metrics.Metric[*proxyMetric]
 	upstreamName string
 	url          string
 	subscriber   <-chan *audit.RawMessage
@@ -134,7 +123,7 @@ type proxy struct {
 func newProxy(
 	logger logrus.FieldLogger,
 	clock clock.Clock,
-	metric metrics.Metric,
+	metric *metrics.Metric[*proxyMetric],
 	options *options,
 	upstreamName string,
 	url string,

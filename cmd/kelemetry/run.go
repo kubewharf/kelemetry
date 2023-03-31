@@ -91,13 +91,13 @@ func Run(rootLogger *logrus.Logger) error {
 }
 
 func provideUtils(m *manager.Manager, logger logrus.FieldLogger, shutdownTrigger *shutdown.ShutdownTrigger) {
-	m.ProvideUtil(func(ctx manager.UtilContext) (logrus.FieldLogger, error) {
+	m.ProvideUtil(func(ctx *manager.UtilContext) (logrus.FieldLogger, error) {
 		return logger.WithField("mod", ctx.ComponentName), nil
 	})
-	m.ProvideUtil(func(ctx manager.UtilContext) (*shutdown.ShutdownTrigger, error) {
+	m.ProvideUtil(func() (*shutdown.ShutdownTrigger, error) {
 		return shutdownTrigger, nil
 	})
-	m.ProvideUtil(func(ctx manager.UtilContext) (clock.Clock, error) {
+	m.ProvideUtil(func() (clock.Clock, error) {
 		return clock.RealClock{}, nil
 	})
 }

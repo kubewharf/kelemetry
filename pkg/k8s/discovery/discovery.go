@@ -34,7 +34,9 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("discovery", NewDiscoveryCache)
+	manager.Global.Provide("discovery", manager.Ptr[DiscoveryCache](&discoveryCache{
+		hasCtx: make(chan struct{}),
+	}))
 }
 
 type discoveryOptions struct {
@@ -71,16 +73,16 @@ type ClusterDiscoveryCache interface {
 
 type discoveryCache struct {
 	options discoveryOptions
-	logger  logrus.FieldLogger
-	clock   clock.Clock
-	clients k8s.Clients
-	metrics metrics.Client
+	Logger  logrus.FieldLogger
+	Clock   clock.Clock
+	Clients k8s.Clients
 
 	// Discovery loops should run indefinitely but lazily.
 	// For now we do not consider the need for removing clusters.
-	ctx context.Context //nolint:containedctx
+	ctx    context.Context //nolint:containedctx
+	hasCtx chan struct{}
 
-	resyncMetric metrics.Metric
+	ResyncMetric *metrics.Metric[*resyncMetric]
 
 	clusters sync.Map
 }
@@ -108,29 +110,15 @@ type resyncMetric struct {
 	Cluster string
 }
 
-func NewDiscoveryCache(
-	logger logrus.FieldLogger,
-	clock clock.Clock,
-	clients k8s.Clients,
-	metrics metrics.Client,
-) DiscoveryCache {
-	return &discoveryCache{
-		logger:  logger,
-		clock:   clock,
-		clients: clients,
-		metrics: metrics,
-	}
-}
+func (*resyncMetric) MetricName() string { return "discovery_resync" }
 
 func (dc *discoveryCache) Options() manager.Options { return &dc.options }
 
-func (dc *discoveryCache) Init() error {
-	dc.resyncMetric = dc.metrics.New("discovery_resync", &resyncMetric{})
-	return nil
-}
+func (dc *discoveryCache) Init() error { return nil }
 
 func (dc *discoveryCache) Start(ctx context.Context) error {
 	dc.ctx = ctx
+	close(dc.hasCtx)
 	return nil
 }
 
@@ -141,20 +129,23 @@ func (dc *discoveryCache) ForCluster(cluster string) (ClusterDiscoveryCache, err
 	cdc := cacheAny.(*clusterDiscoveryCache)
 	// no matter we loaded or stored, someone has to initialize it the first time.
 	cdc.initLock.Do(func() {
-		cdc.logger = dc.logger.WithField("cluster", cluster)
-		cdc.clock = dc.clock
+		cdc.logger = dc.Logger.WithField("cluster", cluster)
+		cdc.clock = dc.Clock
 		cdc.options = &dc.options
-		cdc.resyncMetric = dc.resyncMetric.With(&resyncMetric{
+		cdc.resyncMetric = dc.ResyncMetric.With(&resyncMetric{
 			Cluster: cluster,
 		})
 		cdc.resyncRequestCh = make(chan struct{}, 1)
-		cdc.client, cdc.initErr = dc.clients.Cluster(cluster)
+		cdc.client, cdc.initErr = dc.Clients.Cluster(cluster)
 		if cdc.initErr != nil {
 			return
 		}
 
 		cdc.logger.Info("initialized cluster discovery cache")
-		go cdc.run(dc.ctx)
+		go func() {
+			<-dc.hasCtx
+			cdc.run(dc.ctx)
+		}()
 	})
 	return cdc, cdc.initErr
 }

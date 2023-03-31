@@ -31,7 +31,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("annotation-linker", New)
+	manager.Global.Provide("annotation-linker", manager.Ptr(&controller{}))
 }
 
 type options struct {
@@ -46,38 +46,21 @@ func (options *options) EnableFlag() *bool { return &options.enable }
 
 type controller struct {
 	options        options
-	logger         logrus.FieldLogger
-	linkers        linker.LinkerList
-	clients        k8s.Clients
-	discoveryCache discovery.DiscoveryCache
-	objectCache    objectcache.ObjectCache
+	Logger         logrus.FieldLogger
+	Linkers        linker.LinkerList
+	Clients        k8s.Clients
+	DiscoveryCache discovery.DiscoveryCache
+	ObjectCache    *objectcache.ObjectCache
 }
 
 var _ manager.Component = &controller{}
-
-func New(
-	logger logrus.FieldLogger,
-	linkers linker.LinkerList,
-	clients k8s.Clients,
-	discoveryCache discovery.DiscoveryCache,
-	objectCache objectcache.ObjectCache,
-) *controller {
-	ctrl := &controller{
-		logger:         logger,
-		linkers:        linkers,
-		clients:        clients,
-		discoveryCache: discoveryCache,
-		objectCache:    objectCache,
-	}
-	return ctrl
-}
 
 func (ctrl *controller) Options() manager.Options {
 	return &ctrl.options
 }
 
 func (ctrl *controller) Init() error {
-	ctrl.linkers.AddLinker(ctrl)
+	ctrl.Linkers.AddLinker(ctrl)
 
 	return nil
 }
@@ -93,13 +76,13 @@ func (ctrl *controller) Close(ctx context.Context) error {
 func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) *util.ObjectRef {
 	raw := object.Raw
 
-	logger := ctrl.logger.WithField("object", object)
+	logger := ctrl.Logger.WithField("object", object)
 
 	if raw == nil {
 		logger.Debug("Fetching dynamic object")
 
 		var err error
-		raw, err = ctrl.objectCache.Get(ctx, object)
+		raw, err = ctrl.ObjectCache.Get(ctx, object)
 
 		if err != nil {
 			logger.WithError(err).Error("cannot fetch object value")

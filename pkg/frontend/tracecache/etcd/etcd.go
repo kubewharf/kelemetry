@@ -30,7 +30,9 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideMuxImpl("jaeger-trace-cache/etcd", newEtcd, tracecache.Cache.Persist)
+	manager.Global.ProvideMuxImpl("jaeger-trace-cache/etcd", manager.Ptr(&etcdCache{
+		deferList: shutdown.NewDeferList(),
+	}), tracecache.Cache.Persist)
 }
 
 type options struct {
@@ -56,17 +58,10 @@ type etcdCache struct {
 	manager.MuxImplBase
 
 	options   options
-	logger    logrus.FieldLogger
+	Logger    logrus.FieldLogger
 	deferList *shutdown.DeferList
 
 	client *etcdv3.Client
-}
-
-func newEtcd(logger logrus.FieldLogger) *etcdCache {
-	return &etcdCache{
-		logger:    logger,
-		deferList: shutdown.NewDeferList(),
-	}
 }
 
 func (_ *etcdCache) MuxImplName() (name string, isDefault bool) { return "etcd", false }
@@ -95,7 +90,7 @@ func (cache *etcdCache) Init() error {
 func (cache *etcdCache) Start(ctx context.Context) error { return nil }
 
 func (cache *etcdCache) Close(ctx context.Context) error {
-	if name, err := cache.deferList.Run(ctx, cache.logger); err != nil {
+	if name, err := cache.deferList.Run(ctx, cache.Logger); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}
 
@@ -121,7 +116,6 @@ func (cache *etcdCache) Persist(ctx context.Context, entries []tracecache.Entry)
 }
 
 func (cache *etcdCache) Fetch(ctx context.Context, lowId uint64) (json.RawMessage, error) {
-	cache.logger.Warn(cache.cacheKey(lowId))
 	resp, err := cache.client.Get(ctx, cache.cacheKey(lowId))
 	if err != nil {
 		return nil, fmt.Errorf("etcd get error: %w", err)

@@ -35,7 +35,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("audit-webhook", New)
+	manager.Global.Provide("audit-webhook", manager.Ptr[Webhook](&webhook{}))
 }
 
 type options struct {
@@ -62,14 +62,14 @@ type Webhook interface {
 
 type webhook struct {
 	options             options
-	logger              logrus.FieldLogger
-	clock               clock.Clock
-	metrics             metrics.Client
-	clusterNameResolver clustername.Resolver
-	server              http.Server
+	Logger              logrus.FieldLogger
+	Clock               clock.Clock
+	Metrics             metrics.Client
+	ClusterNameResolver clustername.Resolver
+	Server              http.Server
 
-	requestMetric  metrics.Metric
-	sendRateMetric metrics.Metric
+	RequestMetric  *metrics.Metric[*requestMetric]
+	SendRateMetric *metrics.Metric[*sendRateMetric]
 	subscribers    []namedQueue[*audit.Message]
 	rawSubscribers []namedQueue[*audit.RawMessage]
 }
@@ -83,45 +83,36 @@ type requestMetric struct {
 	Cluster string
 }
 
+func (*requestMetric) MetricName() string { return "audit_webhook_request" }
+
+type sendRateMetric struct {
+	Name string
+}
+
+func (*sendRateMetric) MetricName() string { return "audit_webhook_send_rate" }
+
 type queueMetricTags struct {
 	Name string
 }
 
-func New(
-	logger logrus.FieldLogger,
-	clock clock.Clock,
-	metrics metrics.Client,
-	clusterNameResolver clustername.Resolver,
-	server http.Server,
-) Webhook {
-	return &webhook{
-		logger:              logger,
-		clock:               clock,
-		metrics:             metrics,
-		clusterNameResolver: clusterNameResolver,
-		server:              server,
-	}
-}
+func (*queueMetricTags) MetricName() string { return "audit_webhook_subscriber_lag" }
 
 func (webhook *webhook) Options() manager.Options {
 	return &webhook.options
 }
 
 func (webhook *webhook) Init() error {
-	webhook.requestMetric = webhook.metrics.New("audit_webhook_request", &requestMetric{})
-	webhook.sendRateMetric = webhook.metrics.New("audit_webhook_send_rate", &queueMetricTags{})
-
-	webhook.server.Routes().POST("/audit", webhook.handleRequest)
-	webhook.server.Routes().POST("/audit/:cluster", webhook.handleRequest)
+	webhook.Server.Routes().POST("/audit", webhook.handleRequest)
+	webhook.Server.Routes().POST("/audit/:cluster", webhook.handleRequest)
 
 	return nil
 }
 
 func (webhook *webhook) handleRequest(ctx *gin.Context) {
-	logger := webhook.logger.WithField("source", ctx.Request.RemoteAddr)
+	logger := webhook.Logger.WithField("source", ctx.Request.RemoteAddr)
 	defer shutdown.RecoverPanic(logger)
 	metric := &requestMetric{}
-	defer webhook.requestMetric.DeferCount(webhook.clock.Now(), metric)
+	defer webhook.RequestMetric.DeferCount(webhook.Clock.Now(), metric)
 
 	if err := webhook.handle(ctx, logger, metric); err != nil {
 		logger.WithError(err).Error()
@@ -131,7 +122,7 @@ func (webhook *webhook) handleRequest(ctx *gin.Context) {
 func (webhook *webhook) handle(ctx *gin.Context, logger logrus.FieldLogger, metric *requestMetric) error {
 	cluster := ctx.Param("cluster")
 	if cluster == "" {
-		cluster = webhook.clusterNameResolver.Resolve(ctx.ClientIP())
+		cluster = webhook.ClusterNameResolver.Resolve(ctx.ClientIP())
 	}
 
 	metric.Cluster = cluster
@@ -158,7 +149,7 @@ func (webhook *webhook) handle(ctx *gin.Context, logger logrus.FieldLogger, metr
 		EventList:  eventList,
 	}
 	for _, ch := range webhook.rawSubscribers {
-		webhook.sendRateMetric.With(&queueMetricTags{Name: ch.name}).Count(1)
+		webhook.SendRateMetric.With(&sendRateMetric{Name: ch.name}).Count(1)
 		ch.queue.Send(rawMessage)
 	}
 
@@ -170,7 +161,7 @@ func (webhook *webhook) handle(ctx *gin.Context, logger logrus.FieldLogger, metr
 		}
 
 		for _, ch := range webhook.subscribers {
-			webhook.sendRateMetric.With(&queueMetricTags{Name: ch.name}).Count(1)
+			webhook.SendRateMetric.With(&sendRateMetric{Name: ch.name}).Count(1)
 			ch.queue.Send(message)
 		}
 	}
@@ -194,7 +185,7 @@ func (webhook *webhook) Close(ctx context.Context) error {
 
 func (webhook *webhook) AddSubscriber(name string) <-chan *audit.Message {
 	queue := channel.NewUnboundedQueue[*audit.Message](1)
-	queue.InitMetricLoop(webhook.metrics, "audit_webhook_subscriber_lag", &queueMetricTags{Name: name})
+	channel.InitMetricLoop(queue, webhook.Metrics, &queueMetricTags{Name: name})
 
 	webhook.subscribers = append(webhook.subscribers, namedQueue[*audit.Message]{name: name, queue: queue})
 	return queue.Receiver()
@@ -202,7 +193,7 @@ func (webhook *webhook) AddSubscriber(name string) <-chan *audit.Message {
 
 func (webhook *webhook) AddRawSubscriber(name string) <-chan *audit.RawMessage {
 	queue := channel.NewUnboundedQueue[*audit.RawMessage](1)
-	queue.InitMetricLoop(webhook.metrics, "audit_webhook_subscriber_lag", &queueMetricTags{Name: name})
+	channel.InitMetricLoop(queue, webhook.Metrics, &queueMetricTags{Name: name})
 
 	webhook.rawSubscribers = append(webhook.rawSubscribers, namedQueue[*audit.RawMessage]{name: name, queue: queue})
 	return queue.Receiver()

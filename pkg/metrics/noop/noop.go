@@ -23,7 +23,7 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideMuxImpl("metrics/noop", newNoop, metrics.Client.New)
+	manager.Global.ProvideMuxImpl("metrics/noop", manager.Ptr(&noop{}), func(metrics.Client) {})
 }
 
 type noop struct {
@@ -31,10 +31,6 @@ type noop struct {
 }
 
 var _ metrics.Impl = &noop{}
-
-func newNoop() *noop {
-	return &noop{}
-}
 
 func (_ *noop) MuxImplName() (name string, isDefault bool) { return "noop", true }
 

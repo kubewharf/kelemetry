@@ -27,7 +27,9 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("jaeger-backend", newBackend)
+	manager.Global.Provide("jaeger-backend", manager.Ptr[Backend](&mux{
+		Mux: manager.NewMux("jaeger-backend", false),
+	}))
 }
 
 type Backend interface {
@@ -55,19 +57,10 @@ type TraceThumbnail struct {
 
 type mux struct {
 	*manager.Mux
-	clock   clock.Clock
-	metrics metrics.Client
+	Clock clock.Clock
 
-	listMetric metrics.Metric
-	getMetric  metrics.Metric
-}
-
-func newBackend(metrics metrics.Client, clock clock.Clock) Backend {
-	return &mux{
-		Mux:     manager.NewMux("jaeger-backend", false),
-		clock:   clock,
-		metrics: metrics,
-	}
+	ListMetric *metrics.Metric[*listMetric]
+	GetMetric  *metrics.Metric[*getMetric]
 }
 
 type (
@@ -75,15 +68,11 @@ type (
 	getMetric  struct{}
 )
 
-func (mux *mux) Init() error {
-	mux.listMetric = mux.metrics.New("jaeger_backend_list", &listMetric{})
-	mux.getMetric = mux.metrics.New("jaeger_backend_get", &getMetric{})
-
-	return mux.Mux.Init()
-}
+func (*listMetric) MetricName() string { return "jaeger_backend_list" }
+func (*getMetric) MetricName() string  { return "jaeger_backend_get" }
 
 func (mux *mux) List(ctx context.Context, query *spanstore.TraceQueryParameters) ([]*TraceThumbnail, error) {
-	defer mux.listMetric.DeferCount(mux.clock.Now(), &listMetric{})
+	defer mux.ListMetric.DeferCount(mux.Clock.Now(), &listMetric{})
 	return mux.Impl().(Backend).List(ctx, query)
 }
 
@@ -92,6 +81,6 @@ func (mux *mux) Get(
 	identifier json.RawMessage,
 	traceId model.TraceID,
 ) (*model.Trace, model.SpanID, error) {
-	defer mux.getMetric.DeferCount(mux.clock.Now(), &getMetric{})
+	defer mux.GetMetric.DeferCount(mux.Clock.Now(), &getMetric{})
 	return mux.Impl().(Backend).Get(ctx, identifier, traceId)
 }

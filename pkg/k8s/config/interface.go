@@ -22,7 +22,9 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("kube-config", newConfig)
+	manager.Global.Provide("kube-config", manager.Ptr[Config](&mux{
+		Mux: manager.NewMux("kube-config", false),
+	}))
 }
 
 type Config interface {
@@ -42,12 +44,6 @@ type Config interface {
 
 type mux struct {
 	*manager.Mux
-}
-
-func newConfig() Config {
-	return &mux{
-		Mux: manager.NewMux("kube-config", false),
-	}
 }
 
 func (mux *mux) ProvideTarget() *rest.Config {

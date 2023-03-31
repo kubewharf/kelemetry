@@ -35,7 +35,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("jaeger-span-reader", newSpanReader)
+	manager.Global.Provide("jaeger-span-reader", manager.Ptr[Interface](&spanReader{}))
 }
 
 type Interface interface {
@@ -51,56 +51,38 @@ func (options *options) EnableFlag() *bool { return nil }
 
 type spanReader struct {
 	options          options
-	logger           logrus.FieldLogger
-	backend          jaegerbackend.Backend
-	traceCache       tracecache.Cache
-	clusterList      clusterlist.Lister
-	transformer      *transform.Transformer
-	transformConfigs tfconfig.Provider
-}
-
-func newSpanReader(
-	logger logrus.FieldLogger,
-	backend jaegerbackend.Backend,
-	traceCache tracecache.Cache,
-	clusterList clusterlist.Lister,
-	transformer *transform.Transformer,
-	transformConfigs tfconfig.Provider,
-) Interface {
-	return &spanReader{
-		logger:           logger,
-		backend:          backend,
-		traceCache:       traceCache,
-		clusterList:      clusterList,
-		transformer:      transformer,
-		transformConfigs: transformConfigs,
-	}
+	Logger           logrus.FieldLogger
+	Backend          jaegerbackend.Backend
+	TraceCache       tracecache.Cache
+	ClusterList      clusterlist.Lister
+	Transformer      *transform.Transformer
+	TransformConfigs tfconfig.Provider
 }
 
 func (reader *spanReader) Options() manager.Options        { return &reader.options }
-func (reader *spanReader) Init() error  { return nil }
+func (reader *spanReader) Init() error                     { return nil }
 func (reader *spanReader) Start(ctx context.Context) error { return nil }
 func (reader *spanReader) Close(ctx context.Context) error { return nil }
 
 func (reader *spanReader) GetServices(ctx context.Context) ([]string, error) {
 	configNames := []string{
-		reader.transformConfigs.DefaultName(),
+		reader.TransformConfigs.DefaultName(),
 	}
 
-	for _, name := range reader.transformConfigs.Names() {
-		if name != reader.transformConfigs.DefaultName() {
+	for _, name := range reader.TransformConfigs.Names() {
+		if name != reader.TransformConfigs.DefaultName() {
 			configNames = append(configNames, name)
 		}
 	}
 
 	sort.Strings(configNames[1:])
-	reader.logger.WithField("services", configNames).Info("query display mode list")
+	reader.Logger.WithField("services", configNames).Info("query display mode list")
 
 	return configNames, nil
 }
 
 func (reader *spanReader) GetOperations(ctx context.Context, query spanstore.OperationQueryParameters) ([]spanstore.Operation, error) {
-	clusterNames := reader.clusterList.List()
+	clusterNames := reader.ClusterList.List()
 	operations := make([]spanstore.Operation, 0, len(clusterNames))
 	for _, verb := range clusterNames {
 		operations = append(operations, spanstore.Operation{
@@ -128,13 +110,13 @@ func (reader *spanReader) FindTraceIDs(ctx context.Context, query *spanstore.Tra
 }
 
 func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.TraceQueryParameters) ([]*model.Trace, error) {
-	thumbnails, err := reader.backend.List(ctx, query)
+	thumbnails, err := reader.Backend.List(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 
 	configName := strings.TrimPrefix(query.ServiceName, "* ")
-	config := reader.transformConfigs.GetByName(configName)
+	config := reader.TransformConfigs.GetByName(configName)
 	if config == nil {
 		return nil, fmt.Errorf("invalid display mode %q", query.ServiceName)
 	}
@@ -165,12 +147,12 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 
 		displayMode := extractDisplayMode(cacheId)
 
-		reader.transformer.Transform(trace, thumbnail.RootSpan, displayMode)
+		reader.Transformer.Transform(trace, thumbnail.RootSpan, displayMode)
 		traces = append(traces, trace)
 	}
 
 	if len(cacheEntries) > 0 {
-		if err := reader.traceCache.Persist(ctx, cacheEntries); err != nil {
+		if err := reader.TraceCache.Persist(ctx, cacheEntries); err != nil {
 			return nil, fmt.Errorf("cannot persist trace cache: %w", err)
 		}
 	}
@@ -179,21 +161,21 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 }
 
 func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (*model.Trace, error) {
-	identifier, err := reader.traceCache.Fetch(ctx, cacheId.Low)
+	identifier, err := reader.TraceCache.Fetch(ctx, cacheId.Low)
 	if err != nil {
 		return nil, fmt.Errorf("cannot lookup trace: %w", err)
 	}
 
-	trace, rootSpan, err := reader.backend.Get(ctx, identifier, cacheId)
+	trace, rootSpan, err := reader.Backend.Get(ctx, identifier, cacheId)
 	if err != nil {
 		return nil, fmt.Errorf("cannot fetch trace pointed by the cache: %w", err)
 	}
 
 	displayMode := extractDisplayMode(cacheId)
 
-	reader.transformer.Transform(trace, rootSpan, displayMode)
+	reader.Transformer.Transform(trace, rootSpan, displayMode)
 
-	reader.logger.WithField("numTransformedSpans", len(trace.Spans)).Info("query trace tree")
+	reader.Logger.WithField("numTransformedSpans", len(trace.Spans)).Info("query trace tree")
 
 	return trace, nil
 }
