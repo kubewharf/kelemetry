@@ -156,7 +156,7 @@ func run(t *testing.T, numProcesses int) {
 					err = leases.Delete(context.Background(), myLease.Name, metav1.DeleteOptions{}) // delete the identity to allow subsequent re-acquisition quickly
 					assert.NoError(err)
 				case 2:
-					close(processStopCh) // assert that closing stopCh breaks the loop
+					close(processStopCh) // assert that closing processStopCh breaks the loop
 				}
 			}, processStopCh)
 		}(processId)

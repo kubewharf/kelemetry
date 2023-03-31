@@ -105,31 +105,15 @@ func RecoverPanic(logger logrus.FieldLogger) {
 }
 
 type ShutdownTrigger struct {
-	stopCh chan<- struct{}
+	Trigger context.CancelFunc
 }
 
-// Converts a stopCh to a context.
-func ContextWithStopCh(base context.Context, stopCh <-chan struct{}) context.Context {
-	ctx, cancelFunc := context.WithCancel(base)
-	go func() {
-		<-stopCh
-		cancelFunc()
-	}()
-	return ctx
-}
+func ContextWithTrigger(ctx context.Context) (context.Context, *ShutdownTrigger) {
+	ctx, cancelFunc := context.WithCancel(ctx)
 
-func NewShutdownTrigger() (*ShutdownTrigger, <-chan struct{}) {
-	ch := make(chan struct{}, 1)
-	stopCh := make(chan struct{})
-	go func() {
-		defer RecoverPanic(nil)
-		<-ch
-		close(stopCh)
-	}()
-
-	return &ShutdownTrigger{
-		stopCh: ch,
-	}, stopCh
+	return ctx, &ShutdownTrigger{
+		Trigger: cancelFunc,
+	}
 }
 
 func (trigger *ShutdownTrigger) SetupSignalHandler() {
@@ -140,11 +124,4 @@ func (trigger *ShutdownTrigger) SetupSignalHandler() {
 		<-c
 		trigger.Trigger()
 	}()
-}
-
-func (trigger *ShutdownTrigger) Trigger() {
-	select {
-	case trigger.stopCh <- struct{}{}:
-	default:
-	}
 }

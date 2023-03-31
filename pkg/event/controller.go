@@ -409,7 +409,7 @@ func (ctrl *controller) pollConfigLoop(
 	until := ctrl.Clock.After(interval)
 
 	for {
-		// stopCh and until have higher priority than updateCh
+		// ctx and until have higher priority than updateCh
 		select {
 		case <-ctx.Done():
 			shutdown = true
