@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/coocood/freecache v1.2.3
 	github.com/gin-gonic/gin v1.9.0
-	github.com/go-logr/logr v1.2.3
+	github.com/go-logr/logr v1.2.4
 	github.com/jaegertracing/jaeger v1.43.0
 	github.com/prometheus/client_golang v1.14.0
 	github.com/sirupsen/logrus v1.9.0
