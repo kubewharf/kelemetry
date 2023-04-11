@@ -19,16 +19,6 @@ services:
     volumes:
       - etcd:/var/run/etcd/default.etcd
     restart: always
-  es:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.9
-    environment:
-      discovery.type: single-node
-      xpack.security.enabled: "false"
-      ES_JAVA_OPTS: "-Xms128m -Xmx128m"
-    mem_limit: 536870912
-    volumes:
-      - es:/usr/share/elasticsearch/data
-    restart: always
   jaeger-query:
     image: jaegertracing/jaeger-query:1.42
     environment:
@@ -41,10 +31,18 @@ services:
     image: jaegertracing/jaeger-collector:1.42
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
-      SPAN_STORAGE_TYPE: elasticsearch
-      ES_SERVER_URLS: http://es:9200
-      ES_INDEX_PREFIX: kelemetry
+      SPAN_STORAGE_TYPE: grpc-plugin
+      GRPC_STORAGE_SERVER: remote-badger:17271
     restart: always
+  remote-badger:
+    image: jaegertracing/jaeger-remote-storage:1.42
+    environment:
+      SPAN_STORAGE_TYPE: badger
+      BADGER_EPHEMERAL: "false"
+      BADGER_DIRECTORY_KEY: /mnt/badger/key
+      BADGER_DIRECTORY_VALUE: /mnt/badger/data
+    volumes:
+      - badger:/mnt/badger
   kelemetry:
     build: .
     command: [
@@ -80,9 +78,8 @@ services:
       "--jaeger-cluster-names=tracetest",
       "--jaeger-storage-plugin-address=0.0.0.0:17271",
       "--jaeger-backend=jaeger-storage",
-      "--jaeger-storage.span-storage.type=elasticsearch",
-      "--jaeger-storage.es.server-urls=http://es:9200",
-      "--jaeger-storage.es.index-prefix=kelemetry",
+      "--jaeger-storage.span-storage.type=grpc-plugin",
+      "--jaeger-storage.grpc-storage.server=remote-badger:17271",
     ]
     ports:
       - 0.0.0.0:8080:8080
@@ -92,4 +89,4 @@ services:
 
 volumes:
   etcd: {}
-  es: {}
+  badger: {}
