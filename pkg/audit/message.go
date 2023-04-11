@@ -17,8 +17,8 @@ package audit
 import auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
 
 type Message struct {
-	Cluster    string `json:"cluster"`
-	SourceAddr string `json:"sourceAddr"`
+	Cluster       string `json:"cluster"`
+	ApiserverAddr string `json:"sourceAddr"`
 	auditv1.Event
 }
 
