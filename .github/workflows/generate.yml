@@ -58,6 +58,7 @@ jobs:
           sleep 5
           kubectl delete deployment demo
           sleep 60
+          make quickstart COMPOSE_COMMAND="logs kelemetry"
 
       - name: Download Jaeger UI
         run: |
