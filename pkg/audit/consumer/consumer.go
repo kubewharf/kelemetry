@@ -275,8 +275,16 @@ func (recv *receiver) handleItem(
 		WithTag("userAgent", message.UserAgent).
 		WithTag("responseCode", message.ResponseStatus.Code).
 		WithTag("resourceVersion", message.ObjectRef.ResourceVersion).
-		WithTag("apiserver", message.SourceAddr).
+		WithTag("apiserver", message.ApiserverAddr).
 		WithTag("tag", message.Verb)
+
+	if len(message.SourceIPs) > 0 {
+		event = event.WithTag("sourceIP", message.SourceIPs[0])
+
+		if len(message.SourceIPs) > 1 {
+			event = event.WithTag("proxy", message.SourceIPs[1:])
+		}
+	}
 
 	recv.DecoratorList.Decorate(message, event)
 

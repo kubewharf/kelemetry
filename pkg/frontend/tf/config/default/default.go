@@ -165,7 +165,10 @@ func getCollapseStep() tfconfig.Step {
 	return tfconfig.Step{Visitor: tfstep.CollapseNestingVisitor{
 		ShouldCollapse: func(traceSource string) bool { return true },
 		TagMappings: map[string][]tfstep.TagMapping{
-			"audit": {},
+			"audit": {
+				{FromSpanTag: "userAgent", ToLogField: "userAgent"},
+				{FromSpanTag: "sourceIP", ToLogField: "sourceIP"},
+			},
 			"event": {
 				{FromSpanTag: "action", ToLogField: "action"},
 				{FromSpanTag: "source", ToLogField: "source"},
