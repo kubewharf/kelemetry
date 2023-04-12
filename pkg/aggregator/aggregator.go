@@ -25,6 +25,8 @@ import (
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/clock"
 
+	"github.com/kubewharf/kelemetry/pkg/aggregator/aggregatorevent"
+	"github.com/kubewharf/kelemetry/pkg/aggregator/eventdecorator"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/linker"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/spancache"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/tracer"
@@ -109,7 +111,7 @@ type Aggregator interface {
 	// it waits for the primary event to be created and takes it as the parent.
 	// If the primary event does not get created after options.subObjectPrimaryBackoff, this event is promoted as primary.
 	// If multiple primary events are sent, the slower one (by SpanCache-authoritative timing) is demoted.
-	Send(ctx context.Context, object util.ObjectRef, event *Event, subObjectId *SubObjectId) error
+	Send(ctx context.Context, object util.ObjectRef, event *aggregatorevent.Event, subObjectId *SubObjectId) error
 }
 
 type SubObjectId struct {
@@ -118,13 +120,14 @@ type SubObjectId struct {
 }
 
 type aggregator struct {
-	options   options
-	Clock     clock.Clock
-	Linkers   linker.LinkerList
-	Logger    logrus.FieldLogger
-	SpanCache spancache.Cache
-	Tracer    tracer.Tracer
-	Metrics   metrics.Client
+	options        options
+	Clock          clock.Clock
+	Linkers        linker.LinkerList
+	Logger         logrus.FieldLogger
+	SpanCache      spancache.Cache
+	Tracer         tracer.Tracer
+	Metrics        metrics.Client
+	EventDecorator eventdecorator.UnionEventDecorator
 
 	SendMetric               *metrics.Metric[*sendMetric]
 	SinceEventMetric         *metrics.Metric[*sinceEventMetric]
@@ -179,7 +182,12 @@ func (aggregator *aggregator) Start(stopCh <-chan struct{}) error { return nil }
 
 func (aggregator *aggregator) Close() error { return nil }
 
-func (aggregator *aggregator) Send(ctx context.Context, object util.ObjectRef, event *Event, subObjectId *SubObjectId) (err error) {
+func (aggregator *aggregator) Send(
+	ctx context.Context,
+	object util.ObjectRef,
+	event *aggregatorevent.Event,
+	subObjectId *SubObjectId,
+) (err error) {
 	sendMetric := &sendMetric{Cluster: object.Cluster, TraceSource: event.TraceSource}
 	defer aggregator.SendMetric.DeferCount(aggregator.Clock.Now(), sendMetric)
 
@@ -293,11 +301,13 @@ func (aggregator *aggregator) Send(ctx context.Context, object util.ObjectRef, e
 		}
 	}
 
+	aggregator.EventDecorator.Decorate(ctx, object, event)
+
 	span := tracer.Span{
 		Type:       event.TraceSource,
 		Name:       event.Title,
 		StartTime:  event.Time,
-		FinishTime: event.getEndTime(),
+		FinishTime: event.GetEndTime(),
 		Parent:     parentSpan,
 		Tags: map[string]string{
 			"cluster":              object.Cluster,
@@ -553,6 +563,7 @@ func (aggregator *aggregator) createSpan(
 			"resource":             object.Resource,
 			zconstants.NestLevel:   field,
 			zconstants.TraceSource: "object",
+			"timeStamp":            startTime.Format(time.RFC3339),
 		},
 	}
 	for tagKey, tagValue := range aggregator.options.globalPseudoTags {
