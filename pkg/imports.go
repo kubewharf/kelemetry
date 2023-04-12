@@ -16,6 +16,8 @@
 package kelemetry_pkg
 
 import (
+	_ "github.com/kubewharf/kelemetry/pkg/aggregator/aggregatorevent"
+	_ "github.com/kubewharf/kelemetry/pkg/aggregator/eventdecorator/tag"
 	_ "github.com/kubewharf/kelemetry/pkg/aggregator/spancache/etcd"
 	_ "github.com/kubewharf/kelemetry/pkg/aggregator/spancache/local"
 	_ "github.com/kubewharf/kelemetry/pkg/aggregator/tracer/otel"
