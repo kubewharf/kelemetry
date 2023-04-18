@@ -86,9 +86,10 @@ func TestGet(t *testing.T) {
 			assert.Equal("bar", fooValue)
 
 			penetrations := metricsOutput.Get("object_cache_request", map[string]string{
-				"error": "Penetrated",
+				"error": "Apiserver",
 				"hit":   "false",
 			})
+			t.Log(metricsOutput.PrintAll())
 			assert.Equal(int64(1), penetrations.Int)
 		} else {
 			assert.True(fooExists)
