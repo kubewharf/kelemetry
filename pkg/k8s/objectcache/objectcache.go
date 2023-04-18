@@ -137,9 +137,9 @@ func (oc *ObjectCache) Get(ctx context.Context, object util.ObjectRef) (*unstruc
 
 			err = oc.cache.Set(key, valueJson, int(oc.options.storeTtl.Seconds()))
 			if err != nil {
-				// the object is too large, so just don't cache it
 				metric.Error += "/ValueTooLarge"
-				return value, nil
+				// the object is too large, so just don't cache it and return normally
+				return value, nil //nolint:nilerr
 			}
 
 			persisted = true

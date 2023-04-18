@@ -155,7 +155,7 @@ quickstart:
 	docker-compose -f quickstart.docker-compose.yaml $(COMPOSE_COMMAND)
 
 pre-commit: dot usage test
-	golangci-lint run
+	golangci-lint run --new-from-rev=main
 
 fmt:
 	git add -A
