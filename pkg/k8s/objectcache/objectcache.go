@@ -129,6 +129,10 @@ func (oc *ObjectCache) Get(ctx context.Context, object util.ObjectRef) (*unstruc
 				return nil, err
 			}
 
+			if value == nil {
+				return nil, nil
+			}
+
 			valueJson, err := value.MarshalJSON()
 			if err != nil {
 				metric.Error = "FetchedMarshal"
