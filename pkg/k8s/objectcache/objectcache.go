@@ -75,8 +75,9 @@ type cacheEvictionMetric struct{}
 func (*cacheEvictionMetric) MetricName() string { return "object_cache_eviction" }
 
 type CacheRequestMetric struct {
-	Hit   bool
-	Error string
+	Cluster string
+	Hit     bool
+	Error   string
 }
 
 func (*CacheRequestMetric) MetricName() string { return "object_cache_request" }
@@ -95,7 +96,7 @@ func (oc *ObjectCache) Start(stopCh <-chan struct{}) error { return nil }
 func (oc *ObjectCache) Close() error { return nil }
 
 func (oc *ObjectCache) Get(ctx context.Context, object util.ObjectRef) (*unstructured.Unstructured, error) {
-	metric := &CacheRequestMetric{Error: "Unknown"}
+	metric := &CacheRequestMetric{Cluster: object.Cluster, Error: "Unknown"}
 	defer oc.CacheRequestMetric.DeferCount(oc.Clock.Now(), metric)
 
 	key := objectKey(object)
