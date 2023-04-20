@@ -1,6 +1,7 @@
 .git
 .idea
 output
+/local
 log
 *.log
 coverage.out
