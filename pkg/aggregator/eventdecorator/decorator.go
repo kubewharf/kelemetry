@@ -43,12 +43,6 @@ type unionDecorator struct {
 	decorators []Decorator
 }
 
-func NewUnionDecorator() UnionEventDecorator {
-	return &unionDecorator{
-		decorators: []Decorator{},
-	}
-}
-
 func (union *unionDecorator) AddDecorator(decorator Decorator) {
 	union.decorators = append(union.decorators, decorator)
 }

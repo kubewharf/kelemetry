@@ -386,6 +386,10 @@ func (ctrl *controller) startMonitor(gvr schema.GroupVersionResource, apiResourc
 
 	lw := &toolscache.ListWatch{
 		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+			if options.ResourceVersion == "" {
+				options.ResourceVersion = "0"
+			}
+
 			return reflectorClient.List(ctrl.ctx, options)
 		},
 		WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
