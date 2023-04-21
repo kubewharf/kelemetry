@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package objectdecorator
+package objectspanresourcetagger
 
 import (
 	"context"
@@ -20,13 +20,14 @@ import (
 
 	"github.com/spf13/pflag"
 
+	"github.com/kubewharf/kelemetry/pkg/aggregator/objectspandecorator"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/resourcetagger"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util"
 )
 
 func init() {
-	manager.Global.Provide("resource-object-tagger", manager.Ptr(&ObjectSpanTag{}))
+	manager.Global.Provide("resource-object-tag", manager.Ptr(&ObjectSpanTag{}))
 }
 
 type options struct {
@@ -42,8 +43,9 @@ func (options *options) EnableFlag() *bool {
 }
 
 type ObjectSpanTag struct {
-	ResourceTagger *resourcetagger.ResourceTagger
-	options        options
+	UnionEventDecorator objectspandecorator.UnionEventDecorator
+	ResourceTagger      *resourcetagger.ResourceTagger
+	options             options
 }
 
 func (d *ObjectSpanTag) Close() error {
@@ -57,6 +59,8 @@ func (d *ObjectSpanTag) Options() manager.Options {
 }
 
 func (d *ObjectSpanTag) Init(ctx context.Context) error {
+	d.UnionEventDecorator.AddDecorator(d)
+
 	return nil
 }
 

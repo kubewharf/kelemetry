@@ -28,7 +28,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("resource-event-tagger", manager.Ptr(&eventTagDecorator{}))
+	manager.Global.Provide("resource-event-tag", manager.Ptr(&eventTagDecorator{}))
 }
 
 type options struct {

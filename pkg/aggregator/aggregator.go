@@ -28,7 +28,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/aggregator/aggregatorevent"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/eventdecorator"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/linker"
-	"github.com/kubewharf/kelemetry/pkg/aggregator/objectdecorator"
+	"github.com/kubewharf/kelemetry/pkg/aggregator/objectspandecorator"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/spancache"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/tracer"
 	"github.com/kubewharf/kelemetry/pkg/manager"
@@ -129,8 +129,8 @@ type aggregator struct {
 	Tracer    tracer.Tracer
 	Metrics   metrics.Client
 
-	EventDecorator   eventdecorator.UnionEventDecorator
-	ObjectSpanTagger *objectdecorator.ObjectSpanTag
+	EventDecorator      eventdecorator.UnionEventDecorator
+	ObjectSpanDecorator objectspandecorator.UnionEventDecorator
 
 	SendMetric               *metrics.Metric[*sendMetric]
 	SinceEventMetric         *metrics.Metric[*sinceEventMetric]
@@ -575,7 +575,7 @@ func (aggregator *aggregator) createSpan(
 	}
 
 	if field == "object" {
-		aggregator.ObjectSpanTagger.Decorate(ctx, object, span.Type, span.Tags)
+		aggregator.ObjectSpanDecorator.Decorate(ctx, object, span.Type, span.Tags)
 	}
 
 	spanContext, err := aggregator.Tracer.CreateSpan(span)
