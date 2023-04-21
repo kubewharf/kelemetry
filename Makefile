@@ -34,7 +34,7 @@ else
 	LOG_FILE_ARG ?=
 endif
 
-CONTROLLERS ?= audit-consumer,audit-producer,audit-webhook,event-informer,annotation-linker,owner-linker,diff-decorator,diff-controller,diff-api,pprof,jaeger-storage-plugin,jaeger-redirect-server
+CONTROLLERS ?= audit-consumer,audit-producer,audit-webhook,event-informer,annotation-linker,owner-linker,resource-object-tag,resource-event-tag,diff-decorator,diff-controller,diff-api,pprof,jaeger-storage-plugin,jaeger-redirect-server
 ifeq ($(CONTROLLERS),)
 	ENABLE_ARGS ?=
 else
@@ -160,4 +160,5 @@ pre-commit: dot usage test
 fmt:
 	git add -A
 	gofumpt -l -w .
+	golines -m140 --base-formatter=gofumpt -l -w .
 	gci write -s standard -s default -s 'prefix(github.com/kubewharf/kelemetry)' .
