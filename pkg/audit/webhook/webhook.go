@@ -155,9 +155,9 @@ func (webhook *webhook) handle(ctx *gin.Context, logger logrus.FieldLogger, metr
 
 	for _, auditEvent := range eventList.Items {
 		message := &audit.Message{
-			Cluster:    cluster,
-			SourceAddr: ctx.ClientIP(),
-			Event:      auditEvent,
+			Cluster:       cluster,
+			ApiserverAddr: ctx.ClientIP(),
+			Event:         auditEvent,
 		}
 
 		for _, ch := range webhook.subscribers {

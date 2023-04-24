@@ -12,42 +12,42 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package audit
+package objectspandecorator
 
 import (
 	"context"
 
-	"github.com/kubewharf/kelemetry/pkg/aggregator/aggregatorevent"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	"github.com/kubewharf/kelemetry/pkg/util"
 )
 
 func init() {
-	manager.Global.Provide("audit-decorator-list", manager.Ptr[DecoratorList](&decoratorList{}))
+	manager.Global.Provide("object-span-union-decorator", manager.Ptr[UnionEventDecorator](&unionDecorator{}))
 }
 
 type Decorator interface {
-	Decorate(ctx context.Context, message *Message, event *aggregatorevent.Event)
+	Decorate(ctx context.Context, object util.ObjectRef, traceSource string, tags map[string]string)
 }
 
-type DecoratorList interface {
+type UnionEventDecorator interface {
 	manager.Component
 
 	AddDecorator(decorator Decorator)
 
-	Decorate(ctx context.Context, message *Message, event *aggregatorevent.Event)
+	Decorate(ctx context.Context, object util.ObjectRef, traceSource string, tags map[string]string)
 }
 
-type decoratorList struct {
+type unionDecorator struct {
 	manager.BaseComponent
 	decorators []Decorator
 }
 
-func (list *decoratorList) AddDecorator(decorator Decorator) {
-	list.decorators = append(list.decorators, decorator)
+func (union *unionDecorator) AddDecorator(decorator Decorator) {
+	union.decorators = append(union.decorators, decorator)
 }
 
-func (list *decoratorList) Decorate(ctx context.Context, message *Message, event *aggregatorevent.Event) {
-	for _, decorator := range list.decorators {
-		decorator.Decorate(ctx, message, event)
+func (union *unionDecorator) Decorate(ctx context.Context, object util.ObjectRef, traceSource string, tags map[string]string) {
+	for _, decorator := range union.decorators {
+		decorator.Decorate(ctx, object, traceSource, tags)
 	}
 }

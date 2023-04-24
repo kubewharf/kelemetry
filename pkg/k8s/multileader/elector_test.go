@@ -146,14 +146,20 @@ func run(t *testing.T, numProcesses int) {
 					// assert that a crashed leader triggers leader re-election
 				case 1:
 					myLease.Spec.HolderIdentity = pointer.String("someone-else")
-					myLease.Spec.LeaseDurationSeconds = pointer.Int32(600) // an arbitrary number much longer than all other durations in the config
+					myLease.Spec.LeaseDurationSeconds = pointer.Int32(
+						600,
+					) // an arbitrary number much longer than all other durations in the config
 
 					_, err := leases.Update(context.Background(), myLease, metav1.UpdateOptions{})
 					assert.NoError(err)
 
 					<-doneCh // assert that doneCh is closed when the holder identity changes
 
-					err = leases.Delete(context.Background(), myLease.Name, metav1.DeleteOptions{}) // delete the identity to allow subsequent re-acquisition quickly
+					err = leases.Delete(
+						context.Background(),
+						myLease.Name,
+						metav1.DeleteOptions{},
+					) // delete the identity to allow subsequent re-acquisition quickly
 					assert.NoError(err)
 				case 2:
 					close(processStopCh) // assert that closing processStopCh breaks the loop

@@ -31,6 +31,7 @@ import (
 	"k8s.io/utils/clock"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator"
+	"github.com/kubewharf/kelemetry/pkg/aggregator/aggregatorevent"
 	"github.com/kubewharf/kelemetry/pkg/audit"
 	"github.com/kubewharf/kelemetry/pkg/audit/mq"
 	"github.com/kubewharf/kelemetry/pkg/filter"
@@ -268,14 +269,22 @@ func (recv *receiver) handleItem(
 		title += fmt.Sprintf(" (%s)", http.StatusText(int(message.ResponseStatus.Code)))
 	}
 
-	event := aggregator.NewEvent(field, title, message.RequestReceivedTimestamp.Time, "audit").
+	event := aggregatorevent.NewEvent(field, title, message.RequestReceivedTimestamp.Time, "audit").
 		WithEndTime(message.StageTimestamp.Time).
 		WithTag("username", username).
 		WithTag("userAgent", message.UserAgent).
 		WithTag("responseCode", message.ResponseStatus.Code).
 		WithTag("resourceVersion", message.ObjectRef.ResourceVersion).
-		WithTag("apiserver", message.SourceAddr).
+		WithTag("apiserver", message.ApiserverAddr).
 		WithTag("tag", message.Verb)
+
+	if len(message.SourceIPs) > 0 {
+		event = event.WithTag("sourceIP", message.SourceIPs[0])
+
+		if len(message.SourceIPs) > 1 {
+			event = event.WithTag("proxy", message.SourceIPs[1:])
+		}
+	}
 
 	recv.DecoratorList.Decorate(ctx, message, event)
 

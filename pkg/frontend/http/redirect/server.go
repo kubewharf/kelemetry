@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jaegertracing/jaeger/model/json"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
@@ -148,7 +149,24 @@ func (server *server) handleGet(ctx *gin.Context, metric *requestMetric) (code i
 	}
 	if len(traceIDs) == 0 {
 		metric.Error = metrics.MakeLabeledError("NoTraceMatch")
-		return 404, fmt.Errorf("could not find trace ids that match query")
+		emptyTrace := json.Trace{
+			Spans: []json.Span{
+				{
+					StartTime: uint64(timestamp.UnixNano() / 1000),
+					Duration:  uint64((time.Minute * 30).Microseconds()),
+					Tags: []json.KeyValue{
+						{Key: "cluster", Value: cluster},
+						{Key: "resource", Value: resource},
+						{Key: "namespace", Value: namespace},
+						{Key: "name", Value: name},
+					},
+					Warnings: []string{"no events found"},
+				},
+			},
+		}
+
+		ctx.JSON(200, emptyTrace)
+		return 0, nil
 	}
 
 	ctx.Redirect(302, fmt.Sprintf("/trace/%s", traceIDs[0].String()))

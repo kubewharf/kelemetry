@@ -86,19 +86,21 @@ func TestGet(t *testing.T) {
 			assert.Equal("bar", fooValue)
 
 			penetrations := metricsOutput.Get("object_cache_request", map[string]string{
-				"error": "Penetrated",
-				"hit":   "false",
+				"cluster": "test-cluster",
+				"error":   "Apiserver",
+				"hit":     "false",
 			})
-			assert.Equal(int64(1), penetrations.Int)
+			assert.Equal(int64(1), penetrations.Int, metricsOutput.PrintAll())
 		} else {
 			assert.True(fooExists)
 			assert.Equal("bar", fooValue)
 
 			hits := metricsOutput.Get("object_cache_request", map[string]string{
-				"error": "nil",
-				"hit":   "true",
+				"cluster": "test-cluster",
+				"error":   "nil",
+				"hit":     "true",
 			})
-			assert.Equal(int64(1), hits.Int)
+			assert.Equal(int64(1), hits.Int, metricsOutput.PrintAll())
 		}
 	}
 }
