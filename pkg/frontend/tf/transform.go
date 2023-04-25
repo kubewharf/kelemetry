@@ -16,6 +16,8 @@ package transform
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/spf13/pflag"
@@ -46,7 +48,7 @@ func (transformer *Transformer) Init(ctx context.Context) error     { return nil
 func (transformer *Transformer) Start(stopCh <-chan struct{}) error { return nil }
 func (transformer *Transformer) Close() error                       { return nil }
 
-func (transformer *Transformer) Transform(trace *model.Trace, rootSpan model.SpanID, configId tfconfig.Id) {
+func (transformer *Transformer) Transform(trace *model.Trace, rootSpan model.SpanID, configId tfconfig.Id) error {
 	config := transformer.Configs.GetById(configId)
 	if config == nil {
 		config = transformer.Configs.GetById(transformer.Configs.DefaultId())
@@ -55,7 +57,13 @@ func (transformer *Transformer) Transform(trace *model.Trace, rootSpan model.Spa
 	tree := tftree.NewSpanTree(trace)
 
 	if config.UseSubtree {
-		tree.SetRoot(rootSpan)
+		if err := tree.SetRoot(rootSpan); err != nil {
+			if errors.Is(err, tftree.ErrRootDoesNotExist) {
+				return fmt.Errorf("trace data does not contain desired root span %v as indicated by the exclusive flag (%w)", rootSpan, err)
+			}
+
+			return fmt.Errorf("cannot set root: %w", err)
+		}
 	}
 
 	for _, step := range config.Steps {
@@ -63,4 +71,6 @@ func (transformer *Transformer) Transform(trace *model.Trace, rootSpan model.Spa
 	}
 
 	trace.Spans = tree.GetSpans()
+
+	return nil
 }
