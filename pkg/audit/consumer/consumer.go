@@ -138,14 +138,8 @@ func (recv *receiver) Init() error {
 	return nil
 }
 
-func (recv *receiver) Start(ctx context.Context) error {
-	return nil
-}
-
-func (recv *receiver) Close(ctx context.Context) error {
-	recv.Logger.Info("receiver close")
-	return nil
-}
+func (recv *receiver) Start(ctx context.Context) error { return nil }
+func (recv *receiver) Close(ctx context.Context) error { return nil }
 
 func (recv *receiver) handleMessage(
 	ctx context.Context,
