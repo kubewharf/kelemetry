@@ -48,23 +48,21 @@ type ObjectSpanTag struct {
 	options             options
 }
 
-func (d *ObjectSpanTag) Close() error {
-	return nil
-}
-
 var _ manager.Component = &ObjectSpanTag{}
 
 func (d *ObjectSpanTag) Options() manager.Options {
 	return &d.options
 }
 
-func (d *ObjectSpanTag) Init(ctx context.Context) error {
+func (d *ObjectSpanTag) Init() error {
 	d.UnionEventDecorator.AddDecorator(d)
 
 	return nil
 }
 
-func (d *ObjectSpanTag) Start(stopCh <-chan struct{}) error { return nil }
+func (d *ObjectSpanTag) Start(ctx context.Context) error { return nil }
+
+func (d *ObjectSpanTag) Close(ctx context.Context) error { return nil }
 
 func (d *ObjectSpanTag) Decorate(ctx context.Context, object util.ObjectRef, traceSource string, tags map[string]string) {
 	if tags == nil {

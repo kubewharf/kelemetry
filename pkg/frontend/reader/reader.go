@@ -59,10 +59,10 @@ type spanReader struct {
 	TransformConfigs tfconfig.Provider
 }
 
-func (reader *spanReader) Options() manager.Options           { return &reader.options }
-func (reader *spanReader) Init(ctx context.Context) error     { return nil }
-func (reader *spanReader) Start(stopCh <-chan struct{}) error { return nil }
-func (reader *spanReader) Close() error                       { return nil }
+func (reader *spanReader) Options() manager.Options        { return &reader.options }
+func (reader *spanReader) Init() error                     { return nil }
+func (reader *spanReader) Start(ctx context.Context) error { return nil }
+func (reader *spanReader) Close(ctx context.Context) error { return nil }
 
 func (reader *spanReader) GetServices(ctx context.Context) ([]string, error) {
 	configNames := []string{

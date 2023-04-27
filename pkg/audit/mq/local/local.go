@@ -59,7 +59,6 @@ type localQueue struct {
 	Logger  logrus.FieldLogger
 	Metrics metrics.Client
 
-	ctx           context.Context
 	producer      *localProducer
 	consumers     map[mq.ConsumerGroup]map[mq.PartitionId]*localConsumer
 	numPartitions int32
@@ -76,12 +75,11 @@ func (_ *localQueue) MuxImplName() (name string, isDefault bool) { return "local
 
 func (q *localQueue) Options() manager.Options { return &q.options }
 
-func (q *localQueue) Init(ctx context.Context) error {
-	q.ctx = ctx
+func (q *localQueue) Init() error {
 	return nil
 }
 
-func (q *localQueue) Start(stopCh <-chan struct{}) error {
+func (q *localQueue) Start(ctx context.Context) error {
 	numPartitions := -1
 	for group, consumers := range q.consumers {
 		if numPartitions != -1 && numPartitions != len(consumers) {
@@ -98,14 +96,14 @@ func (q *localQueue) Start(stopCh <-chan struct{}) error {
 
 	for _, consumers := range q.consumers {
 		for _, consumer := range consumers {
-			consumer.start(stopCh)
+			consumer.start(ctx)
 		}
 	}
 
 	return nil
 }
 
-func (q *localQueue) Close() error {
+func (q *localQueue) Close(ctx context.Context) error {
 	return nil
 }
 
@@ -189,7 +187,7 @@ func (q *localQueue) newConsumer(group mq.ConsumerGroup, partition mq.PartitionI
 	}
 }
 
-func (consumer *localConsumer) start(stopCh <-chan struct{}) {
+func (consumer *localConsumer) start(ctx context.Context) {
 	go func() {
 		defer shutdown.RecoverPanic(consumer.logger)
 
@@ -200,8 +198,8 @@ func (consumer *localConsumer) start(stopCh <-chan struct{}) {
 					return
 				}
 
-				consumer.handler(consumer.logger.WithField("offset", message.offset), message.key, message.value)
-			case <-stopCh:
+				consumer.handler(ctx, consumer.logger.WithField("offset", message.offset), message.key, message.value)
+			case <-ctx.Done():
 				return
 			}
 		}

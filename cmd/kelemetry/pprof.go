@@ -49,7 +49,7 @@ type pprofServer struct {
 
 func (server *pprofServer) Options() manager.Options { return &server.options }
 
-func (server *pprofServer) Init(ctx context.Context) error {
+func (server *pprofServer) Init() error {
 	go func() {
 		defer shutdown.RecoverPanic(server.Logger)
 		server.Logger.Error(http.ListenAndServe(server.options.addr, nil))
@@ -58,6 +58,6 @@ func (server *pprofServer) Init(ctx context.Context) error {
 	return nil
 }
 
-func (server *pprofServer) Start(stopCh <-chan struct{}) error { return nil }
+func (server *pprofServer) Start(ctx context.Context) error { return nil }
 
-func (server *pprofServer) Close() error { return nil }
+func (server *pprofServer) Close(ctx context.Context) error { return nil }

@@ -15,6 +15,7 @@
 package metrics
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -195,7 +196,7 @@ func (metric TaggedMetric) DeferCount(start time.Time) {
 type mux struct {
 	*manager.Mux
 	Logger     logrus.FieldLogger
-	monitors   []func(stopCh <-chan struct{})
+	monitors   []func(context.Context)
 	metricPool map[string]AnyMetric
 }
 
@@ -228,25 +229,25 @@ func New[T Tags](client Client) *Metric[T] {
 func NewMonitor[T Tags](client Client, tags T, getter func() int64) {
 	mux := client.impl()
 	tagged := New[T](client).With(tags)
-	loop := func(stopCh <-chan struct{}) {
+	loop := func(ctx context.Context) {
 		defer shutdown.RecoverPanic(mux.Logger)
 
-		wait.Until(func() {
+		wait.UntilWithContext(ctx, func(ctx context.Context) {
 			value := getter()
 			tagged.Gauge(value)
-		}, MonitorPeriod, stopCh)
+		}, MonitorPeriod)
 	}
 
 	mux.monitors = append(mux.monitors, loop)
 }
 
-func (mux *mux) Start(stopCh <-chan struct{}) error {
-	if err := mux.Mux.Start(stopCh); err != nil {
+func (mux *mux) Start(ctx context.Context) error {
+	if err := mux.Mux.Start(ctx); err != nil {
 		return err
 	}
 
 	for _, monitor := range mux.monitors {
-		go monitor(stopCh)
+		go monitor(ctx)
 	}
 	mux.monitors = nil
 

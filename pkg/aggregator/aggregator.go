@@ -173,7 +173,7 @@ func (aggregator *aggregator) Options() manager.Options {
 	return &aggregator.options
 }
 
-func (aggregator *aggregator) Init(ctx context.Context) error {
+func (aggregator *aggregator) Init() error {
 	if aggregator.options.spanFollowTtl > aggregator.options.spanTtl {
 		return fmt.Errorf("invalid option: --span-ttl must not be shorter than --span-follow-ttl")
 	}
@@ -181,9 +181,9 @@ func (aggregator *aggregator) Init(ctx context.Context) error {
 	return nil
 }
 
-func (aggregator *aggregator) Start(stopCh <-chan struct{}) error { return nil }
+func (aggregator *aggregator) Start(ctx context.Context) error { return nil }
 
-func (aggregator *aggregator) Close() error { return nil }
+func (aggregator *aggregator) Close(ctx context.Context) error { return nil }
 
 func (aggregator *aggregator) Send(
 	ctx context.Context,

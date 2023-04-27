@@ -15,6 +15,8 @@
 package mq
 
 import (
+	"context"
+
 	"github.com/sirupsen/logrus"
 
 	"github.com/kubewharf/kelemetry/pkg/manager"
@@ -55,4 +57,4 @@ func (mux *mux) CreateConsumer(group ConsumerGroup, partition PartitionId, handl
 	return mux.Impl().(Queue).CreateConsumer(group, partition, handler)
 }
 
-type MessageHandler func(fieldLogger logrus.FieldLogger, key []byte, value []byte)
+type MessageHandler func(ctx context.Context, fieldLogger logrus.FieldLogger, key []byte, value []byte)

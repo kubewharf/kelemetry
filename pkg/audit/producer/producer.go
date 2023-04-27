@@ -96,16 +96,17 @@ func (ty *partitionKeyType) Set(input string) error {
 func (ty *partitionKeyType) Type() string { return "partitionKeyType" }
 
 type producer struct {
-	options       options
-	Logger        logrus.FieldLogger
-	Clock         clock.Clock
-	Webhook       auditwebhook.Webhook
-	Queue         mq.Queue
-	Metrics       metrics.Client
-	ctx           context.Context
+	options options
+	Logger  logrus.FieldLogger
+	Clock   clock.Clock
+	Webhook auditwebhook.Webhook
+	Queue   mq.Queue
+	Metrics metrics.Client
+
 	ProduceMetric *metrics.Metric[*produceMetric]
-	subscriber    <-chan *audit.Message
-	producer      mq.Producer
+
+	subscriber <-chan *audit.Message
+	producer   mq.Producer
 }
 
 type produceMetric struct {
@@ -118,8 +119,7 @@ func (producer *producer) Options() manager.Options {
 	return &producer.options
 }
 
-func (producer *producer) Init(ctx context.Context) (err error) {
-	producer.ctx = ctx
+func (producer *producer) Init() (err error) {
 	producer.subscriber = producer.Webhook.AddSubscriber("audit-producer-subscriber")
 	producer.producer, err = producer.Queue.CreateProducer()
 	if err != nil {
@@ -128,20 +128,20 @@ func (producer *producer) Init(ctx context.Context) (err error) {
 	return nil
 }
 
-func (producer *producer) Start(stopCh <-chan struct{}) error {
+func (producer *producer) Start(ctx context.Context) error {
 	for i := 0; i < producer.options.workerCount; i++ {
-		go producer.workerLoop(stopCh, i)
+		go producer.workerLoop(ctx, i)
 	}
 
 	return nil
 }
 
-func (producer *producer) workerLoop(stopCh <-chan struct{}, workerId int) {
+func (producer *producer) workerLoop(ctx context.Context, workerId int) {
 	defer shutdown.RecoverPanic(producer.Logger)
 
 	for {
 		select {
-		case <-stopCh:
+		case <-ctx.Done():
 			return
 		case event, chanOpen := <-producer.subscriber:
 			if !chanOpen {
@@ -200,6 +200,6 @@ func (producer *producer) handleEvent(message *audit.Message) error {
 	return nil
 }
 
-func (producer *producer) Close() error {
+func (producer *producer) Close(ctx context.Context) error {
 	return nil
 }
