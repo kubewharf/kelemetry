@@ -33,7 +33,6 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
 	"github.com/kubewharf/kelemetry/pkg/util"
-	"github.com/kubewharf/kelemetry/pkg/util/errors"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
@@ -213,26 +212,31 @@ func (aggregator *aggregator) Send(
 			pollCtx, cancelFunc := context.WithTimeout(ctx, aggregator.options.subObjectPrimaryPollTimeout)
 			defer cancelFunc()
 
-			if err := wait.PollImmediateUntil(aggregator.options.subObjectPrimaryPollInterval, func() (done bool, err error) {
-				entry, err := aggregator.SpanCache.Fetch(pollCtx, cacheKey)
-				if err != nil {
-					sendMetric.Error = metrics.LabelError(err, "PrimaryEventPoll")
-					return false, fmt.Errorf("%w during primary event poll", err)
-				}
-
-				if entry != nil {
-					parentSpan, err = aggregator.Tracer.ExtractCarrier(entry.Value)
+			if err := wait.PollUntilContextCancel(
+				pollCtx,
+				aggregator.options.subObjectPrimaryPollInterval,
+				true,
+				func(context.Context) (done bool, err error) {
+					entry, err := aggregator.SpanCache.Fetch(pollCtx, cacheKey)
 					if err != nil {
-						sendMetric.Error = metrics.LabelError(err, "ExtractPrimaryCarrier")
-						return false, fmt.Errorf("%w during decoding primary span", err)
+						sendMetric.Error = metrics.LabelError(err, "PrimaryEventPoll")
+						return false, fmt.Errorf("%w during primary event poll", err)
 					}
 
-					return true, nil
-				}
+					if entry != nil {
+						parentSpan, err = aggregator.Tracer.ExtractCarrier(entry.Value)
+						if err != nil {
+							sendMetric.Error = metrics.LabelError(err, "ExtractPrimaryCarrier")
+							return false, fmt.Errorf("%w during decoding primary span", err)
+						}
 
-				return false, nil
-			}, pollCtx.Done()); err != nil {
-				if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, wait.ErrWaitTimeout) {
+						return true, nil
+					}
+
+					return false, nil
+				},
+			); err != nil {
+				if !wait.Interrupted(err) {
 					if sendMetric.Error == nil {
 						sendMetric.Error = metrics.LabelError(err, "UnknownPrimaryPoll")
 						aggregator.Logger.
@@ -284,7 +288,7 @@ func (aggregator *aggregator) Send(
 
 				return nil
 			}); err != nil {
-				if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, wait.ErrWaitTimeout) {
+				if wait.Interrupted(err) {
 					sendMetric.Error = metrics.LabelError(err, "PrimaryReserveTimeout")
 				}
 				return err
