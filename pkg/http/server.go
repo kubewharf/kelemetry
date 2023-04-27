@@ -70,7 +70,6 @@ type server struct {
 	options options
 	Logger  logrus.FieldLogger
 
-	ctx    context.Context
 	router *gin.Engine
 	server *http.Server
 }
@@ -79,14 +78,13 @@ func (server *server) Options() manager.Options {
 	return &server.options
 }
 
-func (server *server) Init(ctx context.Context) error {
-	server.ctx = ctx
+func (server *server) Init() error {
 	server.router = gin.New()
 
 	return nil
 }
 
-func (server *server) Start(stopCh <-chan struct{}) error {
+func (server *server) Start(ctx context.Context) error {
 	hs := &http.Server{
 		Addr:              net.JoinHostPort(server.options.address, fmt.Sprint(server.options.port)),
 		ReadHeaderTimeout: server.options.readHeaderTimeout,
@@ -119,8 +117,8 @@ func (server *server) Start(stopCh <-chan struct{}) error {
 	return nil
 }
 
-func (server *server) Close() error {
-	ctx, cancelFunc := context.WithTimeout(server.ctx, time.Second*10)
+func (server *server) Close(ctx context.Context) error {
+	ctx, cancelFunc := context.WithTimeout(ctx, time.Second*10)
 	defer cancelFunc()
 
 	if err := server.server.Shutdown(ctx); err != nil {

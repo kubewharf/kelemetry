@@ -68,7 +68,7 @@ func (_ *Etcd) MuxImplName() (name string, isDefault bool) { return "etcd", fals
 
 func (cache *Etcd) Options() manager.Options { return &cache.options }
 
-func (cache *Etcd) Init(ctx context.Context) error {
+func (cache *Etcd) Init() error {
 	if len(cache.options.endpoints) == 0 {
 		return fmt.Errorf("No etcd endpoints provided")
 	}
@@ -87,12 +87,12 @@ func (cache *Etcd) Init(ctx context.Context) error {
 	return nil
 }
 
-func (cache *Etcd) Start(stopCh <-chan struct{}) error {
+func (cache *Etcd) Start(ctx context.Context) error {
 	return nil
 }
 
-func (cache *Etcd) Close() error {
-	if name, err := cache.deferList.Run(cache.Logger); err != nil {
+func (cache *Etcd) Close(ctx context.Context) error {
+	if name, err := cache.deferList.Run(ctx, cache.Logger); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}
 

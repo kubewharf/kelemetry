@@ -39,7 +39,7 @@ func Main() {
 
 func Run(rootLogger *logrus.Logger) error {
 	manager := manager.Global
-	shutdownTrigger, stopCh := shutdown.NewShutdownTrigger()
+	ctx, shutdownTrigger := shutdown.ContextWithTrigger(context.Background())
 	provideUtils(manager, rootLogger, shutdownTrigger)
 
 	err := manager.Build()
@@ -71,24 +71,21 @@ func Run(rootLogger *logrus.Logger) error {
 
 	manager.TrimDisabled(rootLogger)
 
-	rootCtx := context.Background()
-	ctx, cancelFunc := context.WithCancel(rootCtx)
-	defer cancelFunc()
-
 	if err := manager.Init(ctx, rootLogger); err != nil {
 		return err
 	}
 
 	shutdownTrigger.SetupSignalHandler()
-	if err := manager.Start(rootLogger, stopCh); err != nil {
+	if err := manager.Start(rootLogger, ctx); err != nil {
 		return err
 	}
 
 	rootLogger.Info("Startup complete")
-	<-stopCh
+
+	<-ctx.Done()
 	rootLogger.Info("Received shutdown signal")
 
-	return manager.Close(rootLogger)
+	return manager.Close(ctx, rootLogger)
 }
 
 func provideUtils(m *manager.Manager, logger logrus.FieldLogger, shutdownTrigger *shutdown.ShutdownTrigger) {

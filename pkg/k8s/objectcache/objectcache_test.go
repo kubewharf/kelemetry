@@ -67,7 +67,7 @@ func TestGet(t *testing.T) {
 		CacheRequestMetric: metrics.New[*objectcache.CacheRequestMetric](metricsClient),
 	}
 
-	assert.NoError(cache.Init(context.Background()))
+	assert.NoError(cache.Init())
 
 	for i := 0; i < 2; i++ {
 		uns, err := cache.Get(context.Background(), util.ObjectRef{

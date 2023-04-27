@@ -60,7 +60,6 @@ type server struct {
 	ClusterList      clusterlist.Lister
 	TransformConfigs tfconfig.Provider
 
-	ctx           context.Context
 	RequestMetric *metrics.Metric[*requestMetric]
 }
 
@@ -74,9 +73,7 @@ func (server *server) Options() manager.Options {
 	return &server.options
 }
 
-func (server *server) Init(ctx context.Context) error {
-	server.ctx = ctx
-
+func (server *server) Init() error {
 	server.Server.Routes().GET("/extensions/api/v1/trace", func(ctx *gin.Context) {
 		logger := server.Logger.WithField("source", ctx.Request.RemoteAddr)
 		defer shutdown.RecoverPanic(logger)
@@ -96,9 +93,9 @@ func (server *server) Init(ctx context.Context) error {
 	return nil
 }
 
-func (server *server) Start(stopCh <-chan struct{}) error { return nil }
+func (server *server) Start(ctx context.Context) error { return nil }
 
-func (server *server) Close() error { return nil }
+func (server *server) Close(ctx context.Context) error { return nil }
 
 func (server *server) handleTrace(ctx *gin.Context, metric *requestMetric) (code int, err error) {
 	query := traceQuery{}
