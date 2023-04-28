@@ -20,6 +20,8 @@ import (
 	"github.com/jaegertracing/jaeger/model"
 )
 
+var ErrRootDoesNotExist = fmt.Errorf("SetRoot can only be used on nodes in the tree")
+
 type SpanTree struct {
 	spanMap      map[model.SpanID]*model.Span
 	childrenMap  map[model.SpanID]map[model.SpanID]struct{}
@@ -74,14 +76,14 @@ func (tree SpanTree) GetSpans() []*model.Span {
 }
 
 // Sets the root to a span under the current root, and prunes other spans not under the new root.
-func (tree *SpanTree) SetRoot(id model.SpanID) {
+func (tree *SpanTree) SetRoot(id model.SpanID) error {
 	if len(tree.visitorStack) != 0 {
-		panic("Cannot call SetRoot")
+		panic("Cannot call SetRoot from a visitor")
 	}
 
 	newRoot, exists := tree.spanMap[id]
 	if !exists {
-		panic("SetRoot can only be used on nodes in the tree")
+		return ErrRootDoesNotExist
 	}
 
 	tree.Root = newRoot
@@ -100,6 +102,8 @@ func (tree *SpanTree) SetRoot(id model.SpanID) {
 			delete(tree.childrenMap, spanId)
 		}
 	}
+
+	return nil
 }
 
 type spanIdCollector struct {
