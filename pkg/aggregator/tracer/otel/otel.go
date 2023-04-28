@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
@@ -67,7 +66,6 @@ type otelTracer struct {
 	Logger    logrus.FieldLogger
 	deferList *shutdown.DeferList
 
-	ctx        context.Context
 	exporter   *otlptrace.Exporter
 	tracers    sync.Map // equiv. map[string]*onceTracer
 	propagator propagation.TextMapPropagator
@@ -85,18 +83,13 @@ func (otel *otelTracer) Options() manager.Options {
 	return &otel.options
 }
 
-func (otel *otelTracer) Init(ctx context.Context) error {
-	otel.ctx = ctx
-
+func (otel *otelTracer) Init() error {
 	options := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(otel.options.endpoint)}
 	if otel.options.insecure {
 		options = append(options, otlptracegrpc.WithInsecure())
 	}
 	client := otlptracegrpc.NewClient(options...)
-	exporter, err := otlptrace.New(ctx, client)
-	if err != nil {
-		return fmt.Errorf("cannot start trace exporter: %w", err)
-	}
+	exporter := otlptrace.NewUnstarted(client)
 	otel.exporter = exporter
 
 	otel.propagator = propagation.TraceContext{}
@@ -132,7 +125,7 @@ func (otel *otelTracer) createTracer(serviceName string) (oteltrace.Tracer, erro
 	}
 
 	resource, err := resource.New(
-		otel.ctx,
+		context.Background(), // nothing meaningful to pass in the context
 		resource.WithAttributes(attributes...),
 	)
 	if err != nil {
@@ -144,19 +137,23 @@ func (otel *otelTracer) createTracer(serviceName string) (oteltrace.Tracer, erro
 		otelsdktrace.WithBatcher(otel.exporter),
 		otelsdktrace.WithResource(resource),
 	)
-	otel.deferList.LockedDefer("close otel tracer provider", func() error {
-		ctx, cancelFunc := context.WithTimeout(otel.ctx, time.Second*10)
-		defer cancelFunc()
+	otel.deferList.DeferContextWithLock("close otel tracer provider", func(ctx context.Context) error {
 		return tp.Shutdown(ctx)
 	})
 
 	return tp.Tracer(serviceName), nil
 }
 
-func (otel *otelTracer) Start(stopCh <-chan struct{}) error { return nil }
+func (otel *otelTracer) Start(ctx context.Context) error {
+	err := otel.exporter.Start(ctx)
+	if err != nil {
+		return fmt.Errorf("cannot start trace exporter: %w", err)
+	}
+	return nil
+}
 
-func (otel *otelTracer) Close() error {
-	if name, err := otel.deferList.LockedRun(otel.Logger); err != nil {
+func (otel *otelTracer) Close(ctx context.Context) error {
+	if name, err := otel.deferList.LockedRun(ctx, otel.Logger); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}
 

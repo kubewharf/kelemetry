@@ -62,7 +62,7 @@ func (dumper *dumper) Options() manager.Options {
 	return &dumper.options
 }
 
-func (dumper *dumper) Init(ctx context.Context) (err error) {
+func (dumper *dumper) Init() (err error) {
 	dumper.stream, err = os.OpenFile(dumper.options.target, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
 	if err != nil {
 		return fmt.Errorf("cannot open file to dump audit events: %w", err)
@@ -73,7 +73,7 @@ func (dumper *dumper) Init(ctx context.Context) (err error) {
 	return nil
 }
 
-func (dumper *dumper) Start(stopCh <-chan struct{}) error {
+func (dumper *dumper) Start(ctx context.Context) error {
 	go func() {
 		defer shutdown.RecoverPanic(dumper.Logger)
 
@@ -81,7 +81,7 @@ func (dumper *dumper) Start(stopCh <-chan struct{}) error {
 
 		for {
 			select {
-			case <-stopCh:
+			case <-ctx.Done():
 				return
 			case <-flushCh:
 				if err := dumper.stream.Sync(); err != nil {
@@ -118,6 +118,6 @@ func (dumper *dumper) handleEvent(message *audit.Message) error {
 	return nil
 }
 
-func (dumper *dumper) Close() error {
+func (dumper *dumper) Close(ctx context.Context) error {
 	return dumper.stream.Close()
 }

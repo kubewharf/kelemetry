@@ -148,8 +148,8 @@ type listMetric struct{}
 
 func (*listMetric) MetricName() string { return "diff_cache_list" }
 
-func (mux *mux) Init(ctx context.Context) error {
-	if err := mux.Mux.Init(ctx); err != nil {
+func (mux *mux) Init() error {
+	if err := mux.Mux.Init(); err != nil {
 		return err
 	}
 
@@ -163,9 +163,9 @@ func (mux *mux) Init(ctx context.Context) error {
 	return nil
 }
 
-func (mux *mux) Start(stopCh <-chan struct{}) error {
+func (mux *mux) Start(ctx context.Context) error {
 	if wrapped, ok := mux.impl.(*CacheWrapper); ok {
-		go wrapped.patchCache.RunCleanupLoop(stopCh, mux.Logger)
+		go wrapped.patchCache.RunCleanupLoop(ctx, mux.Logger)
 	}
 
 	return nil

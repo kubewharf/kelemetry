@@ -28,6 +28,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/aggregator/aggregatorevent"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/eventdecorator"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/linker"
+	"github.com/kubewharf/kelemetry/pkg/aggregator/objectspandecorator"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/spancache"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/tracer"
 	"github.com/kubewharf/kelemetry/pkg/manager"
@@ -119,14 +120,16 @@ type SubObjectId struct {
 }
 
 type aggregator struct {
-	options        options
-	Clock          clock.Clock
-	Linkers        linker.LinkerList
-	Logger         logrus.FieldLogger
-	SpanCache      spancache.Cache
-	Tracer         tracer.Tracer
-	Metrics        metrics.Client
-	EventDecorator eventdecorator.UnionEventDecorator
+	options   options
+	Clock     clock.Clock
+	Linkers   linker.LinkerList
+	Logger    logrus.FieldLogger
+	SpanCache spancache.Cache
+	Tracer    tracer.Tracer
+	Metrics   metrics.Client
+
+	EventDecorator      eventdecorator.UnionEventDecorator
+	ObjectSpanDecorator objectspandecorator.UnionEventDecorator
 
 	SendMetric               *metrics.Metric[*sendMetric]
 	SinceEventMetric         *metrics.Metric[*sinceEventMetric]
@@ -169,7 +172,7 @@ func (aggregator *aggregator) Options() manager.Options {
 	return &aggregator.options
 }
 
-func (aggregator *aggregator) Init(ctx context.Context) error {
+func (aggregator *aggregator) Init() error {
 	if aggregator.options.spanFollowTtl > aggregator.options.spanTtl {
 		return fmt.Errorf("invalid option: --span-ttl must not be shorter than --span-follow-ttl")
 	}
@@ -177,9 +180,9 @@ func (aggregator *aggregator) Init(ctx context.Context) error {
 	return nil
 }
 
-func (aggregator *aggregator) Start(stopCh <-chan struct{}) error { return nil }
+func (aggregator *aggregator) Start(ctx context.Context) error { return nil }
 
-func (aggregator *aggregator) Close() error { return nil }
+func (aggregator *aggregator) Close(ctx context.Context) error { return nil }
 
 func (aggregator *aggregator) Send(
 	ctx context.Context,
@@ -515,7 +518,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 		return nil, fmt.Errorf("cannot fetch parent object: %w", err)
 	}
 
-	span, err := aggregator.createSpan(object, field, eventTime, parent, followsFrom)
+	span, err := aggregator.createSpan(ctx, object, field, eventTime, parent, followsFrom)
 	if err != nil {
 		return nil, metrics.LabelError(fmt.Errorf("cannot create span: %w", err), "CreateSpan")
 	}
@@ -543,6 +546,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 }
 
 func (aggregator *aggregator) createSpan(
+	ctx context.Context,
 	object util.ObjectRef,
 	field string,
 	eventTime time.Time,
@@ -572,6 +576,10 @@ func (aggregator *aggregator) createSpan(
 	}
 	for tagKey, tagValue := range aggregator.options.globalPseudoTags {
 		span.Tags[tagKey] = tagValue
+	}
+
+	if field == "object" {
+		aggregator.ObjectSpanDecorator.Decorate(ctx, object, span.Type, span.Tags)
 	}
 
 	spanContext, err := aggregator.Tracer.CreateSpan(span)

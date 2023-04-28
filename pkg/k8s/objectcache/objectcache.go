@@ -16,7 +16,6 @@ package objectcache
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"time"
 
@@ -76,69 +75,109 @@ type cacheEvictionMetric struct{}
 func (*cacheEvictionMetric) MetricName() string { return "object_cache_eviction" }
 
 type CacheRequestMetric struct {
-	Hit   bool
-	Error string
+	Cluster string
+	Hit     bool
+	Error   string
 }
 
 func (*CacheRequestMetric) MetricName() string { return "object_cache_request" }
 
 func (oc *ObjectCache) Options() manager.Options { return &oc.options }
 
-func (oc *ObjectCache) Init(ctx context.Context) error {
+func (oc *ObjectCache) Init() error {
 	oc.cache = freecache.NewCache(oc.options.cacheSize)
 	metrics.NewMonitor(oc.Metrics, &cacheSizeMetric{}, func() int64 { return oc.cache.EntryCount() })
 	metrics.NewMonitor(oc.Metrics, &cacheEvictionMetric{}, func() int64 { return oc.cache.EvacuateCount() })
 	return nil
 }
 
-func (oc *ObjectCache) Start(stopCh <-chan struct{}) error { return nil }
+func (oc *ObjectCache) Start(ctx context.Context) error { return nil }
 
-func (oc *ObjectCache) Close() error { return nil }
+func (oc *ObjectCache) Close(ctx context.Context) error { return nil }
 
 func (oc *ObjectCache) Get(ctx context.Context, object util.ObjectRef) (*unstructured.Unstructured, error) {
-	metric := &CacheRequestMetric{Error: "Unknown"}
+	metric := &CacheRequestMetric{Cluster: object.Cluster, Error: "Unknown"}
 	defer oc.CacheRequestMetric.DeferCount(oc.Clock.Now(), metric)
 
 	key := objectKey(object)
-	randomId := [5]byte{0, 0, 0, 0, 0}
-	_, err := rand.Read(randomId[1:])
-	if err != nil {
-		return nil, fmt.Errorf("generate random initial value: %w", err)
-	}
 
 	for {
-		cached, _ := oc.cache.GetOrSet(key, randomId[:], int(oc.options.fetchTimeout.Seconds()))
+		cached, _ := oc.cache.GetOrSet(key, []byte{0}, int(oc.options.fetchTimeout.Seconds()))
 		if cached != nil {
-			// cache hit
-			metric.Hit = true
-
 			if cached[0] == 0 {
 				// pending; JSON never starts with a NUL byte
-				oc.Clock.Sleep(time.Millisecond * 100) // constant backoff, up to 50 times by default
+				oc.Clock.Sleep(time.Millisecond * 10) // constant backoff until the previous fetchTimeout returns
+				// TODO add metrics to monitor this
 				continue
 			}
 
-			uns := &unstructured.Unstructured{}
-			err := uns.UnmarshalJSON(cached)
+			// cache hit
+			return decodeCached(cached, metric)
+		} else {
+			// cache miss, we have reserved the entry
+
+			persisted := false
+			defer func() {
+				// release the entry on failure
+				if !persisted {
+					oc.cache.Del(key)
+				}
+			}()
+
+			value, err, metricCode := oc.penetrate(ctx, object)
+			metric.Error = metricCode
 			if err != nil {
-				metric.Error = "Unmarshal"
-				return nil, fmt.Errorf("cached invalid data: %w", err)
+				return nil, err
 			}
 
-			metric.Error = "nil"
-			return uns, nil
-		}
+			if value == nil {
+				return nil, nil
+			}
 
-		// cache miss and reserved
-		break
+			valueJson, err := value.MarshalJSON()
+			if err != nil {
+				metric.Error = "FetchedMarshal"
+				return nil, fmt.Errorf("server responds with non-marshalable data")
+			}
+
+			err = oc.cache.Set(key, valueJson, int(oc.options.storeTtl.Seconds()))
+			if err != nil {
+				metric.Error += "/ValueTooLarge"
+				// the object is too large, so just don't cache it and return normally
+				return value, nil //nolint:nilerr
+			}
+
+			persisted = true
+
+			return value, nil
+		}
+	}
+}
+
+func decodeCached(cached []byte, metric *CacheRequestMetric) (*unstructured.Unstructured, error) {
+	metric.Hit = true
+
+	uns := &unstructured.Unstructured{}
+	err := uns.UnmarshalJSON(cached)
+	if err != nil {
+		metric.Error = "CacheUnmarshal"
+		return nil, fmt.Errorf("cached invalid data: %w", err)
 	}
 
-	metric.Hit = false
+	metric.Error = "nil"
+	return uns, nil
+}
 
+func (oc *ObjectCache) penetrate(
+	ctx context.Context,
+	object util.ObjectRef,
+) (_raw *unstructured.Unstructured, _err error, _metricCode string) {
+	// first, try fetching from server
 	clusterClient, err := oc.Clients.Cluster(object.Cluster)
 	if err != nil {
-		return nil, fmt.Errorf("cannot initialize clients for cluster %q: %w", object.Cluster, err)
+		return nil, fmt.Errorf("cannot initialize clients for cluster %q: %w", object.Cluster, err), "UnknownCluster"
 	}
+
 	nsClient := clusterClient.DynamicClient().Resource(object.GroupVersionResource)
 	var client dynamic.ResourceInterface = nsClient
 	if object.Namespace != "" {
@@ -149,48 +188,31 @@ func (oc *ObjectCache) Get(ctx context.Context, object util.ObjectRef) (*unstruc
 		ResourceVersion: "0",
 	})
 	if err != nil && !k8serrors.IsNotFound(err) {
-		metric.Error = string(k8serrors.ReasonForError(err))
-		return nil, err
+		return nil, err, string(k8serrors.ReasonForError(err))
 	}
 
 	if err == nil {
-		json, err := raw.MarshalJSON()
-		if err != nil {
-			metric.Error = "Marshal"
-			return nil, fmt.Errorf("server responds with non-marshalable data")
-		}
-
-		err = oc.cache.Set(key, json, int(oc.options.storeTtl.Seconds()))
-		if err != nil {
-			// the object is too large, so just don't cache it
-			metric.Error = "ValueTooLarge"
-		} else {
-			metric.Error = "Penetrated"
-		}
-
-		return raw, nil
+		return raw, nil, "Apiserver"
 	}
-	// else, not found
 
-	metric.Error = "DeletionSnapshot"
-
+	// not found from apiserver, try deletion snapshot instead
 	snapshot, err := oc.DiffCache.FetchSnapshot(ctx, object, diffcache.SnapshotNameDeletion)
 	if err != nil {
-		return nil, metrics.LabelError(fmt.Errorf("cannot fallback to snapshot: %w", err), "SnapshotFetch")
+		return nil, metrics.LabelError(fmt.Errorf("cannot fallback to snapshot: %w", err), "SnapshotFetch"), "SnapshotFetch"
 	}
 
 	if snapshot != nil {
 		uns := &unstructured.Unstructured{}
 		if err := uns.UnmarshalJSON(snapshot.Value); err != nil {
-			return nil, metrics.LabelError(fmt.Errorf("decode snapshot err: %w", err), "SnapshotDecode")
+			return nil, metrics.LabelError(fmt.Errorf("decode snapshot err: %w", err), "SnapshotDecode"), "SnapshotDecode"
 		}
 
-		return uns, nil
+		return uns, nil, "DeletionSnapshot"
 	}
 
 	// all methods failed
 
-	return nil, nil
+	return nil, nil, "NotFoundAnywhere"
 }
 
 func objectKey(object util.ObjectRef) []byte {

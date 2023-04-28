@@ -65,7 +65,7 @@ func (p *DefaultProvider) MuxImplName() (name string, isDefault bool) { return "
 
 func (p *DefaultProvider) Options() manager.Options { return &p.options }
 
-func (p *DefaultProvider) Init(ctx context.Context) error {
+func (p *DefaultProvider) Init() error {
 	p.registerDefaults()
 	return nil
 }
@@ -204,9 +204,9 @@ func (p *DefaultProvider) getObjectTagStep() tfconfig.Step {
 	}}
 }
 
-func (p *DefaultProvider) Start(stopCh <-chan struct{}) error { return nil }
+func (p *DefaultProvider) Start(ctx context.Context) error { return nil }
 
-func (p *DefaultProvider) Close() error { return nil }
+func (p *DefaultProvider) Close(ctx context.Context) error { return nil }
 
 func (p *DefaultProvider) Names() []string {
 	names := make([]string, 0, len(p.nameToConfigId))

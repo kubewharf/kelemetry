@@ -89,10 +89,10 @@ type receiver struct {
 	Metrics        metrics.Client
 	DiscoveryCache discovery.DiscoveryCache
 
-	ctx              context.Context
 	ConsumeMetric    *metrics.Metric[*consumeMetric]
 	E2eLatencyMetric *metrics.Metric[*e2eLatencyMetric]
-	consumers        map[mq.PartitionId]mq.Consumer
+
+	consumers map[mq.PartitionId]mq.Consumer
 }
 
 var _ manager.Component = &receiver{}
@@ -118,17 +118,15 @@ func (recv *receiver) Options() manager.Options {
 	return &recv.options
 }
 
-func (recv *receiver) Init(ctx context.Context) error {
-	recv.ctx = ctx
-
+func (recv *receiver) Init() error {
 	for _, partition := range recv.options.partitions {
 		group := mq.ConsumerGroup(recv.options.consumerGroup)
 		partition := mq.PartitionId(partition)
 		consumer, err := recv.Mq.CreateConsumer(
 			group,
 			partition,
-			func(fieldLogger logrus.FieldLogger, msgKey []byte, msgValue []byte) {
-				recv.handleMessage(fieldLogger, msgKey, msgValue, group, partition)
+			func(ctx context.Context, fieldLogger logrus.FieldLogger, msgKey []byte, msgValue []byte) {
+				recv.handleMessage(ctx, fieldLogger, msgKey, msgValue, group, partition)
 			},
 		)
 		if err != nil {
@@ -140,16 +138,17 @@ func (recv *receiver) Init(ctx context.Context) error {
 	return nil
 }
 
-func (recv *receiver) Start(stopCh <-chan struct{}) error {
+func (recv *receiver) Start(ctx context.Context) error {
 	return nil
 }
 
-func (recv *receiver) Close() error {
+func (recv *receiver) Close(ctx context.Context) error {
 	recv.Logger.Info("receiver close")
 	return nil
 }
 
 func (recv *receiver) handleMessage(
+	ctx context.Context,
 	fieldLogger logrus.FieldLogger,
 	msgKey []byte,
 	msgValue []byte,
@@ -178,7 +177,7 @@ func (recv *receiver) handleMessage(
 		return
 	}
 
-	recv.handleItem(logger.WithField("auditId", message.Event.AuditID), message, metric)
+	recv.handleItem(ctx, logger.WithField("auditId", message.Event.AuditID), message, metric)
 }
 
 var supportedVerbs = sets.NewString(
@@ -189,6 +188,7 @@ var supportedVerbs = sets.NewString(
 )
 
 func (recv *receiver) handleItem(
+	ctx context.Context,
 	logger logrus.FieldLogger,
 	message *audit.Message,
 	metric *consumeMetric,
@@ -286,16 +286,13 @@ func (recv *receiver) handleItem(
 		}
 	}
 
-	recv.DecoratorList.Decorate(message, event)
+	recv.DecoratorList.Decorate(ctx, message, event)
 
 	recv.E2eLatencyMetric.With(&e2eLatencyMetric{
 		Cluster:  message.Cluster,
 		ApiGroup: objectRef.GroupVersion(),
 		Resource: objectRef.Resource,
 	}).Histogram(e2eLatency.Nanoseconds())
-
-	ctx, cancelFunc := context.WithCancel(recv.ctx)
-	defer cancelFunc()
 
 	var subObjectId *aggregator.SubObjectId
 	if recv.options.enableSubObject && (message.Verb == audit.VerbUpdate || message.Verb == audit.VerbPatch) {

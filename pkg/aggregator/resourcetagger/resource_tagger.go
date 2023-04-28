@@ -12,41 +12,39 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tag
+package resourcetagger
 
 import (
 	"bytes"
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/util/jsonpath"
+	"k8s.io/utils/clock"
 
-	"github.com/kubewharf/kelemetry/pkg/aggregator/aggregatorevent"
-	"github.com/kubewharf/kelemetry/pkg/aggregator/eventdecorator"
 	"github.com/kubewharf/kelemetry/pkg/k8s/objectcache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	"github.com/kubewharf/kelemetry/pkg/metrics"
 	"github.com/kubewharf/kelemetry/pkg/util"
 )
 
 func init() {
-	manager.Global.Provide("resource-tagger", manager.Ptr(&tagDecorator{}))
+	manager.Global.Provide("resource-tagger", manager.Ptr(&ResourceTagger{}))
 }
 
 var defaultTagMapping = []string{"pods#nodes:spec.nodeName"}
 
 type options struct {
-	enable              bool
 	resourceTagMappings []string
 }
 
 func (options *options) Setup(fs *pflag.FlagSet) {
-	fs.BoolVar(&options.enable, "resource-custom-tag-enable", false, "enable custom event tag for resource")
-
 	fs.StringSliceVar(
 		&options.resourceTagMappings,
 		"resource-tag-mapping",
@@ -57,38 +55,44 @@ func (options *options) Setup(fs *pflag.FlagSet) {
 }
 
 func (options *options) EnableFlag() *bool {
-	return &options.enable
-}
-
-type tagDecorator struct {
-	options            options
-	Logger             logrus.FieldLogger
-	ObjectCache        *objectcache.ObjectCache
-	EventDecorator     eventdecorator.UnionEventDecorator
-	resourceTagMapping map[schema.GroupResource]map[string]string
-}
-
-func (d *tagDecorator) Close() error {
 	return nil
 }
 
-var _ manager.Component = &tagDecorator{}
+type ResourceTagger struct {
+	options            options
+	Clock              clock.Clock
+	Logger             logrus.FieldLogger
+	ObjectCache        *objectcache.ObjectCache
+	resourceTagMapping map[schema.GroupResource]map[string]string
 
-func (d *tagDecorator) Options() manager.Options {
+	TagEventMetric *metrics.Metric[*tagEventMetric]
+}
+
+type tagEventMetric struct {
+	TraceSource string
+	Result      string
+}
+
+func (*tagEventMetric) MetricName() string { return "aggregator_resource_tagger" }
+
+var _ manager.Component = &ResourceTagger{}
+
+func (d *ResourceTagger) Options() manager.Options {
 	return &d.options
 }
 
-func (d *tagDecorator) Init(ctx context.Context) error {
-	d.EventDecorator.AddDecorator(d)
+func (d *ResourceTagger) Init() error {
 	if err := d.registerTagMapping(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (d *tagDecorator) Start(stopCh <-chan struct{}) error { return nil }
+func (d *ResourceTagger) Start(ctx context.Context) error { return nil }
 
-func (d *tagDecorator) registerTagMapping() error {
+func (d *ResourceTagger) Close(ctx context.Context) error { return nil }
+
+func (d *ResourceTagger) registerTagMapping() error {
 	for _, resourceTagMapping := range d.options.resourceTagMappings {
 		slices := strings.Split(resourceTagMapping, "#")
 		if len(slices) != 2 {
@@ -115,7 +119,7 @@ func (d *tagDecorator) registerTagMapping() error {
 	return nil
 }
 
-func (d *tagDecorator) registerResource(gr schema.GroupResource, tagPathMapping map[string]string) {
+func (d *ResourceTagger) registerResource(gr schema.GroupResource, tagPathMapping map[string]string) {
 	if d.resourceTagMapping == nil {
 		d.resourceTagMapping = map[schema.GroupResource]map[string]string{}
 	}
@@ -129,25 +133,35 @@ func (d *tagDecorator) registerResource(gr schema.GroupResource, tagPathMapping 
 	}
 }
 
-func (d *tagDecorator) Decorate(ctx context.Context, object util.ObjectRef, event *aggregatorevent.Event) {
+func (d *ResourceTagger) DecorateTag(ctx context.Context, object util.ObjectRef, traceSource string, tags map[string]any) {
+	if tags == nil {
+		return
+	}
+
 	gr := object.GroupResource()
 	if _, exists := d.resourceTagMapping[gr]; !exists {
 		return
 	}
 
+	logger := d.Logger.WithField("object", object).WithField("traceSource", traceSource)
+	tagMetric := &tagEventMetric{TraceSource: traceSource, Result: "Unknown"}
+	defer d.TagEventMetric.DeferCount(time.Now(), tagMetric)
+
 	raw := object.Raw
-	logger := d.Logger.WithField("object", object)
 
 	if raw == nil {
-		logger.Debug("Fetching dynamic object")
+		logger.Debug("Fetching dynamic object for tag decorator")
+
 		var err error
 		raw, err = d.ObjectCache.Get(ctx, object)
 		if err != nil {
+			tagMetric.Result = "FetchErr"
 			logger.WithError(err).Error("cannot fetch object value")
 			return
 		}
 
 		if raw == nil {
+			tagMetric.Result = "NotFound"
 			logger.Debug("object no longer exists")
 			return
 		}
@@ -156,9 +170,10 @@ func (d *tagDecorator) Decorate(ctx context.Context, object util.ObjectRef, even
 	for tagKey, jsonPath := range d.resourceTagMapping[gr] {
 		val, err := getValFromJsonPath(raw, jsonPath)
 		if err != nil {
-			return
+			continue
 		}
-		event.Tags[tagKey] = val
+		tagMetric.Result = "Success"
+		tags[tagKey] = val
 	}
 }
 

@@ -15,6 +15,7 @@
 package channel
 
 import (
+	"context"
 	"math"
 	"sync"
 
@@ -29,7 +30,7 @@ type UnboundedQueue[T any] struct {
 	deque    *Deque[T]
 	notifier chan<- struct{}
 	receiver <-chan T
-	stopCh   chan<- struct{}
+	Close    context.CancelFunc
 }
 
 // Creates a new UnboundedQueue with the specified initial capacity.
@@ -37,25 +38,22 @@ func NewUnboundedQueue[T any](initialCapacity int) *UnboundedQueue[T] {
 	deque := NewDeque[T](initialCapacity)
 	notifier := make(chan struct{}, 1)
 	receiver := make(chan T)
-	stopCh := make(chan struct{}, 1)
 
-	go receiverLoop(deque, notifier, receiver, stopCh)
+	receiverCtx, cancelFunc := context.WithCancel(context.Background())
+
+	go receiverLoop(receiverCtx, deque, notifier, receiver)
 
 	return &UnboundedQueue[T]{
 		deque:    deque,
 		notifier: notifier,
 		receiver: receiver,
-		stopCh:   stopCh,
+		Close:    cancelFunc,
 	}
 }
 
 // Receiver returns the channel that can be used for receiving from this UnboundedQueue.
 func (uq *UnboundedQueue[T]) Receiver() <-chan T {
 	return uq.receiver
-}
-
-func (uq *UnboundedQueue[T]) Close() {
-	uq.stopCh <- struct{}{}
 }
 
 func (uq *UnboundedQueue[T]) Length() int {
@@ -80,7 +78,7 @@ func (uq *UnboundedQueue[T]) Send(obj T) {
 	}
 }
 
-func receiverLoop[T any](deque *Deque[T], notifier <-chan struct{}, receiver chan<- T, stopCh <-chan struct{}) {
+func receiverLoop[T any](ctx context.Context, deque *Deque[T], notifier <-chan struct{}, receiver chan<- T) {
 	defer shutdown.RecoverPanic(logrus.New())
 
 	for {
@@ -88,7 +86,7 @@ func receiverLoop[T any](deque *Deque[T], notifier <-chan struct{}, receiver cha
 
 		if hasItem {
 			select {
-			case <-stopCh:
+			case <-ctx.Done():
 				// queue stopped, close the receiver
 				close(receiver)
 				return
@@ -105,7 +103,7 @@ func receiverLoop[T any](deque *Deque[T], notifier <-chan struct{}, receiver cha
 		// notifier will still receive something.
 
 		select {
-		case <-stopCh:
+		case <-ctx.Done():
 			// queue stopped, close the receiver
 			close(receiver)
 			return

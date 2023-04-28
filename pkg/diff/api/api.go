@@ -59,8 +59,6 @@ type api struct {
 	Clients       k8s.Clients
 	RequestMetric *metrics.Metric[*requestMetric]
 	ScanMetric    *metrics.Metric[*scanMetric]
-
-	ctx context.Context
 }
 
 type (
@@ -75,9 +73,7 @@ func (api *api) Options() manager.Options {
 	return &api.options
 }
 
-func (api *api) Init(ctx context.Context) error {
-	api.ctx = ctx
-
+func (api *api) Init() error {
 	api.Server.Routes().GET("/diff/:group/:version/:resource/:namespace/:name/:rv", func(ctx *gin.Context) {
 		logger := api.Logger.WithField("source", ctx.Request.RemoteAddr)
 		defer shutdown.RecoverPanic(logger)
@@ -103,7 +99,7 @@ func (api *api) Init(ctx context.Context) error {
 	return nil
 }
 
-func (api *api) Start(stopCh <-chan struct{}) error { return nil }
+func (api *api) Start(ctx context.Context) error { return nil }
 
 func (api *api) handleGet(ctx *gin.Context) error {
 	group := ctx.Param("group")
@@ -197,4 +193,4 @@ func (api *api) handleScan(ctx *gin.Context) error {
 	return nil
 }
 
-func (api *api) Close() error { return nil }
+func (api *api) Close(ctx context.Context) error { return nil }

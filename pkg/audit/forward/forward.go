@@ -61,7 +61,6 @@ type comp struct {
 	Webhook     auditwebhook.Webhook
 	ProxyMetric *metrics.Metric[*proxyMetric]
 
-	ctx     context.Context
 	proxies []*proxy
 	stopWg  sync.WaitGroup
 }
@@ -78,9 +77,7 @@ func (comp *comp) Options() manager.Options {
 	return &comp.options
 }
 
-func (comp *comp) Init(ctx context.Context) error {
-	comp.ctx = ctx
-
+func (comp *comp) Init() error {
 	comp.proxies = make([]*proxy, 0, len(comp.options.forwardUrls))
 	for upstreamName, url := range comp.options.forwardUrls {
 		proxy := newProxy(
@@ -98,17 +95,17 @@ func (comp *comp) Init(ctx context.Context) error {
 	return nil
 }
 
-func (comp *comp) Start(stopCh <-chan struct{}) error {
+func (comp *comp) Start(ctx context.Context) error {
 	comp.stopWg.Add(len(comp.proxies))
 
 	for _, proxy := range comp.proxies {
-		go proxy.run(stopCh, &comp.stopWg)
+		go proxy.run(ctx, &comp.stopWg)
 	}
 
 	return nil
 }
 
-func (comp *comp) Close() error {
+func (comp *comp) Close(ctx context.Context) error {
 	comp.stopWg.Wait()
 	return nil
 }
@@ -144,7 +141,7 @@ func newProxy(
 	return proxy
 }
 
-func (proxy *proxy) run(stopCh <-chan struct{}, wg *sync.WaitGroup) {
+func (proxy *proxy) run(ctx context.Context, wg *sync.WaitGroup) {
 	defer shutdown.RecoverPanic(proxy.logger)
 	defer wg.Done()
 
@@ -152,7 +149,7 @@ func (proxy *proxy) run(stopCh <-chan struct{}, wg *sync.WaitGroup) {
 
 	for {
 		select {
-		case <-stopCh:
+		case <-ctx.Done():
 			return
 		case message, chOpen := <-proxy.subscriber:
 			if !chOpen {

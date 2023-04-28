@@ -45,11 +45,11 @@ func (_ *localCache) MuxImplName() (name string, isDefault bool) { return "local
 
 func (cache *localCache) Options() manager.Options { return &manager.NoOptions{} }
 
-func (cache *localCache) Init(ctx context.Context) error { return nil }
+func (cache *localCache) Init() error { return nil }
 
-func (cache *localCache) Start(stopCh <-chan struct{}) error { return nil }
+func (cache *localCache) Start(ctx context.Context) error { return nil }
 
-func (cache *localCache) Close() error { return nil }
+func (cache *localCache) Close(ctx context.Context) error { return nil }
 
 func (cache *localCache) Persist(ctx context.Context, entries []tracecache.Entry) error {
 	cache.dataLock.Lock()

@@ -50,7 +50,6 @@ type Controller struct {
 	Clients        k8s.Clients
 	DiscoveryCache discovery.DiscoveryCache
 	ObjectCache    *objectcache.ObjectCache
-	ctx            context.Context
 }
 
 var _ manager.Component = &Controller{}
@@ -59,18 +58,16 @@ func (ctrl *Controller) Options() manager.Options {
 	return &ctrl.options
 }
 
-func (ctrl *Controller) Init(ctx context.Context) error {
+func (ctrl *Controller) Init() error {
 	ctrl.Linkers.AddLinker(ctrl)
-	ctrl.ctx = ctx
-
 	return nil
 }
 
-func (ctrl *Controller) Start(stopCh <-chan struct{}) error {
+func (ctrl *Controller) Start(ctx context.Context) error {
 	return nil
 }
 
-func (ctrl *Controller) Close() error {
+func (ctrl *Controller) Close(ctx context.Context) error {
 	return nil
 }
 

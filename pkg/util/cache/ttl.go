@@ -15,6 +15,7 @@
 package cache
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -77,7 +78,7 @@ func (cache *TtlOnce) Size() int {
 	return len(cache.data)
 }
 
-func (cache *TtlOnce) RunCleanupLoop(stopCh <-chan struct{}, logger logrus.FieldLogger) {
+func (cache *TtlOnce) RunCleanupLoop(ctx context.Context, logger logrus.FieldLogger) {
 	defer shutdown.RecoverPanic(logger)
 
 	for {
@@ -89,7 +90,7 @@ func (cache *TtlOnce) RunCleanupLoop(stopCh <-chan struct{}, logger logrus.Field
 		}
 
 		select {
-		case <-stopCh:
+		case <-ctx.Done():
 			return
 		case <-wakeup:
 			continue
