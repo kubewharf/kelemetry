@@ -31,10 +31,12 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	jaegerbackend "github.com/kubewharf/kelemetry/pkg/frontend/backend"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
 func init() {
@@ -165,22 +167,45 @@ func (backend *Backend) List(
 		filterTags["cluster"] = params.OperationName
 	}
 
-	newParams := &spanstore.TraceQueryParameters{
-		Tags:         filterTags,
-		StartTimeMin: params.StartTimeMin,
-		StartTimeMax: params.StartTimeMax,
-		DurationMin:  params.DurationMin,
-		DurationMax:  params.DurationMax,
-		NumTraces:    params.NumTraces,
-	}
+	// TODO support additional user-defined trace sources
+	var traces []*model.Trace
+	for _, traceSource := range zconstants.KnownTraceSources(false) {
+		if len(traces) >= params.NumTraces {
+			break
+		}
 
-	traces, err := backend.reader.FindTraces(ctx, newParams)
-	if err != nil {
-		return nil, fmt.Errorf("find traces from backend err: %w", err)
+		newParams := &spanstore.TraceQueryParameters{
+			ServiceName:  traceSource,
+			Tags:         filterTags,
+			StartTimeMin: params.StartTimeMin,
+			StartTimeMax: params.StartTimeMax,
+			DurationMin:  params.DurationMin,
+			DurationMax:  params.DurationMax,
+			NumTraces:    params.NumTraces - len(traces),
+		}
+
+		newTraces, err := backend.reader.FindTraces(ctx, newParams)
+		if err != nil {
+			return nil, fmt.Errorf("find traces from backend err: %w", err)
+		}
+
+		traces = append(traces, newTraces...)
 	}
 
 	var traceThumbnails []*jaegerbackend.TraceThumbnail
+	traceIds := sets.Set[model.TraceID]{}
 	for _, trace := range traces {
+		if len(trace.Spans) == 0 {
+			continue
+		}
+
+		traceId := trace.Spans[0].TraceID
+		if traceIds.Has(traceId) {
+			continue
+		}
+
+		traceIds.Insert(traceId)
+
 		for _, span := range trace.Spans {
 			resource, _ := model.KeyValues(span.Tags).FindByKey("resource")
 			span.Process = &model.Process{ServiceName: resource.GetVStr()}
@@ -189,13 +214,10 @@ func (backend *Backend) List(
 				span.OperationName = slice[1]
 			}
 		}
-		var traceId string
-		if len(trace.Spans) > 0 {
-			traceId = trace.Spans[0].TraceID.String()
-		}
+
 		traceSpans := trace.Spans
 		if strings.Contains(params.ServiceName, "exclusive") {
-			traceSpans = filterSpanByTags(trace.Spans, newParams.Tags)
+			traceSpans = filterSpanByTags(trace.Spans, filterTags)
 		}
 		rootSpans := getRootSpan(traceSpans)
 
@@ -210,7 +232,7 @@ func (backend *Backend) List(
 			spans := tree.GetSpans()
 
 			traceThumbnails = append(traceThumbnails, &jaegerbackend.TraceThumbnail{
-				Identifier: identifier{TraceId: traceId, SpanId: uint64(rootSpan.SpanID)},
+				Identifier: identifier{TraceId: traceId.String(), SpanId: uint64(rootSpan.SpanID)},
 				Cluster:    cluster.GetVStr(),
 				Resource:   resource.GetVStr(),
 				RootSpan:   rootSpan.SpanID,

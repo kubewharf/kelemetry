@@ -40,6 +40,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/metrics"
 	"github.com/kubewharf/kelemetry/pkg/util"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
+	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
 func init() {
@@ -269,7 +270,7 @@ func (recv *receiver) handleItem(
 		title += fmt.Sprintf(" (%s)", http.StatusText(int(message.ResponseStatus.Code)))
 	}
 
-	event := aggregatorevent.NewEvent(field, title, message.RequestReceivedTimestamp.Time, "audit").
+	event := aggregatorevent.NewEvent(field, title, message.RequestReceivedTimestamp.Time, zconstants.TraceSourceAudit).
 		WithEndTime(message.StageTimestamp.Time).
 		WithTag("username", username).
 		WithTag("userAgent", message.UserAgent).

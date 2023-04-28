@@ -33,11 +33,6 @@ func (visitor CompactDurationVisitor) Enter(tree tftree.SpanTree, span *model.Sp
 func (visitor CompactDurationVisitor) Exit(tree tftree.SpanTree, span *model.Span) {
 	// use exit hook to use compact results of children
 
-	if tree.Root == span {
-		// keep the root in full duration for display
-		return
-	}
-
 	if _, hasNestLevel := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel); !hasNestLevel {
 		return
 	}
@@ -60,6 +55,14 @@ func (visitor CompactDurationVisitor) Exit(tree tftree.SpanTree, span *model.Spa
 	if r.hasStart && r.hasEnd {
 		span.StartTime = r.start
 		span.Duration = r.end.Sub(r.start)
+
+		if tree.Root == span {
+			// add 5% padding for the root span for better visualization
+
+			padding := span.Duration / 20
+			span.StartTime = span.StartTime.Add(-padding)
+			span.Duration += padding * 2
+		}
 	}
 }
 

@@ -34,15 +34,6 @@ func (visitor ReplaceNameVisitor) Enter(tree tftree.SpanTree, span *model.Span) 
 		}
 	}
 
-	if span == tree.Root {
-		span.OperationName = fmt.Sprintf(
-			"%s / %s..%s",
-			span.OperationName,
-			span.StartTime.Format("15:04"),
-			span.StartTime.Add(span.Duration).Format("15:04"),
-		)
-	}
-
 	return visitor
 }
 
@@ -56,6 +47,16 @@ func (visitor PruneTagsVisitor) Enter(tree tftree.SpanTree, span *model.Span) tf
 	for i := range span.Logs {
 		log := &span.Logs[i]
 		log.Fields = removeZconstantKeys(log.Fields)
+	}
+
+	// add the timestamp to assist viewing time on list
+	if span == tree.Root {
+		span.OperationName = fmt.Sprintf(
+			"%s / %s..%s",
+			span.OperationName,
+			span.StartTime.Format("15:04"),
+			span.StartTime.Add(span.Duration).Format("15:04"),
+		)
 	}
 
 	return visitor

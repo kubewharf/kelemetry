@@ -31,6 +31,29 @@ const NestLevel = Prefix + "nestingLevel"
 // Identifies that the span represents an actual event (rather than as a pseudospan).
 const TraceSource = Prefix + "traceSource"
 
+const (
+	TraceSourceObject = "object"
+	TraceSourceAudit  = "audit"
+	TraceSourceEvent  = "event"
+)
+
+func KnownTraceSources(withPseudo bool) []string {
+	traceSources := []string{
+		// pseudo
+		TraceSourceObject,
+
+		// real
+		TraceSourceAudit,
+		TraceSourceEvent,
+	}
+
+	if !withPseudo {
+		traceSources = traceSources[1:]
+	}
+
+	return traceSources
+}
+
 // Classifies the type of a log line.
 // Logs without this attribute will not have special treatment.
 const LogTypeAttr = Prefix + "logType"

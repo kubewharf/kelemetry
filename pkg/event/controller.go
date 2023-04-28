@@ -286,7 +286,7 @@ func (ctrl *controller) handleEvent(ctx context.Context, event *corev1.Event) {
 		return
 	}
 
-	aggregatorEvent := aggregatorevent.NewEvent("status", event.Reason, eventTime, "event").
+	aggregatorEvent := aggregatorevent.NewEvent("status", event.Reason, eventTime, zconstants.TraceSourceEvent).
 		WithTag("source", event.Source.Component).
 		WithTag("action", event.Action).
 		Log(zconstants.LogTypeEventMessage, event.Message)

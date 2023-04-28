@@ -134,7 +134,8 @@ func (p *DefaultProvider) registerDefaults() {
 			getCollapseStep(),
 			{Visitor: tfstep.GroupByTraceSourceVisitor{
 				ShouldBeGrouped: func(traceSource string) bool {
-					return traceSource != "event"
+					// events are more user-friendly, so let's promote them
+					return traceSource != zconstants.TraceSourceEvent
 				},
 			}},
 			{Visitor: tfstep.CompactDurationVisitor{}},
@@ -165,11 +166,11 @@ func getCollapseStep() tfconfig.Step {
 	return tfconfig.Step{Visitor: tfstep.CollapseNestingVisitor{
 		ShouldCollapse: func(traceSource string) bool { return true },
 		TagMappings: map[string][]tfstep.TagMapping{
-			"audit": {
+			zconstants.TraceSourceAudit: {
 				{FromSpanTag: "userAgent", ToLogField: "userAgent"},
 				{FromSpanTag: "sourceIP", ToLogField: "sourceIP"},
 			},
-			"event": {
+			zconstants.TraceSourceEvent: {
 				{FromSpanTag: "action", ToLogField: "action"},
 				{FromSpanTag: "source", ToLogField: "source"},
 			},

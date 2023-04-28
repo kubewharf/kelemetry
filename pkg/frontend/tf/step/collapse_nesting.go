@@ -131,6 +131,7 @@ func (visitor CollapseNestingVisitor) processChild(tree tftree.SpanTree, span *m
 		logTypeKv, _ := model.KeyValues(childLog.Fields).FindByKey(zconstants.LogTypeAttr)
 		logType := zconstants.LogType(logTypeKv.VStr)
 
+		// "event" is the default log key emitted by otel sdk
 		eventKv, _ := model.KeyValues(childLog.Fields).FindByKey("event")
 		event := eventKv.VStr
 
