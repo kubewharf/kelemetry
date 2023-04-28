@@ -275,11 +275,11 @@ func (decorator *decorator) tryDecorate(
 	var err error
 
 	// the implementation never returns error
-	_ = wait.PollImmediateUntil(decorator.options.fetchBackoff, func() (done bool, _ error) {
+	_ = wait.PollUntilContextCancel(retryCtx, decorator.options.fetchBackoff, true, func(context.Context) (done bool, _ error) {
 		retryCount += 1
 		cacheHit, err = tryOnce(totalCtx)
 		return cacheHit, nil
-	}, retryCtx.Done())
+	})
 
 	decorator.RetryCountMetric.With(&retryCountMetric{
 		Cluster: message.Cluster,
