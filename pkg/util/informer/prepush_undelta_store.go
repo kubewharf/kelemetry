@@ -35,9 +35,10 @@ type PrepushUndeltaStore[V metav1.Object] struct {
 	logger       logrus.FieldLogger
 	objectFilter func(obj V) bool
 
-	OnAdd    func(newObj V)
-	OnUpdate func(oldObj, newObj V)
-	OnDelete func(oldObj V)
+	OnAdd         func(newObj V)
+	OnUpdate      func(oldObj, newObj V)
+	OnDelete      func(oldObj V)
+	OnPostReplace func()
 
 	data *SwapMap[ObjectKey, V]
 }
@@ -113,6 +114,10 @@ func (store *PrepushUndeltaStore[V]) Replace(list []any, resourceVersion string)
 
 	for key, swap := range SwapMapReplace(store.data, kv, identity[V]) {
 		store.processSwapResult(key, swap)
+	}
+
+	if store.OnPostReplace != nil {
+		store.OnPostReplace()
 	}
 
 	return nil

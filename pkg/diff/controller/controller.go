@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"regexp"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -97,6 +98,7 @@ type controller struct {
 
 	redactRegex       *regexp.Regexp
 	discoveryResyncCh <-chan struct{}
+	OnCreateMetric    *metrics.Metric[*onCreateMetric]
 	OnUpdateMetric    *metrics.Metric[*onUpdateMetric]
 	OnDeleteMetric    *metrics.Metric[*onDeleteMetric]
 	elector           *multileader.Elector
@@ -106,6 +108,13 @@ type controller struct {
 }
 
 var _ manager.Component = &controller{}
+
+type onCreateMetric struct {
+	ApiGroup schema.GroupVersion
+	Resource string
+}
+
+func (*onCreateMetric) MetricName() string { return "diff_controller_on_create" }
 
 type onUpdateMetric struct {
 	ApiGroup schema.GroupVersion
@@ -345,6 +354,10 @@ func (ctrl *controller) startMonitor(gvr schema.GroupVersionResource, apiResourc
 		gvr:         gvr,
 		apiResource: apiResource,
 		cancelCtx:   cancelFunc,
+		onCreateMetric: ctrl.OnCreateMetric.With(&onCreateMetric{
+			ApiGroup: gvr.GroupVersion(),
+			Resource: gvr.Resource,
+		}),
 		onUpdateMetric: ctrl.OnUpdateMetric.With(&onUpdateMetric{
 			ApiGroup: gvr.GroupVersion(),
 			Resource: gvr.Resource,
@@ -362,10 +375,16 @@ func (ctrl *controller) startMonitor(gvr schema.GroupVersionResource, apiResourc
 		},
 	)
 
-	// TODO fix: detect creation after initial sync, do not spam snapshots during startup
-	// store.OnAdd = func(newObj *unstructured.Unstructured) {
-	// ctrl.taskPool.Send(func() { monitor.onCreateDelete(newObj, "creation") })
-	// }
+	hasSynced := new(atomic.Bool)
+
+	store.OnPostReplace = func() {
+		hasSynced.Store(true)
+	}
+	store.OnAdd = func(newObj *unstructured.Unstructured) {
+		if hasSynced.Load() {
+			ctrl.taskPool.Send(func() { monitor.onNeedSnapshot(ctx, newObj, diffcache.SnapshotNameCreation) })
+		}
+	}
 	store.OnUpdate = func(oldObj, newObj *unstructured.Unstructured) {
 		ctrl.taskPool.Send(func() { monitor.onUpdate(ctx, oldObj, newObj) })
 	}
@@ -420,6 +439,7 @@ type monitor struct {
 	gvr            schema.GroupVersionResource
 	apiResource    *metav1.APIResource
 	cancelCtx      context.CancelFunc
+	onCreateMetric metrics.TaggedMetric
 	onUpdateMetric metrics.TaggedMetric
 	onDeleteMetric metrics.TaggedMetric
 }
@@ -441,7 +461,7 @@ func (monitor *monitor) onUpdate(
 	}
 
 	if oldDelTs, newDelTs := oldObj.GetDeletionTimestamp(), newObj.GetDeletionTimestamp(); oldDelTs.IsZero() && !newDelTs.IsZero() {
-		monitor.onNeedSnapshot(ctx, newObj, "deletion")
+		monitor.onNeedSnapshot(ctx, newObj, diffcache.SnapshotNameDeletion)
 	}
 
 	patch := &diffcache.Patch{
