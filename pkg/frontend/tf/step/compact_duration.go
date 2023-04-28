@@ -23,7 +23,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
-// Splits span logs into pseudospans grouped by traceSource.
+// Reduce pseudospan duration into a "flame" shape.
 type CompactDurationVisitor struct{}
 
 func (visitor CompactDurationVisitor) Enter(tree tftree.SpanTree, span *model.Span) tftree.TreeVisitor {

@@ -16,10 +16,12 @@ package jaegerreader
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
@@ -32,6 +34,7 @@ import (
 	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
 	"github.com/kubewharf/kelemetry/pkg/frontend/tracecache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
 func init() {
@@ -125,9 +128,18 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 	traces := []*model.Trace{}
 	for _, thumbnail := range thumbnails {
 		cacheId := generateCacheId(config.Id)
+		identifier, err := json.Marshal(thumbnail.Identifier)
+		if err != nil {
+			return nil, fmt.Errorf("thumbnail identifier marshal: %w", err)
+		}
+
 		cacheEntries = append(cacheEntries, tracecache.Entry{
-			LowId:      cacheId.Low,
-			Identifier: thumbnail.Identifier,
+			LowId: cacheId.Low,
+			Value: tracecache.EntryValue{
+				Identifier: identifier,
+				StartTime:  query.StartTimeMin,
+				EndTime:    query.StartTimeMax,
+			},
 		})
 
 		for _, span := range thumbnail.Spans {
@@ -136,6 +148,8 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 				span.References[i].TraceID = cacheId
 			}
 		}
+
+		thumbnail.Spans = filterTimeRange(thumbnail.Spans, query.StartTimeMin, query.StartTimeMax)
 
 		trace := &model.Trace{
 			ProcessMap: []model.Trace_ProcessMapping{{
@@ -161,18 +175,19 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 }
 
 func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (*model.Trace, error) {
-	identifier, err := reader.TraceCache.Fetch(ctx, cacheId.Low)
+	entry, err := reader.TraceCache.Fetch(ctx, cacheId.Low)
 	if err != nil {
 		return nil, fmt.Errorf("cannot lookup trace: %w", err)
 	}
 
-	trace, rootSpan, err := reader.Backend.Get(ctx, identifier, cacheId)
+	trace, rootSpan, err := reader.Backend.Get(ctx, entry.Identifier, cacheId, entry.StartTime, entry.EndTime)
 	if err != nil {
 		return nil, fmt.Errorf("cannot fetch trace pointed by the cache: %w", err)
 	}
 
-	displayMode := extractDisplayMode(cacheId)
+	trace.Spans = filterTimeRange(trace.Spans, entry.StartTime, entry.EndTime)
 
+	displayMode := extractDisplayMode(cacheId)
 	reader.Transformer.Transform(trace, rootSpan, displayMode)
 
 	reader.Logger.WithField("numTransformedSpans", len(trace.Spans)).Info("query trace tree")
@@ -199,4 +214,25 @@ func generateCacheId(mode tfconfig.Id) model.TraceID {
 func extractDisplayMode(cacheId model.TraceID) tfconfig.Id {
 	displayMode := cacheId.High >> CacheIdHighBitShift
 	return tfconfig.Id(uint32(displayMode))
+}
+
+func filterTimeRange(spans []*model.Span, startTime, endTime time.Time) []*model.Span {
+	var retained []*model.Span
+
+	for _, span := range spans {
+		traceSource, exists := model.KeyValues(span.Tags).FindByKey(zconstants.TraceSource)
+		if exists && traceSource.VStr == "object" {
+			// pseudo span, timestamp has no meaning
+			span.StartTime = startTime
+			span.Duration = endTime.Sub(startTime)
+			retained = append(retained, span)
+		} else {
+			// normal span, filter away if start time is out of bounds
+			if startTime.Before(span.StartTime) && span.StartTime.Before(endTime) {
+				retained = append(retained, span)
+			}
+		}
+	}
+
+	return retained
 }

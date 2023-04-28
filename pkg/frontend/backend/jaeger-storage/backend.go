@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/pkg/metrics"
@@ -165,7 +166,6 @@ func (backend *Backend) List(
 	}
 
 	newParams := &spanstore.TraceQueryParameters{
-		ServiceName:  "object",
 		Tags:         filterTags,
 		StartTimeMin: params.StartTimeMin,
 		StartTimeMax: params.StartTimeMax,
@@ -226,6 +226,7 @@ func (backend *Backend) Get(
 	ctx context.Context,
 	identifierJson json.RawMessage,
 	traceId model.TraceID,
+	startTime, endTime time.Time,
 ) (*model.Trace, model.SpanID, error) {
 	var id identifier
 	if err := json.Unmarshal(identifierJson, &id); err != nil {

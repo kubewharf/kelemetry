@@ -17,6 +17,7 @@ package jaegerbackend
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
@@ -34,12 +35,19 @@ func init() {
 
 type Backend interface {
 	// Lists the thumbnail previews of all traces.
-	// This method does not return detailed spans in the traces
-	// in order to reduce pressure on the backend data source
-	// since they may need to be transformed anyway.
 	List(ctx context.Context, query *spanstore.TraceQueryParameters) ([]*TraceThumbnail, error)
 	// Gets the full tree of a trace based on the identifier returned from a prvious call to List.
-	Get(ctx context.Context, identifier json.RawMessage, traceId model.TraceID) (*model.Trace, model.SpanID, error)
+	//
+	// traceId is the fake trace ID that should be presented to the user.
+	//
+	// startTime and endTime are only for optimization hint.
+	// The implementation is allowed to return spans beyond the range.
+	Get(
+		ctx context.Context,
+		identifier json.RawMessage,
+		traceId model.TraceID,
+		startTime, endTime time.Time,
+	) (*model.Trace, model.SpanID, error)
 }
 
 type TraceThumbnail struct {
@@ -80,7 +88,8 @@ func (mux *mux) Get(
 	ctx context.Context,
 	identifier json.RawMessage,
 	traceId model.TraceID,
+	startTime, endTime time.Time,
 ) (*model.Trace, model.SpanID, error) {
 	defer mux.GetMetric.DeferCount(mux.Clock.Now(), &getMetric{})
-	return mux.Impl().(Backend).Get(ctx, identifier, traceId)
+	return mux.Impl().(Backend).Get(ctx, identifier, traceId, startTime, endTime)
 }
