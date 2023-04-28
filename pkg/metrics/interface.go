@@ -113,6 +113,14 @@ type AnyMetric interface {
 	MetricImpl() MetricImpl
 }
 
+type dynamicMetric struct {
+	impl MetricImpl
+}
+
+func (dynamicMetric) MetricType() reflect.Type { return nil }
+
+func (dm dynamicMetric) MetricImpl() MetricImpl { return dm.impl }
+
 type Tags interface {
 	MetricName() string
 }
@@ -193,6 +201,24 @@ type mux struct {
 }
 
 func (mux *mux) impl() *mux { return mux }
+
+func NewDynamic(client Client, name string, tagNames []string) MetricImpl {
+	mux := client.impl()
+
+	var metricImpl MetricImpl
+	if metric, exists := mux.metricPool[name]; exists {
+		if metric.MetricType() != nil {
+			panic(fmt.Sprintf("cannot reuse metric name %q for type %v and dynamic", name, metric.MetricType()))
+		}
+
+		metricImpl = metric.MetricImpl()
+	} else {
+		metricImpl = mux.Impl().(Impl).New(name, tagNames)
+		mux.metricPool[name] = dynamicMetric{impl: metricImpl}
+	}
+
+	return metricImpl
+}
 
 func New[T Tags](client Client) *Metric[T] {
 	gm := &Metric[T]{}
