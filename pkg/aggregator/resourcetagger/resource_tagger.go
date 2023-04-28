@@ -75,24 +75,22 @@ type tagEventMetric struct {
 
 func (*tagEventMetric) MetricName() string { return "aggregator_resource_tagger" }
 
-func (d *ResourceTagger) Close() error {
-	return nil
-}
-
 var _ manager.Component = &ResourceTagger{}
 
 func (d *ResourceTagger) Options() manager.Options {
 	return &d.options
 }
 
-func (d *ResourceTagger) Init(ctx context.Context) error {
+func (d *ResourceTagger) Init() error {
 	if err := d.registerTagMapping(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (d *ResourceTagger) Start(stopCh <-chan struct{}) error { return nil }
+func (d *ResourceTagger) Start(ctx context.Context) error { return nil }
+
+func (d *ResourceTagger) Close(ctx context.Context) error { return nil }
 
 func (d *ResourceTagger) registerTagMapping() error {
 	for _, resourceTagMapping := range d.options.resourceTagMappings {

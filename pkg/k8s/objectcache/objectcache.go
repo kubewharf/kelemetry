@@ -84,16 +84,16 @@ func (*CacheRequestMetric) MetricName() string { return "object_cache_request" }
 
 func (oc *ObjectCache) Options() manager.Options { return &oc.options }
 
-func (oc *ObjectCache) Init(ctx context.Context) error {
+func (oc *ObjectCache) Init() error {
 	oc.cache = freecache.NewCache(oc.options.cacheSize)
 	metrics.NewMonitor(oc.Metrics, &cacheSizeMetric{}, func() int64 { return oc.cache.EntryCount() })
 	metrics.NewMonitor(oc.Metrics, &cacheEvictionMetric{}, func() int64 { return oc.cache.EvacuateCount() })
 	return nil
 }
 
-func (oc *ObjectCache) Start(stopCh <-chan struct{}) error { return nil }
+func (oc *ObjectCache) Start(ctx context.Context) error { return nil }
 
-func (oc *ObjectCache) Close() error { return nil }
+func (oc *ObjectCache) Close(ctx context.Context) error { return nil }
 
 func (oc *ObjectCache) Get(ctx context.Context, object util.ObjectRef) (*unstructured.Unstructured, error) {
 	metric := &CacheRequestMetric{Cluster: object.Cluster, Error: "Unknown"}

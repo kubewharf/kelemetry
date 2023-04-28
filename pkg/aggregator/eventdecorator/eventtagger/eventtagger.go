@@ -56,17 +56,13 @@ type eventTagDecorator struct {
 	filterVerbs    map[string]struct{}
 }
 
-func (d *eventTagDecorator) Close() error {
-	return nil
-}
-
 var _ manager.Component = &eventTagDecorator{}
 
 func (d *eventTagDecorator) Options() manager.Options {
 	return &d.options
 }
 
-func (d *eventTagDecorator) Init(ctx context.Context) error {
+func (d *eventTagDecorator) Init() error {
 	d.EventDecorator.AddDecorator(d)
 
 	d.filterVerbs = map[string]struct{}{}
@@ -76,7 +72,9 @@ func (d *eventTagDecorator) Init(ctx context.Context) error {
 	return nil
 }
 
-func (d *eventTagDecorator) Start(stopCh <-chan struct{}) error { return nil }
+func (d *eventTagDecorator) Start(ctx context.Context) error { return nil }
+
+func (d *eventTagDecorator) Close(ctx context.Context) error { return nil }
 
 func (d *eventTagDecorator) Decorate(ctx context.Context, object util.ObjectRef, event *aggregatorevent.Event) {
 	if event == nil {

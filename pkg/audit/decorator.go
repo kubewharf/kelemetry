@@ -15,6 +15,8 @@
 package audit
 
 import (
+	"context"
+
 	"github.com/kubewharf/kelemetry/pkg/aggregator/aggregatorevent"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
@@ -24,7 +26,7 @@ func init() {
 }
 
 type Decorator interface {
-	Decorate(message *Message, event *aggregatorevent.Event)
+	Decorate(ctx context.Context, message *Message, event *aggregatorevent.Event)
 }
 
 type DecoratorList interface {
@@ -32,7 +34,7 @@ type DecoratorList interface {
 
 	AddDecorator(decorator Decorator)
 
-	Decorate(message *Message, event *aggregatorevent.Event)
+	Decorate(ctx context.Context, message *Message, event *aggregatorevent.Event)
 }
 
 type decoratorList struct {
@@ -44,8 +46,8 @@ func (list *decoratorList) AddDecorator(decorator Decorator) {
 	list.decorators = append(list.decorators, decorator)
 }
 
-func (list *decoratorList) Decorate(message *Message, event *aggregatorevent.Event) {
+func (list *decoratorList) Decorate(ctx context.Context, message *Message, event *aggregatorevent.Event) {
 	for _, decorator := range list.decorators {
-		decorator.Decorate(message, event)
+		decorator.Decorate(ctx, message, event)
 	}
 }

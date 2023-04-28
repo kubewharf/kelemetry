@@ -71,10 +71,6 @@ type (
 func (*listMetric) MetricName() string { return "jaeger_backend_list" }
 func (*getMetric) MetricName() string  { return "jaeger_backend_get" }
 
-func (mux *mux) Init(ctx context.Context) error {
-	return mux.Mux.Init(ctx)
-}
-
 func (mux *mux) List(ctx context.Context, query *spanstore.TraceQueryParameters) ([]*TraceThumbnail, error) {
 	defer mux.ListMetric.DeferCount(mux.Clock.Now(), &listMetric{})
 	return mux.Impl().(Backend).List(ctx, query)

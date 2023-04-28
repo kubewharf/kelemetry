@@ -43,10 +43,10 @@ type Transformer struct {
 	Configs tfconfig.Provider
 }
 
-func (transformer *Transformer) Options() manager.Options           { return &transformer.options }
-func (transformer *Transformer) Init(ctx context.Context) error     { return nil }
-func (transformer *Transformer) Start(stopCh <-chan struct{}) error { return nil }
-func (transformer *Transformer) Close() error                       { return nil }
+func (transformer *Transformer) Options() manager.Options        { return &transformer.options }
+func (transformer *Transformer) Init() error                     { return nil }
+func (transformer *Transformer) Start(ctx context.Context) error { return nil }
+func (transformer *Transformer) Close(ctx context.Context) error { return nil }
 
 func (transformer *Transformer) Transform(trace *model.Trace, rootSpan model.SpanID, configId tfconfig.Id) error {
 	config := transformer.Configs.GetById(configId)

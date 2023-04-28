@@ -84,7 +84,6 @@ type decorator struct {
 	Cache   diffcache.Cache
 	List    audit.DecoratorList
 
-	ctx                   context.Context
 	DiffMetric            *metrics.Metric[*diffMetric]
 	InformerLatencyMetric *metrics.Metric[*informerLatencyMetric]
 	RetryCountMetric      *metrics.Metric[*retryCountMetric]
@@ -124,21 +123,20 @@ func (decorator *decorator) Options() manager.Options {
 	return &decorator.options
 }
 
-func (decorator *decorator) Init(ctx context.Context) error {
-	decorator.ctx = ctx
+func (decorator *decorator) Init() error {
 	decorator.List.AddDecorator(decorator)
 	return nil
 }
 
-func (decorator *decorator) Start(stopCh <-chan struct{}) error {
+func (decorator *decorator) Start(ctx context.Context) error {
 	return nil
 }
 
-func (decorator *decorator) Close() error {
+func (decorator *decorator) Close(ctx context.Context) error {
 	return nil
 }
 
-func (decorator *decorator) Decorate(message *audit.Message, event *aggregatorevent.Event) {
+func (decorator *decorator) Decorate(ctx context.Context, message *audit.Message, event *aggregatorevent.Event) {
 	logger := decorator.Logger.
 		WithField("audit-id", message.AuditID).
 		WithField("title", event.Title).
@@ -156,7 +154,7 @@ func (decorator *decorator) Decorate(message *audit.Message, event *aggregatorev
 	}
 	defer decorator.DiffMetric.DeferCount(decorator.Clock.Now(), metric)
 
-	cacheHit, err := decorator.tryDecorate(logger, message, event)
+	cacheHit, err := decorator.tryDecorate(ctx, logger, message, event)
 	if err != nil {
 		event.Log(zconstants.LogTypeKelemetryError, err.Error())
 		metric.Error = err
@@ -181,6 +179,7 @@ const (
 )
 
 func (decorator *decorator) tryDecorate(
+	ctx context.Context,
 	logger logrus.FieldLogger,
 	message *audit.Message,
 	event *aggregatorevent.Event,
@@ -264,7 +263,7 @@ func (decorator *decorator) tryDecorate(
 	}
 
 	// this context will interrupt the Fetch call
-	totalCtx, totalCancelFunc := context.WithTimeout(decorator.ctx, decorator.options.fetchTotalTimeout)
+	totalCtx, totalCancelFunc := context.WithTimeout(ctx, decorator.options.fetchTotalTimeout)
 	defer totalCancelFunc()
 
 	// this context only interrupts PollImmediateUntilWithContext
@@ -276,11 +275,11 @@ func (decorator *decorator) tryDecorate(
 	var err error
 
 	// the implementation never returns error
-	_ = wait.PollImmediateUntil(decorator.options.fetchBackoff, func() (done bool, _ error) {
+	_ = wait.PollUntilContextCancel(retryCtx, decorator.options.fetchBackoff, true, func(context.Context) (done bool, _ error) {
 		retryCount += 1
 		cacheHit, err = tryOnce(totalCtx)
 		return cacheHit, nil
-	}, retryCtx.Done())
+	})
 
 	decorator.RetryCountMetric.With(&retryCountMetric{
 		Cluster: message.Cluster,
