@@ -160,5 +160,5 @@ pre-commit: dot usage test
 fmt:
 	git add -A
 	gofumpt -l -w .
-	golines -m140 --base-formatter=gofumpt -l -w .
+	golines -m140 --base-formatter=gofumpt -w .
 	gci write -s standard -s default -s 'prefix(github.com/kubewharf/kelemetry)' .
