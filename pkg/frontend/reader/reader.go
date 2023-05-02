@@ -161,7 +161,9 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 
 		displayMode := extractDisplayMode(cacheId)
 
-		reader.Transformer.Transform(trace, thumbnail.RootSpan, displayMode)
+		if err := reader.Transformer.Transform(trace, thumbnail.RootSpan, displayMode); err != nil {
+			return nil, fmt.Errorf("trace transformation failed: %w", err)
+		}
 		traces = append(traces, trace)
 	}
 
@@ -188,7 +190,9 @@ func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (
 	trace.Spans = filterTimeRange(trace.Spans, entry.StartTime, entry.EndTime)
 
 	displayMode := extractDisplayMode(cacheId)
-	reader.Transformer.Transform(trace, rootSpan, displayMode)
+	if err := reader.Transformer.Transform(trace, rootSpan, displayMode); err != nil {
+		return nil, fmt.Errorf("trace transformation failed: %w", err)
+	}
 
 	reader.Logger.WithField("numTransformedSpans", len(trace.Spans)).Info("query trace tree")
 

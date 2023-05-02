@@ -17,6 +17,7 @@ package jaeger_storage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"regexp"
@@ -228,7 +229,18 @@ func (backend *Backend) List(
 
 			rootSpan.References = nil
 			tree := tftree.NewSpanTree(trace)
-			tree.SetRoot(rootSpan.SpanID)
+
+			if err := tree.SetRoot(rootSpan.SpanID); err != nil {
+				if errors.Is(err, tftree.ErrRootDoesNotExist) {
+					return nil, fmt.Errorf(
+						"trace data does not contain desired root span %v as indicated by the exclusive flag",
+						rootSpan.SpanID,
+					)
+				}
+
+				return nil, fmt.Errorf("cannot set root: %w", err)
+			}
+
 			spans := tree.GetSpans()
 
 			traceThumbnails = append(traceThumbnails, &jaegerbackend.TraceThumbnail{

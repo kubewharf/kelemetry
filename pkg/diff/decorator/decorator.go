@@ -174,7 +174,7 @@ const (
 	cacheHitTypeNoop            cacheHitType = "noopUpdate"
 	cacheHitTypeFiltered        cacheHitType = "filtered"
 	cacheHitTypeSameRv          cacheHitType = "sameRv"
-	cacheHitTypeUndecoratedVerb cacheHitType = "undecoratedVerb"
+	cacheHitTypeSubresource     cacheHitType = "subresource"
 	cacheHitTypeUnsupportedVerb cacheHitType = "unsupportedVerb"
 )
 
@@ -249,15 +249,15 @@ func (decorator *decorator) tryDecorate(
 		}
 
 	case audit.VerbCreate, audit.VerbDelete:
-		snapshotName, hasSnapshotName := diffcache.VerbToSnapshotName[message.Verb]
-		if !hasSnapshotName {
-			// TODO fallback to ResponseObject?
-			return cacheHitTypeUndecoratedVerb, nil
+		if message.ObjectRef.Subresource != "" {
+			return cacheHitTypeSubresource, nil
 		}
 
+		snapshotName := diffcache.VerbToSnapshotName[message.Verb]
 		tryOnce = func(ctx context.Context) (shouldRetry bool, err error) {
 			return decorator.tryCreateDeleteOnce(ctx, object, snapshotName, event)
 		}
+		// try response object if it exists
 	default:
 		return cacheHitTypeUnsupportedVerb, nil
 	}
