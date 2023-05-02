@@ -118,6 +118,8 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 		return nil, err
 	}
 
+	thumbnails = mergeSegments(thumbnails)
+
 	configName := strings.TrimPrefix(query.ServiceName, "* ")
 	config := reader.TransformConfigs.GetByName(configName)
 	if config == nil {

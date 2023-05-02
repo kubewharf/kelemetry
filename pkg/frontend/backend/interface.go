@@ -52,11 +52,11 @@ type Backend interface {
 
 type TraceThumbnail struct {
 	// Identifier is a serializable object that identifies the trace in GetTrace calls.
-	Identifier any `json:"identifier"`
+	Identifier any
 
 	// Object metadata
-	Cluster  string `json:"cluster"`
-	Resource string `json:"resource"`
+	Cluster  string
+	Resource string
 
 	Spans []*model.Span
 
