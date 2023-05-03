@@ -199,15 +199,19 @@ func (backend *Backend) List(
 	var deduplicator func(*model.Span) bool
 	if exclusive {
 		// exclusive mode, each object under trace should have a list entry
-		seenObjects := sets.New[tftree.GroupingKey]()
+		type objectInTrace struct {
+			traceId model.TraceID
+			key     tftree.GroupingKey
+		}
+		seenObjects := sets.New[objectInTrace]()
 		deduplicator = func(span *model.Span) bool {
 			key, hasKey := tftree.GroupingKeyFromSpan(span)
 			if !hasKey {
 				return false // not a root
 			}
 
-			if field, hasField := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel); !hasField ||
-				field.VStr != zconstants.NestLevelObject {
+			field, hasField := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel)
+			if !hasField || field.VStr != zconstants.NestLevelObject {
 				return false // not an object root
 			}
 
@@ -217,11 +221,16 @@ func (backend *Backend) List(
 				}
 			}
 
-			if seenObjects.Has(key) {
+			fullKey := objectInTrace{
+				traceId: span.TraceID,
+				key:     key,
+			}
+
+			if seenObjects.Has(fullKey) {
 				return false // a known root
 			}
 
-			seenObjects.Insert(key)
+			seenObjects.Insert(fullKey)
 			return true
 		}
 	} else {
