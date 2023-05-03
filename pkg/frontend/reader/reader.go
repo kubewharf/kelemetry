@@ -120,6 +120,10 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 		return nil, fmt.Errorf("invalid display mode %q", query.ServiceName)
 	}
 
+	reader.Logger.WithField("query", query).
+		WithField("exclusive", config.UseSubtree).
+		WithField("config", config.Name).
+		Debug("start trace list")
 	thumbnails, err := reader.Backend.List(ctx, query, config.UseSubtree)
 	if err != nil {
 		return nil, err
