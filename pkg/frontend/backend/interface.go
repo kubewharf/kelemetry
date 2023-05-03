@@ -35,7 +35,12 @@ func init() {
 
 type Backend interface {
 	// Lists the thumbnail previews of all traces.
-	List(ctx context.Context, query *spanstore.TraceQueryParameters) ([]*TraceThumbnail, error)
+	List(
+		ctx context.Context,
+		query *spanstore.TraceQueryParameters,
+		exclusive bool,
+	) ([]*TraceThumbnail, error)
+
 	// Gets the full tree of a trace based on the identifier returned from a prvious call to List.
 	//
 	// traceId is the fake trace ID that should be presented to the user.
@@ -47,20 +52,14 @@ type Backend interface {
 		identifier json.RawMessage,
 		traceId model.TraceID,
 		startTime, endTime time.Time,
-	) (*model.Trace, model.SpanID, error)
+	) (*model.Trace, error)
 }
 
 type TraceThumbnail struct {
 	// Identifier is a serializable object that identifies the trace in GetTrace calls.
 	Identifier any
 
-	// Object metadata
-	Cluster  string
-	Resource string
-
 	Spans []*model.Span
-
-	RootSpan model.SpanID
 }
 
 type mux struct {
@@ -79,9 +78,13 @@ type (
 func (*listMetric) MetricName() string { return "jaeger_backend_list" }
 func (*getMetric) MetricName() string  { return "jaeger_backend_get" }
 
-func (mux *mux) List(ctx context.Context, query *spanstore.TraceQueryParameters) ([]*TraceThumbnail, error) {
+func (mux *mux) List(
+	ctx context.Context,
+	query *spanstore.TraceQueryParameters,
+	exclusive bool,
+) ([]*TraceThumbnail, error) {
 	defer mux.ListMetric.DeferCount(mux.Clock.Now(), &listMetric{})
-	return mux.Impl().(Backend).List(ctx, query)
+	return mux.Impl().(Backend).List(ctx, query, exclusive)
 }
 
 func (mux *mux) Get(
@@ -89,7 +92,7 @@ func (mux *mux) Get(
 	identifier json.RawMessage,
 	traceId model.TraceID,
 	startTime, endTime time.Time,
-) (*model.Trace, model.SpanID, error) {
+) (*model.Trace, error) {
 	defer mux.GetMetric.DeferCount(mux.Clock.Now(), &getMetric{})
 	return mux.Impl().(Backend).Get(ctx, identifier, traceId, startTime, endTime)
 }

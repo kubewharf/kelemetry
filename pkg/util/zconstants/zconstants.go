@@ -28,6 +28,14 @@ const SpanName = Prefix + "kelemetryName"
 // The value is the folding type.
 const NestLevel = Prefix + "nestingLevel"
 
+const (
+	NestLevelObject   = "object"
+	NestLevelChildren = "children"
+	NestLevelSpec     = "spec"
+	NestLevelStatus   = "status"
+	NestLevelDeletion = "deletion"
+)
+
 // Identifies that the span represents an actual event (rather than as a pseudospan).
 const TraceSource = Prefix + "traceSource"
 

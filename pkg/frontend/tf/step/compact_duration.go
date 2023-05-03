@@ -26,11 +26,11 @@ import (
 // Reduce pseudospan duration into a "flame" shape.
 type CompactDurationVisitor struct{}
 
-func (visitor CompactDurationVisitor) Enter(tree tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
+func (visitor CompactDurationVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	return visitor
 }
 
-func (visitor CompactDurationVisitor) Exit(tree tftree.SpanTree, span *model.Span) {
+func (visitor CompactDurationVisitor) Exit(tree *tftree.SpanTree, span *model.Span) {
 	// use exit hook to use compact results of children
 
 	if _, hasNestLevel := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel); !hasNestLevel {

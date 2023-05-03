@@ -16,104 +16,74 @@ package jaegerreader
 
 import (
 	"github.com/jaegertracing/jaeger/model"
-	jaegerbackend "github.com/kubewharf/kelemetry/pkg/frontend/backend"
-	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 	"k8s.io/apimachinery/pkg/util/sets"
+
+	jaegerbackend "github.com/kubewharf/kelemetry/pkg/frontend/backend"
+	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 )
 
-type mergeKey struct {
-	cluster string
-	resource string
-	namespace string
-	name string
+type mergeMap struct {
+	ptrSet   sets.Set[*mergeEntry]
+	fromKeys map[tftree.GroupingKey]*mergeEntry
 }
 
-type merger struct {
-	childToRoot map[mergeKey]mergeKey
-	roots map[mergeKey]*merged
+type mergeEntry struct {
+	keys        sets.Set[tftree.GroupingKey]
+	identifiers []any
+	spans       []*model.Span
 }
 
-type merged struct {
-	identifier []any
-	cluster  string
-	resource string
-
-	spans []*model.Span
-	rootSpan model.SpanID
-}
-
-func singletonMerged(thumbnail *jaegerbackend.TraceThumbnail) *merged {
-	return &merged{
-		identifier: []any{thumbnail.Identifier},
-		cluster: thumbnail.Cluster,
-		resource: thumbnail.Resource,
-		spans: thumbnail.Spans,
-		rootSpan: thumbnail.RootSpan,
+func singletonMerged(keys sets.Set[tftree.GroupingKey], thumbnail *jaegerbackend.TraceThumbnail) *mergeEntry {
+	return &mergeEntry{
+		keys:        keys,
+		identifiers: []any{thumbnail.Identifier},
+		spans:       thumbnail.Spans,
 	}
 }
 
-func (merged *merged) add(thumbnail *jaegerbackend.TraceThumbnail) {
-	merged.identifier = append(merged.identifier, thumbnail.Identifier)
-	merged.spans = append(merged.spans, thumbnail.Spans...)
-}
-
-func (merge *merger) add(rootKey mergeKey, thumbnail *jaegerbackend.TraceThumbnail) mergeKey {
-	if newRoot, hasNewRoot := merge.childToRoot[rootKey]; hasNewRoot {
-		rootKey = newRoot
+func (entry *mergeEntry) join(other *mergeEntry) {
+	for key := range other.keys {
+		entry.keys.Insert(key)
 	}
 
-	if prev, hasPrev := merge.roots[rootKey]; hasPrev {
-		prev.add(thumbnail)
-	} else {
-		merge.roots[rootKey] = singletonMerged(thumbnail)
-	}
-
-	return rootKey
+	entry.identifiers = append(entry.identifiers, other.identifiers...)
+	entry.spans = append(entry.spans, other.spans...)
 }
 
-func mergeSegments(thumbnails []*jaegerbackend.TraceThumbnail) []*merged {
-	merger := merger {
-		childToRoot : map[mergeKey]mergeKey{},
-		roots :map[mergeKey]*merged{},
+// add a thumbnail with a preferred root key.
+func (m *mergeMap) add(keys sets.Set[tftree.GroupingKey], thumbnail *jaegerbackend.TraceThumbnail) {
+	entry := singletonMerged(keys.Clone(), thumbnail)
+	m.ptrSet.Insert(entry)
+
+	dups := sets.New[*mergeEntry]()
+
+	for key := range keys {
+		if prev, hasPrev := m.fromKeys[key]; hasPrev {
+			dups.Insert(prev)
+		}
+	}
+
+	for dup := range dups {
+		entry.join(dup)
+		m.ptrSet.Delete(dup)
+	}
+
+	for key := range entry.keys {
+		// including all new and joined keys
+		m.fromKeys[key] = entry
+	}
+}
+
+func mergeSegments(thumbnails []*jaegerbackend.TraceThumbnail) []*mergeEntry {
+	m := mergeMap{
+		ptrSet:   sets.New[*mergeEntry](),
+		fromKeys: map[tftree.GroupingKey]*mergeEntry{},
 	}
 
 	for _, thumbnail := range thumbnails {
-		rootKey, keys := getMergeKeys(thumbnail.Spans)
-
-		rootKey = merger.add(rootKey, thumbnail)
-
-		for key := range keys {
-			merger.childToRoot[key] = rootKey
-		}
+		keys := tftree.GroupingKeysFromSpans(thumbnail.Spans)
+		m.add(keys, thumbnail)
 	}
 
-	traces := make([]*merged, 0, len(merger.childToRoot))
-	for _, trace := range merger.roots {
-		traces = append(traces, trace)
-	}
-	return traces
-}
-
-func getMergeKeys(spans []*model.Span) (rootKey mergeKey, keys sets.Set[mergeKey]) {
-	keys = sets.Set[mergeKey]{}
-
-	for _, span := range spans {
-		tags := model.KeyValues(span.Tags)
-		traceSource, hasTraceSource := tags.FindByKey(zconstants.TraceSource)
-		if !hasTraceSource || traceSource.VStr != zconstants.TraceSourceObject {
-			continue
-		}
-
-		cluster, _ := tags.FindByKey("cluster")
-		resource, _ := tags.FindByKey("resource")
-		namespace, _ := tags.FindByKey("namespace")
-		name, _ := tags.FindByKey("name")
-		key := mergeKey{cluster:cluster.VStr,resource:resource.VStr,namespace:namespace.VStr,name:name.VStr}
-		keys.Insert(key)
-
-		if len(span.References) == 0 {
-			rootKey = key
-		}
-	}
-	return rootKey, keys
+	return m.ptrSet.UnsortedList()
 }

@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"time"
 
+	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
 
@@ -39,9 +40,10 @@ type Entry struct {
 }
 
 type EntryValue struct {
-	Identifier json.RawMessage `json:"identifier"`
-	StartTime  time.Time       `json:"startTime"`
-	EndTime    time.Time       `json:"endTime"`
+	Identifiers []json.RawMessage   `json:"identifiers"`
+	StartTime   time.Time           `json:"startTime"`
+	EndTime     time.Time           `json:"endTime"`
+	RootObject  *tftree.GroupingKey `json:"rootObject"`
 }
 
 type mux struct {

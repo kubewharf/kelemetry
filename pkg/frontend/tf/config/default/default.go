@@ -82,65 +82,57 @@ func (p *DefaultProvider) registerDefaults() {
 		Id:   0x0000_0000,
 		Name: "tree",
 		Steps: []tfconfig.Step{
-			{Visitor: tfstep.ReplaceNameVisitor{}},
-			p.getObjectTagStep(),
-			{Visitor: tfstep.ClusterNameVisitor{}},
-			{Visitor: tfstep.PruneTagsVisitor{}},
+			p.getInitialSteps(),
+			p.getFinalSteps(),
 		},
 	})
 	p.Register(&tfconfig.Config{
 		Id:   0x1000_0000,
 		Name: "timeline",
 		Steps: []tfconfig.Step{
-			{Visitor: tfstep.ReplaceNameVisitor{}},
-			p.getObjectTagStep(),
-			{Visitor: tfstep.ExtractNestingVisitor{
+			p.getInitialSteps(),
+			tfconfig.VisitorStep{Visitor: tfstep.ExtractNestingVisitor{
 				MatchesNestLevel: func(level string) bool {
 					return true
 				},
 			}},
-			{Visitor: tfstep.ClusterNameVisitor{}},
-			{Visitor: tfstep.PruneTagsVisitor{}},
+			p.getFinalSteps(),
 		},
 	})
 	p.Register(&tfconfig.Config{
 		Id:   0x2000_0000,
 		Name: "tracing",
 		Steps: []tfconfig.Step{
-			{Visitor: tfstep.ReplaceNameVisitor{}},
-			p.getObjectTagStep(),
-			{Visitor: tfstep.ExtractNestingVisitor{
+			p.getInitialSteps(),
+			tfconfig.VisitorStep{Visitor: tfstep.ExtractNestingVisitor{
 				MatchesNestLevel: func(level string) bool {
-					return level != "object"
+					return level != zconstants.NestLevelObject
 				},
 			}},
 			getCollapseStep(),
-			{Visitor: tfstep.CompactDurationVisitor{}},
-			{Visitor: tfstep.ClusterNameVisitor{}},
-			{Visitor: tfstep.PruneTagsVisitor{}},
+			tfconfig.VisitorStep{Visitor: tfstep.CompactDurationVisitor{}},
+			p.getFinalSteps(),
 		},
 	})
 	p.Register(&tfconfig.Config{
 		Id:   0x3000_0000,
 		Name: "grouped",
 		Steps: []tfconfig.Step{
-			{Visitor: tfstep.ReplaceNameVisitor{}},
-			p.getObjectTagStep(),
-			{Visitor: tfstep.ExtractNestingVisitor{
+			p.getInitialSteps(),
+			tfconfig.VisitorStep{Visitor: tfstep.ExtractNestingVisitor{
 				MatchesNestLevel: func(level string) bool {
-					return level != "object"
+					return level != zconstants.NestLevelObject
 				},
 			}},
 			getCollapseStep(),
-			{Visitor: tfstep.GroupByTraceSourceVisitor{
+			tfconfig.VisitorStep{Visitor: tfstep.GroupByTraceSourceVisitor{
 				ShouldBeGrouped: func(traceSource string) bool {
 					// events are more user-friendly, so let's promote them
 					return traceSource != zconstants.TraceSourceEvent
 				},
 			}},
-			{Visitor: tfstep.CompactDurationVisitor{}},
-			{Visitor: tfstep.ClusterNameVisitor{}},
-			{Visitor: tfstep.PruneTagsVisitor{}},
+			tfconfig.VisitorStep{Visitor: tfstep.CompactDurationVisitor{}},
+			p.getFinalSteps(),
 		},
 	})
 
@@ -163,7 +155,7 @@ func (p *DefaultProvider) registerDefaults() {
 }
 
 func getCollapseStep() tfconfig.Step {
-	return tfconfig.Step{Visitor: tfstep.CollapseNestingVisitor{
+	return tfconfig.VisitorStep{Visitor: tfstep.CollapseNestingVisitor{
 		ShouldCollapse: func(traceSource string) bool { return true },
 		TagMappings: map[string][]tfstep.TagMapping{
 			zconstants.TraceSourceAudit: {
@@ -199,10 +191,32 @@ func getCollapseStep() tfconfig.Step {
 	}}
 }
 
-func (p *DefaultProvider) getObjectTagStep() tfconfig.Step {
-	return tfconfig.Step{Visitor: tfstep.ObjectTagsVisitor{
-		ResourceTags: p.options.resourceTagsToCollect,
-	}}
+func (p *DefaultProvider) getInitialSteps() tfconfig.Step {
+	return tfconfig.BatchStep{
+		Steps: []tfconfig.Step{
+			tfconfig.VisitorStep{Visitor: tfstep.ReplaceNameVisitor{}},
+			tfconfig.VisitorStep{Visitor: tfstep.ObjectTagsVisitor{
+				ResourceTags: p.options.resourceTagsToCollect,
+			}},
+			tfconfig.VisitorStep{Visitor: tfstep.ServiceOperationReplaceVisitor{
+				Dest:   tfstep.ReplaceDestService,
+				Source: []string{"resource"},
+			}},
+			tfconfig.VisitorStep{Visitor: tfstep.ServiceOperationReplaceVisitor{
+				Dest:   tfstep.ReplaceDestOperation,
+				Source: []string{"namespace", "name"},
+			}},
+		},
+	}
+}
+
+func (p *DefaultProvider) getFinalSteps() tfconfig.Step {
+	return tfconfig.BatchStep{
+		Steps: []tfconfig.Step{
+			tfconfig.VisitorStep{Visitor: tfstep.ClusterNameVisitor{}},
+			tfconfig.VisitorStep{Visitor: tfstep.PruneTagsVisitor{}},
+		},
+	}
 }
 
 func (p *DefaultProvider) Start(ctx context.Context) error { return nil }

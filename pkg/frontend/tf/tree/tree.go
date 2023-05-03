@@ -31,7 +31,7 @@ type SpanTree struct {
 }
 
 type spanNode struct {
-	tree SpanTree
+	tree *SpanTree
 	node *model.Span
 }
 
@@ -39,8 +39,8 @@ type stackEntry struct {
 	unprocessedChildren []model.SpanID
 }
 
-func NewSpanTree(trace *model.Trace) SpanTree {
-	tree := SpanTree{
+func NewSpanTree(trace *model.Trace) *SpanTree {
+	tree := &SpanTree{
 		spanMap:      make(map[model.SpanID]*model.Span, len(trace.Spans)),
 		childrenMap:  make(map[model.SpanID]map[model.SpanID]struct{}, len(trace.Spans)),
 		visitorStack: make(map[model.SpanID]*stackEntry),
@@ -61,13 +61,19 @@ func NewSpanTree(trace *model.Trace) SpanTree {
 		}
 	}
 
+	if tree.Root == nil {
+		panic("cyclic rootless tree detected")
+	}
+
 	return tree
 }
 
-func (tree SpanTree) Span(id model.SpanID) *model.Span                   { return tree.spanMap[id] }
-func (tree SpanTree) Children(id model.SpanID) map[model.SpanID]struct{} { return tree.childrenMap[id] }
+func (tree *SpanTree) Span(id model.SpanID) *model.Span { return tree.spanMap[id] }
+func (tree *SpanTree) Children(id model.SpanID) map[model.SpanID]struct{} {
+	return tree.childrenMap[id]
+}
 
-func (tree SpanTree) GetSpans() []*model.Span {
+func (tree *SpanTree) GetSpans() []*model.Span {
 	spans := make([]*model.Span, 0, len(tree.spanMap))
 	for _, span := range tree.spanMap {
 		spans = append(spans, span)
@@ -85,6 +91,8 @@ func (tree *SpanTree) SetRoot(id model.SpanID) error {
 	if !exists {
 		return ErrRootDoesNotExist
 	}
+
+	newRoot.References = nil // remove the original parent references
 
 	tree.Root = newRoot
 
@@ -110,17 +118,21 @@ type spanIdCollector struct {
 	spanIds map[model.SpanID]struct{}
 }
 
-func (collector *spanIdCollector) Enter(tree SpanTree, span *model.Span) TreeVisitor {
+func (collector *spanIdCollector) Enter(tree *SpanTree, span *model.Span) TreeVisitor {
 	collector.spanIds[span.SpanID] = struct{}{}
 	return collector
 }
-func (collector *spanIdCollector) Exit(tree SpanTree, span *model.Span) {}
+func (collector *spanIdCollector) Exit(tree *SpanTree, span *model.Span) {}
 
-func (tree SpanTree) Visit(visitor TreeVisitor) {
+func (tree *SpanTree) Visit(visitor TreeVisitor) {
 	spanNode{tree: tree, node: tree.Root}.visit(visitor)
 }
 
 func (subtree spanNode) visit(visitor TreeVisitor) {
+	if _, exists := subtree.tree.spanMap[subtree.node.SpanID]; !exists {
+		panic("cannot visit nonexistent node in tree")
+	}
+
 	subvisitor := visitor.Enter(subtree.tree, subtree.node)
 	// enter before visitorStack is populated to allow removal
 
@@ -170,7 +182,7 @@ func (subtree spanNode) visit(visitor TreeVisitor) {
 // Adds a span as a child of another.
 //
 // parentId must not be exited yet (and may or may not be entered).
-func (tree SpanTree) Add(newSpan *model.Span, parentId model.SpanID) {
+func (tree *SpanTree) Add(newSpan *model.Span, parentId model.SpanID) {
 	if _, exited := tree.exited[parentId]; exited {
 		panic("cannot add under already-exited span")
 	}
@@ -199,7 +211,7 @@ func (tree SpanTree) Add(newSpan *model.Span, parentId model.SpanID) {
 //
 // movedSpan must not be entered yet.
 // newParent must not be exited yet (and may or may not be entered).
-func (tree SpanTree) Move(movedSpanId model.SpanID, newParentId model.SpanID) {
+func (tree *SpanTree) Move(movedSpanId model.SpanID, newParentId model.SpanID) {
 	if _, exited := tree.exited[newParentId]; exited {
 		panic("cannot move already-exited span")
 	}
@@ -232,8 +244,12 @@ func (tree SpanTree) Move(movedSpanId model.SpanID, newParentId model.SpanID) {
 //
 // All remaining children also get deleted from the list of spans.
 // Can only be called when entering spanId or entering its parents (i.e. deleting descendents).
+// Cannot be used to delete the root span.
 // TreeVisitor.Exit will not be called if Delete is called during enter.
-func (tree SpanTree) Delete(spanId model.SpanID) {
+func (tree *SpanTree) Delete(spanId model.SpanID) {
+	if tree.Root.SpanID == spanId {
+		panic("cannot delete the root span")
+	}
 	if _, exists := tree.spanMap[spanId]; !exists {
 		panic("cannot delete a deleted span")
 	}
@@ -266,7 +282,7 @@ type TreeVisitor interface {
 	//
 	// This method may call tree.Add, tree.Move and tree.Delete
 	// with the ancestors of span, span itself and its descendents.
-	Enter(tree SpanTree, span *model.Span) TreeVisitor
+	Enter(tree *SpanTree, span *model.Span) TreeVisitor
 	// Called after exiting the descendents of the span.
-	Exit(tree SpanTree, span *model.Span)
+	Exit(tree *SpanTree, span *model.Span)
 }

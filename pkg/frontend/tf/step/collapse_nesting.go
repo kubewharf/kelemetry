@@ -75,7 +75,7 @@ func (classes *AuditDiffClassification) Get(prefix string) AuditDiffClass {
 	return classes.DefaultClass
 }
 
-func (visitor CollapseNestingVisitor) Enter(tree tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
+func (visitor CollapseNestingVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	if _, hasTag := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel); !hasTag {
 		return visitor
 	}
@@ -87,9 +87,9 @@ func (visitor CollapseNestingVisitor) Enter(tree tftree.SpanTree, span *model.Sp
 	return visitor
 }
 
-func (visitor CollapseNestingVisitor) Exit(tree tftree.SpanTree, span *model.Span) {}
+func (visitor CollapseNestingVisitor) Exit(tree *tftree.SpanTree, span *model.Span) {}
 
-func (visitor CollapseNestingVisitor) processChild(tree tftree.SpanTree, span *model.Span, childId model.SpanID) {
+func (visitor CollapseNestingVisitor) processChild(tree *tftree.SpanTree, span *model.Span, childId model.SpanID) {
 	childSpan := tree.Span(childId)
 	if _, childHasTag := model.KeyValues(childSpan.Tags).FindByKey(zconstants.NestLevel); childHasTag {
 		return

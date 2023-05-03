@@ -240,11 +240,11 @@ func (recv *receiver) handleItem(
 		}
 	}
 
-	field := "spec"
+	field := zconstants.NestLevelSpec
 	if message.Verb == audit.VerbUpdate && message.ObjectRef.Subresource == "status" {
-		field = "status"
+		field = zconstants.NestLevelStatus
 	} else if message.Verb == audit.VerbDelete {
-		field = "deletion"
+		field = zconstants.NestLevelDeletion
 	}
 
 	e2eLatency := recv.Clock.Since(message.StageTimestamp.Time)
