@@ -21,6 +21,7 @@ import (
 	"github.com/jaegertracing/jaeger/model"
 
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
+	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
 type ReplaceDest uint8
@@ -31,12 +32,17 @@ const (
 )
 
 type ServiceOperationReplaceVisitor struct {
-	Dest   ReplaceDest
-	Source []string
+	TraceSource string
+	Dest        ReplaceDest
+	Source      []string
 }
 
 func (visitor ServiceOperationReplaceVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	tags := model.KeyValues(span.Tags)
+
+	if tag, hasTag := tags.FindByKey(zconstants.TraceSource); !hasTag || tag.VStr != visitor.TraceSource {
+		return visitor
+	}
 
 	var sources []string
 	for _, source := range visitor.Source {

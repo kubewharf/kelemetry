@@ -199,12 +199,14 @@ func (p *DefaultProvider) getInitialSteps() tfconfig.Step {
 				ResourceTags: p.options.resourceTagsToCollect,
 			}},
 			tfconfig.VisitorStep{Visitor: tfstep.ServiceOperationReplaceVisitor{
-				Dest:   tfstep.ReplaceDestService,
-				Source: []string{"resource"},
+				TraceSource: zconstants.TraceSourceObject,
+				Dest:        tfstep.ReplaceDestService,
+				Source:      []string{"resource"},
 			}},
 			tfconfig.VisitorStep{Visitor: tfstep.ServiceOperationReplaceVisitor{
-				Dest:   tfstep.ReplaceDestOperation,
-				Source: []string{"namespace", "name"},
+				TraceSource: zconstants.TraceSourceObject,
+				Dest:        tfstep.ReplaceDestOperation,
+				Source:      []string{"namespace", "name"},
 			}},
 		},
 	}
