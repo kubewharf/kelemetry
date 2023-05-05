@@ -29,7 +29,7 @@ $ make
 The code architecture of Kelemetry uses component-oriented dependency injection.
 Dependency components are automatically enabled if any of its (transitive) dependents is enabled.
 
-![](https://github.com/kubewharf/kelemetry/raw/gh-pages/depgraph.png)
+![](https://kubewharf.io/kelemetry/depgraph.png)
 
 New components can be added simply by importing their package.
 All default packages are imported in [pkg/imports.go](pkg/imports.go).
