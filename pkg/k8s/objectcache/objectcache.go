@@ -102,6 +102,9 @@ func (oc *ObjectCache) Get(ctx context.Context, object util.ObjectRef) (*unstruc
 	key := objectKey(object)
 
 	for {
+		fetchCtx, cancelFunc := context.WithTimeout(ctx, oc.options.fetchTimeout)
+		defer cancelFunc()
+
 		cached, _ := oc.cache.GetOrSet(key, []byte{0}, int(oc.options.fetchTimeout.Seconds()))
 		if cached != nil {
 			if cached[0] == 0 {
@@ -124,7 +127,7 @@ func (oc *ObjectCache) Get(ctx context.Context, object util.ObjectRef) (*unstruc
 				}
 			}()
 
-			value, err, metricCode := oc.penetrate(ctx, object)
+			value, err, metricCode := oc.penetrate(fetchCtx, object)
 			metric.Error = metricCode
 			if err != nil {
 				return nil, err

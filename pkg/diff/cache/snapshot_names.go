@@ -14,8 +14,12 @@
 
 package diffcache
 
-const SnapshotNameDeletion = "deletion"
+const (
+	SnapshotNameCreation = "creation"
+	SnapshotNameDeletion = "deletion"
+)
 
 var VerbToSnapshotName = map[string]string{
+	"create": SnapshotNameCreation,
 	"delete": SnapshotNameDeletion,
 }
