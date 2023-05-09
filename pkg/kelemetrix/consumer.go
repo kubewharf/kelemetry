@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
@@ -37,7 +36,8 @@ type Options struct {
 	enable        bool
 	consumerGroup string
 	partitions    []int32
-	tagSets       map[string]string
+	logTags       bool
+	logQuantities bool
 }
 
 func (options *Options) Setup(fs *pflag.FlagSet) {
@@ -49,12 +49,9 @@ func (options *Options) Setup(fs *pflag.FlagSet) {
 		[]int32{0, 1, 2, 3, 4},
 		"audit message queue partitions to consume",
 	)
-	fs.StringToStringVar(
-		&options.tagSets,
-		"kelemetrix-tag-sets",
-		map[string]string{"full": "*"},
-		"report metrics in tag sets to mitigatcardinality explosion; each value is either \"*\" or a comma-separated list of tags",
-	)
+
+	fs.BoolVar(&options.logTags, "kelemetrix-debug-log-tags", false, "log metric tags for debugging")
+	fs.BoolVar(&options.logQuantities, "kelemetrix-debug-log-quantities", false, "log metric quantities for debugging")
 }
 
 func (options *Options) EnableFlag() *bool { return &options.enable }
@@ -65,15 +62,9 @@ type Consumer struct {
 	Metrics  metrics.Client
 	Registry *Registry
 
-	tagSets      []tagSet
 	quantifiers  []initedQuantifier
 	consumers    []mq.Consumer
 	startupReady chan struct{}
-}
-
-type tagSet struct {
-	name   string
-	filter func(string) bool
 }
 
 type initedQuantifier struct {
@@ -87,27 +78,6 @@ func (consumer *Consumer) Options() manager.Options { return &consumer.options }
 
 func (consumer *Consumer) Init() error {
 	consumer.startupReady = make(chan struct{})
-
-	for setName, setValue := range consumer.options.tagSets {
-		var filter func(string) bool
-		if setValue == "*" {
-			filter = func(s string) bool { return true }
-		} else {
-			tags := map[string]struct{}{}
-			for _, tag := range strings.Split(setValue, "*") {
-				tags[tag] = struct{}{}
-			}
-			filter = func(tag string) bool {
-				_, ok := tags[tag]
-				return ok
-			}
-		}
-
-		consumer.tagSets = append(consumer.tagSets, tagSet{
-			name:   setName,
-			filter: filter,
-		})
-	}
 
 	for _, partition := range consumer.options.partitions {
 		group := mq.ConsumerGroup(consumer.options.consumerGroup)
@@ -133,10 +103,10 @@ func (consumer *Consumer) Start(ctx context.Context) error {
 	for _, quantifier := range consumer.Registry.quantifiers {
 		filteredFns := []func(int64, []string){}
 
-		for _, tagSet := range consumer.tagSets {
+		for setName, setFilter := range quantifier.TagSets() {
 			matched := []int{}
 			for i, tagName := range consumer.Registry.tagNames {
-				if tagSet.filter(tagName) {
+				if setFilter(tagName) {
 					matched = append(matched, i)
 				}
 			}
@@ -146,7 +116,7 @@ func (consumer *Consumer) Start(ctx context.Context) error {
 				filteredTagNames[filteredIndex] = consumer.Registry.tagNames[grossIndex]
 			}
 
-			metric := metrics.NewDynamic(consumer.Metrics, fmt.Sprintf("%s_%s", quantifier.Name(), tagSet.name), filteredTagNames)
+			metric := metrics.NewDynamic(consumer.Metrics, fmt.Sprintf("%s_%s", quantifier.Name(), setName), filteredTagNames)
 
 			var baseFn func(int64, []string)
 			switch quantifier.Type() {
@@ -208,7 +178,7 @@ func (consumer *Consumer) handleMessage(
 	}
 
 	taggedLogger := logger
-	if logger.Level >= logrus.DebugLevel {
+	if consumer.options.logTags {
 		for i, tagName := range consumer.Registry.tagNames {
 			taggedLogger = taggedLogger.WithField(fmt.Sprintf("tag.%s", tagName), tagValues[i])
 		}
@@ -218,7 +188,7 @@ func (consumer *Consumer) handleMessage(
 		quantity, ok := quantifier.quantifier.Quantify(message)
 		if ok {
 			quantifier.metric(quantity, tagValues)
-			if logger.Level >= logrus.DebugLevel {
+			if consumer.options.logQuantities {
 				taggedLogger = taggedLogger.WithField(fmt.Sprintf("quantity.%s", quantifier.quantifier.Name()), quantity)
 			}
 		}

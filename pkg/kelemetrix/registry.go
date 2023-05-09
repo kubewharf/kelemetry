@@ -15,6 +15,8 @@
 package kelemetrix
 
 import (
+	"strings"
+
 	"github.com/kubewharf/kelemetry/pkg/audit"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
@@ -52,7 +54,23 @@ const (
 type Quantifier interface {
 	Name() string
 	Type() MetricType
+	TagSets() map[string]func(string) bool
 	Quantify(message *audit.Message) (int64, bool)
+}
+
+func ParseTagSet(s string) func(string) bool {
+	if s == "*" {
+		return func(_ string) bool { return true }
+	}
+
+	tags := map[string]struct{}{}
+	for _, tag := range strings.Split(s, "*") {
+		tags[tag] = struct{}{}
+	}
+	return func(tag string) bool {
+		_, ok := tags[tag]
+		return ok
+	}
 }
 
 func (registry *Registry) AddTagProvider(provider TagProvider) {
