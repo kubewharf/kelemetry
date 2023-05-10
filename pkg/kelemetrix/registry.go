@@ -15,26 +15,30 @@
 package kelemetrix
 
 import (
-	"strings"
-
 	"github.com/kubewharf/kelemetry/pkg/audit"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
 
 func init() {
-	manager.Global.Provide("kelemetrix-registry", manager.Ptr(&Registry{}))
+	manager.Global.Provide("kelemetrix-registry", manager.Func(func() *Registry {
+		return &Registry{
+			TagProviderNameIndex: make(map[string]int),
+			QuantifierNameIndex:  make(map[string]int),
+		}
+	}))
 }
 
 type Registry struct {
 	manager.BaseComponent
-	tagNames     []string
-	tagProviders []indexedTagProvider
-	quantifiers  []Quantifier
+	TagProviders         []TagProvider
+	TagProviderNameIndex map[string]int
+	Quantifiers          []Quantifier
+	QuantifierNameIndex  map[string]int
 }
 
-type indexedTagProvider struct {
-	provider                   TagProvider
-	startTagIndex, endTagIndex int
+type IndexedTagProvider struct {
+	Provider                   TagProvider
+	StartTagIndex, EndTagIndex int
 }
 
 type TagProvider interface {
@@ -54,38 +58,20 @@ const (
 type Quantifier interface {
 	Name() string
 	Type() MetricType
-	TagSets() map[string]func(string) bool
 	Quantify(message *audit.Message) (int64, bool)
 }
 
-func ParseTagSet(s string) func(string) bool {
-	if s == "*" {
-		return func(_ string) bool { return true }
-	}
-
-	tags := map[string]struct{}{}
-	for _, tag := range strings.Split(s, "*") {
-		tags[tag] = struct{}{}
-	}
-	return func(tag string) bool {
-		_, ok := tags[tag]
-		return ok
-	}
-}
-
 func (registry *Registry) AddTagProvider(provider TagProvider) {
-	names := provider.TagNames()
+	providerIndex := len(registry.TagProviders)
+	registry.TagProviders = append(registry.TagProviders, provider)
 
-	indexed := indexedTagProvider{
-		provider:      provider,
-		startTagIndex: len(registry.tagNames),
-		endTagIndex:   len(registry.tagNames) + len(names),
+	for _, name := range provider.TagNames() {
+		registry.TagProviderNameIndex[name] = providerIndex
 	}
-
-	registry.tagNames = append(registry.tagNames, names...)
-	registry.tagProviders = append(registry.tagProviders, indexed)
 }
 
 func (registry *Registry) AddQuantifier(quantifier Quantifier) {
-	registry.quantifiers = append(registry.quantifiers, quantifier)
+	quantifierIndex := len(registry.Quantifiers)
+	registry.Quantifiers = append(registry.Quantifiers, quantifier)
+	registry.QuantifierNameIndex[quantifier.Name()] = quantifierIndex
 }

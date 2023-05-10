@@ -47,7 +47,7 @@ import (
 	_ "github.com/kubewharf/kelemetry/pkg/frontend/tracecache/etcd"
 	_ "github.com/kubewharf/kelemetry/pkg/frontend/tracecache/local"
 	_ "github.com/kubewharf/kelemetry/pkg/k8s/config/mapoption"
-	_ "github.com/kubewharf/kelemetry/pkg/kelemetrix"
+	_ "github.com/kubewharf/kelemetry/pkg/kelemetrix/consumer"
 	_ "github.com/kubewharf/kelemetry/pkg/kelemetrix/defaults/quantities"
 	_ "github.com/kubewharf/kelemetry/pkg/kelemetrix/defaults/tags"
 	_ "github.com/kubewharf/kelemetry/pkg/metrics/noop"

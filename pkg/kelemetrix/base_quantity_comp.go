@@ -35,8 +35,7 @@ type BaseQuantityDef interface {
 }
 
 type BaseQuantityOptions[T BaseQuantityDef] struct {
-	Enable  bool
-	TagSets map[string]string
+	Enable bool
 }
 
 func (options *BaseQuantityOptions[T]) Setup(fs *pflag.FlagSet) {
@@ -49,16 +48,6 @@ func (options *BaseQuantityOptions[T]) Setup(fs *pflag.FlagSet) {
 		fmt.Sprintf("kelemetrix-quantity-%s-enable", optionName),
 		t.DefaultEnable(),
 		fmt.Sprintf("enable the %q metric quantity", t.Name()),
-	)
-	fs.StringToStringVar(
-		&options.TagSets,
-		fmt.Sprintf("kelemetrix-quantity-%s-tag-sets", optionName),
-		map[string]string{"full": "*", "gr": "group*resource"},
-		fmt.Sprintf(
-			"sets of tags to report for %s to mitigate cardinality explosion; "+
-				"each value is either \"*\" or a list of tags separated by \"*\"",
-			t.Name(),
-		),
 	)
 }
 
@@ -87,16 +76,6 @@ type baseQuantifierImpl[T BaseQuantityDef] struct {
 
 func (q *baseQuantifierImpl[T]) Name() string     { return q.t.Name() }
 func (q *baseQuantifierImpl[T]) Type() MetricType { return q.t.Type() }
-func (q *baseQuantifierImpl[T]) TagSets() map[string]func(string) bool {
-	m := make(map[string]func(string) bool, len(q.comp.options.TagSets))
-
-	for name, set := range q.comp.options.TagSets {
-		m[name] = ParseTagSet(set)
-	}
-
-	return m
-}
-
 func (q *baseQuantifierImpl[T]) Quantify(message *audit.Message) (int64, bool) {
 	if value, hasValue, err := q.t.Quantify(message); err != nil {
 		q.comp.Logger.WithError(err).Error("error generating quantity")

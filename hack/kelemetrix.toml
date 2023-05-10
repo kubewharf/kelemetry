@@ -1,0 +1,28 @@
+[[metrics]]
+name = "baseline"
+quantifier = "mq_latency"
+tags = ["cluster"]
+
+
+[[metrics]]
+name = "errors_by_user"
+quantifier = "request_count"
+tags = ["username", "cluster", "group", "resource", "verb", "code"]
+    [[metrics.filters]]
+    tag = "code"
+    oneOf = ["[45].."]
+    isRegex = true
+
+[[metrics]]
+name = "cache_penetrations"
+quantifier = "request_count"
+tags = ["username", "cluster", "group", "resource", "verb"]
+    [[metrics.filters]]
+    tag = "code"
+    oneOf = ["200"]
+    [[metrics.filters]]
+    tag = "resourceVersion"
+    oneOf = ["Empty"]
+    [[metrics.filters]]
+    tag = "verb"
+    oneof = ["list", "get"]

@@ -22,6 +22,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"k8s.io/utils/pointer"
 
 	"github.com/kubewharf/kelemetry/pkg/audit"
 	"github.com/kubewharf/kelemetry/pkg/kelemetrix"
@@ -33,18 +34,17 @@ func init() {
 }
 
 type DefaultTag struct {
-	Name          string
-	DefaultEnable bool
-	Mapper        func(*audit.Message) (string, error)
+	Name   string
+	Mapper func(*audit.Message) (string, error)
 }
 
 var DefaultTags = []DefaultTag{
 	// server related
-	{Name: "cluster", DefaultEnable: true, Mapper: func(m *audit.Message) (string, error) { return m.Cluster, nil }},
-	{Name: "apiserverAddr", DefaultEnable: false, Mapper: func(m *audit.Message) (string, error) { return m.ApiserverAddr, nil }},
+	{Name: "cluster", Mapper: func(m *audit.Message) (string, error) { return m.Cluster, nil }},
+	{Name: "apiserverAddr", Mapper: func(m *audit.Message) (string, error) { return m.ApiserverAddr, nil }},
 
 	// client related
-	{Name: "username", DefaultEnable: false, Mapper: func(m *audit.Message) (string, error) {
+	{Name: "username", Mapper: func(m *audit.Message) (string, error) {
 		username := m.User.Username
 		if m.ImpersonatedUser != nil {
 			username = m.ImpersonatedUser.Username
@@ -54,7 +54,7 @@ var DefaultTags = []DefaultTag{
 		}
 		return username, nil
 	}},
-	{Name: "clientAddr", DefaultEnable: false, Mapper: func(m *audit.Message) (string, error) {
+	{Name: "clientAddr", Mapper: func(m *audit.Message) (string, error) {
 		if len(m.SourceIPs) == 0 {
 			return "", nil
 		}
@@ -62,14 +62,14 @@ var DefaultTags = []DefaultTag{
 	}},
 
 	// request related
-	{Name: "verb", DefaultEnable: true, Mapper: func(m *audit.Message) (string, error) { return m.Verb, nil }},
-	{Name: "code", DefaultEnable: true, Mapper: func(m *audit.Message) (string, error) {
+	{Name: "verb", Mapper: func(m *audit.Message) (string, error) { return m.Verb, nil }},
+	{Name: "code", Mapper: func(m *audit.Message) (string, error) {
 		if m.ResponseStatus == nil {
 			return "", nil
 		}
 		return fmt.Sprint(m.ResponseStatus.Code), nil
 	}},
-	{Name: "resourceVersion", DefaultEnable: true, Mapper: func(m *audit.Message) (string, error) {
+	{Name: "resourceVersion", Mapper: func(m *audit.Message) (string, error) {
 		url, err := url.Parse(m.RequestURI)
 		if err != nil {
 			return "kelemetrix::ErrUriParse", fmt.Errorf("cannot parse request URI: %w", err)
@@ -88,37 +88,37 @@ var DefaultTags = []DefaultTag{
 	}},
 
 	// object related
-	{Name: "group", DefaultEnable: true, Mapper: func(m *audit.Message) (string, error) {
+	{Name: "group", Mapper: func(m *audit.Message) (string, error) {
 		if m.ObjectRef == nil {
 			return "", nil
 		}
 		return m.ObjectRef.APIGroup, nil
 	}},
-	{Name: "version", DefaultEnable: true, Mapper: func(m *audit.Message) (string, error) {
+	{Name: "version", Mapper: func(m *audit.Message) (string, error) {
 		if m.ObjectRef == nil {
 			return "", nil
 		}
 		return m.ObjectRef.APIVersion, nil
 	}},
-	{Name: "resource", DefaultEnable: true, Mapper: func(m *audit.Message) (string, error) {
+	{Name: "resource", Mapper: func(m *audit.Message) (string, error) {
 		if m.ObjectRef == nil {
 			return "", nil
 		}
 		return m.ObjectRef.Resource, nil
 	}},
-	{Name: "subresource", DefaultEnable: true, Mapper: func(m *audit.Message) (string, error) {
+	{Name: "subresource", Mapper: func(m *audit.Message) (string, error) {
 		if m.ObjectRef == nil {
 			return "", nil
 		}
 		return m.ObjectRef.Subresource, nil
 	}},
-	{Name: "namespace", DefaultEnable: false, Mapper: func(m *audit.Message) (string, error) {
+	{Name: "namespace", Mapper: func(m *audit.Message) (string, error) {
 		if m.ObjectRef == nil {
 			return "", nil
 		}
 		return m.ObjectRef.Namespace, nil
 	}},
-	{Name: "name", DefaultEnable: false, Mapper: func(m *audit.Message) (string, error) {
+	{Name: "name", Mapper: func(m *audit.Message) (string, error) {
 		if m.ObjectRef == nil {
 			return "", nil
 		}
@@ -126,29 +126,11 @@ var DefaultTags = []DefaultTag{
 	}},
 }
 
-type Options struct {
-	EnableFlags []bool
-}
+type Options struct{}
 
-func (options *Options) Setup(fs *pflag.FlagSet) {
-	options.EnableFlags = make([]bool, len(DefaultTags))
-	for i, tag := range DefaultTags {
-		fs.BoolVar(
-			&options.EnableFlags[i],
-			fmt.Sprintf("kelemetrix-tag-enable-%s", tag.Name),
-			tag.DefaultEnable,
-			fmt.Sprintf("enable the %q metric tag", tag.Name),
-		)
-	}
-}
+func (options *Options) Setup(fs *pflag.FlagSet) {}
 
-func (options *Options) EnableFlag() *bool {
-	ok := false
-	for _, b := range options.EnableFlags {
-		ok = ok || b
-	}
-	return &ok
-}
+func (options *Options) EnableFlag() *bool { return pointer.Bool(true) }
 
 type DefaultTagProvider struct {
 	options  Options
@@ -159,10 +141,8 @@ type DefaultTagProvider struct {
 func (tp *DefaultTagProvider) Options() manager.Options { return &tp.options }
 
 func (tp *DefaultTagProvider) Init() error {
-	for i, tag := range DefaultTags {
-		if tp.options.EnableFlags[i] {
-			tp.Registry.AddTagProvider(&provider{tag: tag, logger: tp.Logger.WithField("tagProvider", tag.Name)})
-		}
+	for _, tag := range DefaultTags {
+		tp.Registry.AddTagProvider(&provider{tag: tag, logger: tp.Logger.WithField("tagProvider", tag.Name)})
 	}
 
 	return nil
