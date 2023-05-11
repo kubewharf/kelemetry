@@ -180,6 +180,10 @@ func (metric TaggedMetric) Histogram(value int64) {
 	metric.impl.Histogram(value, metric.tagValues)
 }
 
+func (metric TaggedMetric) Summary(value int64) {
+	metric.impl.Summary(value, metric.tagValues)
+}
+
 func (metric TaggedMetric) Gauge(value int64) {
 	metric.impl.Gauge(value, metric.tagValues)
 }
@@ -261,6 +265,7 @@ type Impl interface {
 type MetricImpl interface {
 	Count(value int64, tags []string)
 	Histogram(value int64, tags []string)
+	Summary(value int64, tags []string)
 	Gauge(value int64, tags []string)
 	Defer(start time.Time, tags []string)
 }

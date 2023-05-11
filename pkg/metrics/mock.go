@@ -110,6 +110,10 @@ func (mi *mockImpl) Histogram(value int64, tags []string) {
 	mi.record(tags, func(entry *MockEntry) { entry.Hist = append(entry.Hist, value) })
 }
 
+func (mi *mockImpl) Summary(value int64, tags []string) {
+	mi.record(tags, func(entry *MockEntry) { entry.Hist = append(entry.Hist, value) })
+}
+
 func (mi *mockImpl) Gauge(value int64, tags []string) {
 	mi.record(tags, func(entry *MockEntry) { entry.Int = value })
 }

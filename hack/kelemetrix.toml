@@ -25,4 +25,26 @@ tags = ["username", "cluster", "group", "resource", "verb"]
     oneOf = ["Empty"]
     [[metrics.filters]]
     tag = "verb"
-    oneof = ["list", "get"]
+    oneOf = ["list", "get"]
+
+[[metrics]]
+name = "list_timeout"
+quantifier = "request_latency_ratio"
+tags = ["username", "cluster", "group", "resource"]
+    [[metrics.filters]]
+    tag = "code"
+    oneOf = ["200"]
+    [[metrics.filters]]
+    tag = "verb"
+    oneOf = ["list"]
+
+[[metrics]]
+name = "watch_error"
+quantifier = "request_latency_ratio"
+tags = ["username", "cluster", "group", "resource"]
+    [[metrics.filters]]
+    tag = "code"
+    oneOf = ["200"]
+    [[metrics.filters]]
+    tag = "verb"
+    oneOf = ["watch"]

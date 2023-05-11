@@ -15,6 +15,10 @@
 package defaultquantities
 
 import (
+	"fmt"
+	"net/url"
+	"strconv"
+
 	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
 
 	"github.com/kubewharf/kelemetry/pkg/audit"
@@ -24,6 +28,7 @@ import (
 
 func init() {
 	manager.Global.Provide("kelemetrix-quantity-request-latency", manager.Ptr(&kelemetrix.BaseQuantityComp[RequestLatency]{}))
+	manager.Global.Provide("kelemetrix-quantity-request-latency-ratio", manager.Ptr(&kelemetrix.BaseQuantityComp[RequestLatencyRatio]{}))
 }
 
 type RequestLatency struct{}
@@ -37,4 +42,38 @@ func (RequestLatency) Quantify(message *audit.Message) (int64, bool, error) {
 		return 0, false, nil
 	}
 	return message.StageTimestamp.Time.Sub(message.RequestReceivedTimestamp.Time).Nanoseconds(), true, nil
+}
+
+type RequestLatencyRatio struct{}
+
+func (RequestLatencyRatio) Name() string                { return "request_latency_ratio" }
+func (RequestLatencyRatio) Type() kelemetrix.MetricType { return kelemetrix.MetricTypeSummary }
+func (RequestLatencyRatio) DefaultEnable() bool         { return true }
+
+func (RequestLatencyRatio) Quantify(message *audit.Message) (int64, bool, error) {
+	if message.Stage != auditv1.StageResponseComplete {
+		return 0, false, nil
+	}
+
+	url, err := url.Parse(message.RequestURI)
+	if err != nil {
+		return 0, false, fmt.Errorf("cannot parse request URI: %w", err)
+	}
+
+	latency := message.StageTimestamp.Time.Sub(message.RequestReceivedTimestamp.Time)
+	requestTimeoutStrings := url.Query()["timeoutSeconds"]
+
+	var requestTimeout float64
+	if len(requestTimeoutStrings) > 0 {
+		requestTimeout, err = strconv.ParseFloat(requestTimeoutStrings[0], 64)
+		if err != nil {
+			return 0, false, fmt.Errorf("invalid timeoutSeconds value %q", requestTimeoutStrings[0])
+		}
+	} else {
+		// TODO: fallback to config instead
+		requestTimeout = 60.
+	}
+
+	ratio := requestTimeout / latency.Seconds()
+	return int64(ratio), true, nil
 }

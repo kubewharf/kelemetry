@@ -270,10 +270,10 @@ func (consumer *Consumer) Start(ctx context.Context) error {
 		switch metricType {
 		case kelemetrix.MetricTypeCount:
 			metricFn = metricImpl.Count
-		case kelemetrix.MetricTypeGauge:
-			metricFn = metricImpl.Gauge
 		case kelemetrix.MetricTypeHistogram:
 			metricFn = metricImpl.Histogram
+		case kelemetrix.MetricTypeSummary:
+			metricFn = metricImpl.Summary
 		default:
 			panic(fmt.Sprintf("unknown metric type %#v", metricType))
 		}

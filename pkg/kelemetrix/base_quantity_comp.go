@@ -57,12 +57,14 @@ type BaseQuantityComp[T BaseQuantityDef] struct {
 	options  BaseQuantityOptions[T]
 	Logger   logrus.FieldLogger
 	Registry *Registry
+
+	Def T `managerSkipFill:""`
 }
 
 func (comp *BaseQuantityComp[T]) Options() manager.Options { return &comp.options }
 
 func (comp *BaseQuantityComp[T]) Init() error {
-	comp.Registry.AddQuantifier(&baseQuantifierImpl[T]{comp: comp})
+	comp.Registry.AddQuantifier(&baseQuantifierImpl[T]{comp: comp, def: comp.Def})
 	return nil
 }
 
@@ -70,14 +72,14 @@ func (comp *BaseQuantityComp[T]) Start(ctx context.Context) error { return nil }
 func (comp *BaseQuantityComp[T]) Close(ctx context.Context) error { return nil }
 
 type baseQuantifierImpl[T BaseQuantityDef] struct {
-	t    T
+	def  T
 	comp *BaseQuantityComp[T]
 }
 
-func (q *baseQuantifierImpl[T]) Name() string     { return q.t.Name() }
-func (q *baseQuantifierImpl[T]) Type() MetricType { return q.t.Type() }
+func (q *baseQuantifierImpl[T]) Name() string     { return q.def.Name() }
+func (q *baseQuantifierImpl[T]) Type() MetricType { return q.def.Type() }
 func (q *baseQuantifierImpl[T]) Quantify(message *audit.Message) (int64, bool) {
-	if value, hasValue, err := q.t.Quantify(message); err != nil {
+	if value, hasValue, err := q.def.Quantify(message); err != nil {
 		q.comp.Logger.WithError(err).Error("error generating quantity")
 		return 0, false
 	} else {

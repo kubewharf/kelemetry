@@ -111,10 +111,11 @@ type metric struct {
 	name     string
 	tagNames []string
 
-	counterOnce, histogramOnce, gaugeOnce sync.Once
+	counterOnce, histogramOnce, summaryOnce, gaugeOnce sync.Once
 
 	counterVec   *prometheus.CounterVec
 	histogramVec *prometheus.HistogramVec
+	summaryVec   *prometheus.SummaryVec
 	gaugeVec     *prometheus.GaugeVec
 }
 
@@ -132,6 +133,14 @@ func (metric *metric) Histogram(value int64, tags []string) {
 	})
 
 	metric.histogramVec.WithLabelValues(tags...).Observe(float64(value))
+}
+
+func (metric *metric) Summary(value int64, tags []string) {
+	metric.summaryOnce.Do(func() {
+		metric.summaryVec = metric.factory.NewSummaryVec(prometheus.SummaryOpts{Name: metric.name + "_summary"}, metric.tagNames)
+	})
+
+	metric.summaryVec.WithLabelValues(tags...).Observe(float64(value))
 }
 
 func (metric *metric) Gauge(value int64, tags []string) {

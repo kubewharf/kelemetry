@@ -51,8 +51,8 @@ type MetricType uint8
 
 const (
 	MetricTypeCount = MetricType(iota)
-	MetricTypeGauge
 	MetricTypeHistogram
+	MetricTypeSummary
 )
 
 type Quantifier interface {

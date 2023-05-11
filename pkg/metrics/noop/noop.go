@@ -54,6 +54,8 @@ func (metric metric) Count(value int64, tags []string) {}
 
 func (metric metric) Histogram(value int64, tags []string) {}
 
+func (metric metric) Summary(value int64, tags []string) {}
+
 func (metric metric) Gauge(value int64, tags []string) {}
 
 func (metric metric) Defer(start time.Time, tags []string) {}
