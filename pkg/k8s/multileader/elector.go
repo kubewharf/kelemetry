@@ -207,7 +207,7 @@ func (elector *Elector) RunLeaderMetricLoop(ctx context.Context) {
 				elector.isLeaderMetric.With(&isLeaderMetric{
 					Component: elector.name,
 					LeaderId:  leaderId,
-				}).Gauge(int64(flag))
+				}).Gauge(float64(flag))
 			}
 		case <-ctx.Done():
 			for leaderId := range elector.isLeaderFlag {

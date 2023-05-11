@@ -195,7 +195,7 @@ func (aggregator *aggregator) Send(
 
 	aggregator.SinceEventMetric.
 		With(&sinceEventMetric{Cluster: object.Cluster, TraceSource: event.TraceSource}).
-		Histogram(aggregator.Clock.Since(event.Time).Nanoseconds())
+		Summary(float64(aggregator.Clock.Since(event.Time).Nanoseconds()))
 
 	var parentSpan tracer.SpanContext
 
@@ -497,7 +497,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 
 	retryCountMetric := lazySpanRetryCountMetric(*lazySpanMetric)
 	defer func() {
-		aggregator.LazySpanRetryCountMetric.With(&retryCountMetric).Histogram(retries)
+		aggregator.LazySpanRetryCountMetric.With(&retryCountMetric).Summary(float64(retries))
 	}() // take the value of lazySpanMetric later
 
 	logger = logger.

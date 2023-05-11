@@ -50,12 +50,12 @@ func (client *noop) New(name string, tagNames []string) metrics.MetricImpl {
 
 type metric struct{}
 
-func (metric metric) Count(value int64, tags []string) {}
+func (metric metric) Count(value float64, tags []string) {}
 
-func (metric metric) Histogram(value int64, tags []string) {}
+func (metric metric) Histogram(value float64, tags []string) {}
 
-func (metric metric) Summary(value int64, tags []string) {}
+func (metric metric) Summary(value float64, tags []string) {}
 
-func (metric metric) Gauge(value int64, tags []string) {}
+func (metric metric) Gauge(value float64, tags []string) {}
 
 func (metric metric) Defer(start time.Time, tags []string) {}

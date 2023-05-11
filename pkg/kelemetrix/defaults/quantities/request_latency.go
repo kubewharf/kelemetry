@@ -37,11 +37,11 @@ func (RequestLatency) Name() string                { return "request_latency" }
 func (RequestLatency) Type() kelemetrix.MetricType { return kelemetrix.MetricTypeHistogram }
 func (RequestLatency) DefaultEnable() bool         { return true }
 
-func (RequestLatency) Quantify(message *audit.Message) (int64, bool, error) {
+func (RequestLatency) Quantify(message *audit.Message) (float64, bool, error) {
 	if message.Stage != auditv1.StageResponseComplete {
 		return 0, false, nil
 	}
-	return message.StageTimestamp.Time.Sub(message.RequestReceivedTimestamp.Time).Nanoseconds(), true, nil
+	return float64(message.StageTimestamp.Time.Sub(message.RequestReceivedTimestamp.Time).Nanoseconds()), true, nil
 }
 
 type RequestLatencyRatio struct{}
@@ -50,7 +50,7 @@ func (RequestLatencyRatio) Name() string                { return "request_latenc
 func (RequestLatencyRatio) Type() kelemetrix.MetricType { return kelemetrix.MetricTypeSummary }
 func (RequestLatencyRatio) DefaultEnable() bool         { return true }
 
-func (RequestLatencyRatio) Quantify(message *audit.Message) (int64, bool, error) {
+func (RequestLatencyRatio) Quantify(message *audit.Message) (float64, bool, error) {
 	if message.Stage != auditv1.StageResponseComplete {
 		return 0, false, nil
 	}
@@ -75,5 +75,5 @@ func (RequestLatencyRatio) Quantify(message *audit.Message) (int64, bool, error)
 	}
 
 	ratio := requestTimeout / latency.Seconds()
-	return int64(ratio), true, nil
+	return ratio, true, nil
 }

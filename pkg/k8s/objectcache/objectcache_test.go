@@ -90,7 +90,7 @@ func TestGet(t *testing.T) {
 				"error":   "Apiserver",
 				"hit":     "false",
 			})
-			assert.Equal(int64(1), penetrations.Int, metricsOutput.PrintAll())
+			assert.Equal(float64(1), penetrations.Int, metricsOutput.PrintAll())
 		} else {
 			assert.True(fooExists)
 			assert.Equal("bar", fooValue)
@@ -100,7 +100,7 @@ func TestGet(t *testing.T) {
 				"error":   "nil",
 				"hit":     "true",
 			})
-			assert.Equal(int64(1), hits.Int, metricsOutput.PrintAll())
+			assert.Equal(float64(1), hits.Int, metricsOutput.PrintAll())
 		}
 	}
 }

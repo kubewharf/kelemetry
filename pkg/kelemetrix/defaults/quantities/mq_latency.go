@@ -34,6 +34,6 @@ func (MqLatency) Name() string                { return "mq_latency" }
 func (MqLatency) Type() kelemetrix.MetricType { return kelemetrix.MetricTypeHistogram }
 func (MqLatency) DefaultEnable() bool         { return true }
 
-func (MqLatency) Quantify(message *audit.Message) (int64, bool, error) {
-	return time.Since(message.StageTimestamp.Time).Nanoseconds(), message.Stage == auditv1.StageResponseComplete, nil
+func (MqLatency) Quantify(message *audit.Message) (float64, bool, error) {
+	return float64(time.Since(message.StageTimestamp.Time).Nanoseconds()), message.Stage == auditv1.StageResponseComplete, nil
 }

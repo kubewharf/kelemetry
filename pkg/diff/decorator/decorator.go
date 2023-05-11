@@ -289,7 +289,7 @@ func (decorator *decorator) tryDecorate(
 		},
 		Resource: message.ObjectRef.Resource,
 		Success:  cacheHit,
-	}).Histogram(retryCount)
+	}).Summary(float64(retryCount))
 
 	if cacheHit {
 		return cacheHitTypeTrue, nil
@@ -338,7 +338,7 @@ func (decorator *decorator) tryUpdateOnce(
 			Version: message.ObjectRef.APIVersion,
 		},
 		Resource: message.ObjectRef.Resource,
-	}).Histogram(informerLatency.Nanoseconds())
+	}).Histogram(float64(informerLatency.Nanoseconds()))
 	event.WithTag("informer latency", informerLatency)
 
 	return true, nil

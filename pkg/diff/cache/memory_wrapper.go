@@ -63,7 +63,7 @@ func (wrapper *CacheWrapper) initMetricsLoop(metricsClient metrics.Client) {
 	metrics.NewMonitor(
 		metricsClient,
 		&wrapperSizeMetric{},
-		func() int64 { return int64(wrapper.patchCache.Size()) },
+		func() float64 { return float64(wrapper.patchCache.Size()) },
 	)
 }
 

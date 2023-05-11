@@ -168,7 +168,7 @@ func (q *localQueue) CreateConsumer(group mq.ConsumerGroup, partition mq.Partiti
 	metrics.NewMonitor(q.Metrics, &lagMetric{
 		ConsumerGroup: group,
 		Partition:     partition,
-	}, func() int64 { return int64(consumer.uq.Length()) })
+	}, func() float64 { return float64(consumer.uq.Length()) })
 	q.consumers[group][partition] = consumer
 	return consumer, nil
 }

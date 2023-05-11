@@ -172,19 +172,19 @@ type TaggedMetric struct {
 	tagValues []string
 }
 
-func (metric TaggedMetric) Count(value int64) {
+func (metric TaggedMetric) Count(value float64) {
 	metric.impl.Count(value, metric.tagValues)
 }
 
-func (metric TaggedMetric) Histogram(value int64) {
+func (metric TaggedMetric) Histogram(value float64) {
 	metric.impl.Histogram(value, metric.tagValues)
 }
 
-func (metric TaggedMetric) Summary(value int64) {
+func (metric TaggedMetric) Summary(value float64) {
 	metric.impl.Summary(value, metric.tagValues)
 }
 
-func (metric TaggedMetric) Gauge(value int64) {
+func (metric TaggedMetric) Gauge(value float64) {
 	metric.impl.Gauge(value, metric.tagValues)
 }
 
@@ -230,7 +230,7 @@ func New[T Tags](client Client) *Metric[T] {
 	return gm
 }
 
-func NewMonitor[T Tags](client Client, tags T, getter func() int64) {
+func NewMonitor[T Tags](client Client, tags T, getter func() float64) {
 	mux := client.impl()
 	tagged := New[T](client).With(tags)
 	loop := func(ctx context.Context) {
@@ -263,10 +263,10 @@ type Impl interface {
 }
 
 type MetricImpl interface {
-	Count(value int64, tags []string)
-	Histogram(value int64, tags []string)
-	Summary(value int64, tags []string)
-	Gauge(value int64, tags []string)
+	Count(value float64, tags []string)
+	Histogram(value float64, tags []string)
+	Summary(value float64, tags []string)
+	Gauge(value float64, tags []string)
 	Defer(start time.Time, tags []string)
 }
 

@@ -286,7 +286,7 @@ func (recv *receiver) handleItem(
 		Cluster:  message.Cluster,
 		ApiGroup: objectRef.GroupVersion(),
 		Resource: objectRef.Resource,
-	}).Histogram(e2eLatency.Nanoseconds())
+	}).Summary(float64(e2eLatency.Nanoseconds()))
 
 	var subObjectId *aggregator.SubObjectId
 	if recv.options.enableSubObject && (message.Verb == audit.VerbUpdate || message.Verb == audit.VerbPatch) {

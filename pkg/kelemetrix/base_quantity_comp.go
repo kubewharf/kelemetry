@@ -31,7 +31,7 @@ type BaseQuantityDef interface {
 	Type() MetricType
 	DefaultEnable() bool
 
-	Quantify(message *audit.Message) (int64, bool, error)
+	Quantify(message *audit.Message) (float64, bool, error)
 }
 
 type BaseQuantityOptions[T BaseQuantityDef] struct {
@@ -78,7 +78,7 @@ type baseQuantifierImpl[T BaseQuantityDef] struct {
 
 func (q *baseQuantifierImpl[T]) Name() string     { return q.def.Name() }
 func (q *baseQuantifierImpl[T]) Type() MetricType { return q.def.Type() }
-func (q *baseQuantifierImpl[T]) Quantify(message *audit.Message) (int64, bool) {
+func (q *baseQuantifierImpl[T]) Quantify(message *audit.Message) (float64, bool) {
 	if value, hasValue, err := q.def.Quantify(message); err != nil {
 		q.comp.Logger.WithError(err).Error("error generating quantity")
 		return 0, false

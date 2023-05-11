@@ -32,7 +32,7 @@ func (RequestCount) Name() string                { return "request_count" }
 func (RequestCount) Type() kelemetrix.MetricType { return kelemetrix.MetricTypeCount }
 func (RequestCount) DefaultEnable() bool         { return true }
 
-func (RequestCount) Quantify(message *audit.Message) (int64, bool, error) {
+func (RequestCount) Quantify(message *audit.Message) (float64, bool, error) {
 	if message.Stage != auditv1.StageResponseComplete {
 		return 0, false, nil
 	}

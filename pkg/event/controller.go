@@ -310,7 +310,7 @@ func (ctrl *controller) handleEvent(ctx context.Context, event *corev1.Event) {
 		Group:    gvr.Group,
 		Version:  gvr.Version,
 		Resource: gvr.Resource,
-	}).Histogram(ctrl.Clock.Since(eventTime).Nanoseconds())
+	}).Summary(float64(ctrl.Clock.Since(eventTime).Nanoseconds()))
 
 	if err := ctrl.Aggregator.Send(ctx, util.ObjectRef{
 		Cluster:              clusterName,

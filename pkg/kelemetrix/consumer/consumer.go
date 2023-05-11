@@ -266,7 +266,7 @@ func (consumer *Consumer) Start(ctx context.Context) error {
 		metricImpl := metrics.NewDynamic(consumer.Metrics, metric.Name, metric.Tags)
 		metricType := quantifiers[quantifierIndex].Type()
 
-		var metricFn func(int64, []string)
+		var metricFn func(float64, []string)
 		switch metricType {
 		case kelemetrix.MetricTypeCount:
 			metricFn = metricImpl.Count
@@ -300,10 +300,10 @@ type metricHandler struct {
 	quantifierIndex int
 	filters         []tagFilter
 	tagSet          []int
-	metricFn        func(int64, []string)
+	metricFn        func(float64, []string)
 }
 
-func (h metricHandler) handle(tagValues []string, quantities []int64, hasQuantities []bool) {
+func (h metricHandler) handle(tagValues []string, quantities []float64, hasQuantities []bool) {
 	if !hasQuantities[h.quantifierIndex] {
 		return
 	}
@@ -351,7 +351,7 @@ func (consumer *Consumer) handleMessage(
 		}
 	}
 
-	quantities := make([]int64, len(consumer.quantifiers))
+	quantities := make([]float64, len(consumer.quantifiers))
 	hasQuantities := make([]bool, len(consumer.quantifiers))
 
 	for i, quantifier := range consumer.quantifiers {

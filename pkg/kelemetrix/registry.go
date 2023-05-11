@@ -58,7 +58,7 @@ const (
 type Quantifier interface {
 	Name() string
 	Type() MetricType
-	Quantify(message *audit.Message) (int64, bool)
+	Quantify(message *audit.Message) (float64, bool)
 }
 
 func (registry *Registry) AddTagProvider(provider TagProvider) {
