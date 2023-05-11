@@ -7,7 +7,7 @@ tags = ["cluster"]
 [[metrics]]
 name = "errors_by_user"
 quantifier = "request_count"
-tags = ["username", "cluster", "group", "resource", "verb", "code"]
+tags = ["username", "cluster", "group", "resource", "verb", "code", "errorReason"]
     [[metrics.filters]]
     tag = "code"
     oneOf = ["[45].."]

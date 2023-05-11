@@ -69,6 +69,13 @@ var DefaultTags = []DefaultTag{
 		}
 		return fmt.Sprint(m.ResponseStatus.Code), nil
 	}},
+	{Name: "errorReason", Mapper: func(m *audit.Message) (string, error) {
+		if m.ResponseStatus == nil {
+			return "", nil
+		}
+
+		return string(m.ResponseStatus.Reason), nil
+	}},
 	{Name: "resourceVersion", Mapper: func(m *audit.Message) (string, error) {
 		url, err := url.Parse(m.RequestURI)
 		if err != nil {
