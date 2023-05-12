@@ -107,11 +107,14 @@ func (consumer *Consumer) Init() error {
 
 	for _, metric := range consumer.Config.Get().Metrics {
 		requiredTags.Insert(metric.Tags...)
-		for _, filter := range metric.Filters {
+		for _, filter := range metric.TagFilters {
 			requiredTags.Insert(filter.Tag)
 		}
 
 		requiredQuantifiers.Insert(metric.Quantifier)
+		for _, filter := range metric.QuantityFilters {
+			requiredQuantifiers.Insert(filter.Quantity)
+		}
 	}
 
 	consumer.requiredTags = requiredTags
@@ -178,7 +181,7 @@ type tagFilter struct {
 	negate   bool
 }
 
-func newTagFilter(tags *tagProviderIndex, filter config.Filter) (tagFilter, error) {
+func newTagFilter(tags *tagProviderIndex, filter config.TagFilter) (tagFilter, error) {
 	tagIndex := tags.nameToIndex[filter.Tag]
 	choices := filter.OneOf
 
@@ -225,46 +228,108 @@ func (filter tagFilter) test(tagValues []string) bool {
 	return false
 }
 
+type quantifierIndex struct {
+	quantifiers []kelemetrix.Quantifier
+	nameToIndex map[string]int
+}
+
+func indexQuantifiers(requiredQuantifiers sets.Set[string], registry *kelemetrix.Registry) (*quantifierIndex, error) {
+	quantifiers := []kelemetrix.Quantifier{}
+	quantifierNameToIndex := map[string]int{}
+	for quantifier := range requiredQuantifiers {
+		registryIndex, hasQuantifier := registry.QuantifierNameIndex[quantifier]
+		if !hasQuantifier {
+			return nil, fmt.Errorf("quantifier %q does not exist", quantifier)
+		}
+
+		quantifierIndex := len(quantifiers)
+		quantifiers = append(quantifiers, registry.Quantifiers[registryIndex])
+		quantifierNameToIndex[quantifier] = quantifierIndex
+	}
+
+	return &quantifierIndex{quantifiers: quantifiers, nameToIndex: quantifierNameToIndex}, nil
+}
+
+type quantityFilter struct {
+	quantityIndex int
+	threshold     float64
+
+	acceptRightOfThreshold bool
+	acceptEqualThreshold   bool
+}
+
+func newQuantityFilter(quantities *quantifierIndex, filter config.QuantityFilter) (quantityFilter, error) {
+	quantityIndex := quantities.nameToIndex[filter.Quantity]
+
+	qf := quantityFilter{
+		quantityIndex: quantityIndex,
+		threshold:     filter.Threshold,
+	}
+
+	switch filter.Operator {
+	case config.QuantityOperatorGreater:
+		qf.acceptRightOfThreshold, qf.acceptEqualThreshold = true, false
+	case config.QuantityOperatorLess:
+		qf.acceptRightOfThreshold, qf.acceptEqualThreshold = false, false
+	case config.QuantityOperatorGreaterEq:
+		qf.acceptRightOfThreshold, qf.acceptEqualThreshold = true, true
+	case config.QuantityOperatorLessEq:
+		qf.acceptRightOfThreshold, qf.acceptEqualThreshold = false, true
+	default:
+		return qf, fmt.Errorf("unknown quantity operator %q", filter.Operator)
+	}
+
+	return qf, nil
+}
+
+func (filter quantityFilter) test(quantities []float64) bool {
+	isRight := quantities[filter.quantityIndex] > filter.threshold
+	isEqual := quantities[filter.quantityIndex] == filter.threshold
+	return filter.acceptRightOfThreshold && isRight || filter.acceptEqualThreshold && isEqual
+}
+
 func (consumer *Consumer) Start(ctx context.Context) error {
 	tags, err := indexTagProviders(consumer.requiredTags, consumer.Registry)
 	if err != nil {
 		return err
 	}
 
-	quantifiers := []kelemetrix.Quantifier{}
-	quantifierNameToIndex := map[string]int{}
-	for quantifier := range consumer.requiredQuantifiers {
-		registryIndex, hasQuantifier := consumer.Registry.QuantifierNameIndex[quantifier]
-		if !hasQuantifier {
-			return fmt.Errorf("quantifier %q does not exist", quantifier)
-		}
-
-		quantifierIndex := len(quantifiers)
-		quantifiers = append(quantifiers, consumer.Registry.Quantifiers[registryIndex])
-		quantifierNameToIndex[quantifier] = quantifierIndex
+	quantifiers, err := indexQuantifiers(consumer.requiredQuantifiers, consumer.Registry)
+	if err != nil {
+		return err
 	}
 
 	handlers := []metricHandler{}
 	for _, metric := range consumer.Config.Get().Metrics {
-		quantifierIndex := quantifierNameToIndex[metric.Quantifier]
+		quantifierIndex := quantifiers.nameToIndex[metric.Quantifier]
 
 		tagSet := make([]int, len(metric.Tags))
 		for i, tag := range metric.Tags {
 			tagSet[i] = tags.nameToIndex[tag]
 		}
 
-		filters := []tagFilter{}
-		for _, filterConfig := range metric.Filters {
+		tagFilters := []tagFilter{}
+		for _, filterConfig := range metric.TagFilters {
 			filter, err := newTagFilter(tags, filterConfig)
 			if err != nil {
 				return err
 			}
 
-			filters = append(filters, filter)
+			tagFilters = append(tagFilters, filter)
+		}
+
+		quantityFilters := []quantityFilter{}
+		for _, filterConfig := range metric.QuantityFilters {
+			filter, err := newQuantityFilter(quantifiers, filterConfig)
+			if err != nil {
+				return err
+			}
+
+			quantityFilters = append(quantityFilters, filter)
 		}
 
 		metricImpl := metrics.NewDynamic(consumer.Metrics, metric.Name, metric.Tags)
-		metricType := quantifiers[quantifierIndex].Type()
+		metricType := quantifiers.quantifiers[quantifierIndex].Type()
 
 		var metricFn func(float64, []string)
 		switch metricType {
@@ -280,7 +345,8 @@ func (consumer *Consumer) Start(ctx context.Context) error {
 
 		handlers = append(handlers, metricHandler{
 			quantifierIndex: quantifierIndex,
-			filters:         filters,
+			tagFilters:      tagFilters,
+			quantityFilters: quantityFilters,
 			tagSet:          tagSet,
 			metricFn:        metricFn,
 		})
@@ -288,7 +354,7 @@ func (consumer *Consumer) Start(ctx context.Context) error {
 
 	consumer.tagNames = tags.names
 	consumer.tagProviders = tags.providers
-	consumer.quantifiers = quantifiers
+	consumer.quantifiers = quantifiers.quantifiers
 	consumer.handlers = handlers
 
 	close(consumer.startupReady)
@@ -298,7 +364,8 @@ func (consumer *Consumer) Start(ctx context.Context) error {
 
 type metricHandler struct {
 	quantifierIndex int
-	filters         []tagFilter
+	tagFilters      []tagFilter
+	quantityFilters []quantityFilter
 	tagSet          []int
 	metricFn        func(float64, []string)
 }
@@ -308,8 +375,14 @@ func (h metricHandler) handle(tagValues []string, quantities []float64, hasQuant
 		return
 	}
 
-	for _, filter := range h.filters {
+	for _, filter := range h.tagFilters {
 		if !filter.test(tagValues) {
+			return
+		}
+	}
+
+	for _, filter := range h.quantityFilters {
+		if !filter.test(quantities) {
 			return
 		}
 	}

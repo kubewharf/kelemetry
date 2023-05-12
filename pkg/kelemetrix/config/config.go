@@ -38,18 +38,34 @@ type Config struct {
 }
 
 type Metric struct {
-	Name       string
-	Quantifier string
-	Tags       []string
-	Filters    []Filter
+	Name            string
+	Quantifier      string
+	Tags            []string
+	TagFilters      []TagFilter
+	QuantityFilters []QuantityFilter
 }
 
-type Filter struct {
+type TagFilter struct {
 	Tag     string
 	OneOf   []string
 	IsRegex bool
 	Negate  bool
 }
+
+type QuantityFilter struct {
+	Quantity  string
+	Operator  QuantityOperator
+	Threshold float64
+}
+
+type QuantityOperator string
+
+const (
+	QuantityOperatorLess      QuantityOperator = "<"
+	QuantityOperatorGreater   QuantityOperator = ">"
+	QuantityOperatorLessEq    QuantityOperator = "<="
+	QuantityOperatorGreaterEq QuantityOperator = ">="
+)
 
 type compOptions struct {
 	path string
