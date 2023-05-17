@@ -22,6 +22,7 @@ import (
 	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
 
 	"github.com/kubewharf/kelemetry/pkg/audit"
+	k8sconfig "github.com/kubewharf/kelemetry/pkg/k8s/config"
 	"github.com/kubewharf/kelemetry/pkg/kelemetrix"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
@@ -44,13 +45,15 @@ func (RequestLatency) Quantify(message *audit.Message) (float64, bool, error) {
 	return float64(message.StageTimestamp.Time.Sub(message.RequestReceivedTimestamp.Time).Nanoseconds()), true, nil
 }
 
-type RequestLatencyRatio struct{}
+type RequestLatencyRatio struct {
+	Config k8sconfig.Config
+}
 
 func (RequestLatencyRatio) Name() string                { return "request_latency_ratio" }
 func (RequestLatencyRatio) Type() kelemetrix.MetricType { return kelemetrix.MetricTypeSummary }
 func (RequestLatencyRatio) DefaultEnable() bool         { return true }
 
-func (RequestLatencyRatio) Quantify(message *audit.Message) (float64, bool, error) {
+func (r RequestLatencyRatio) Quantify(message *audit.Message) (float64, bool, error) {
 	if message.Stage != auditv1.StageResponseComplete {
 		return 0, false, nil
 	}
@@ -70,8 +73,13 @@ func (RequestLatencyRatio) Quantify(message *audit.Message) (float64, bool, erro
 			return 0, false, fmt.Errorf("invalid timeoutSeconds value %q", requestTimeoutStrings[0])
 		}
 	} else {
-		// TODO: fallback to config instead
-		requestTimeout = 60.
+		cluster := r.Config.Provide(message.Cluster)
+		if cluster != nil {
+			requestTimeout = cluster.DefaultRequestTimeout.Seconds()
+		} else {
+			// unknown cluster
+			requestTimeout = 60.
+		}
 	}
 
 	ratio := requestTimeout / latency.Seconds()

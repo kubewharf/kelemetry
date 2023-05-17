@@ -25,7 +25,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 
-	"github.com/kubewharf/kelemetry/pkg/util/reflect"
+	reflectutil "github.com/kubewharf/kelemetry/pkg/util/reflect"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
 )
 
@@ -185,24 +185,34 @@ func Ptr[CompTy any](obj CompTy) ComponentFactory {
 		panic("manager.Pointer() only accepts pointer-to-struct")
 	}
 
-	structTy := objTy.Elem()
-	structValue := reflect.ValueOf(obj).Elem()
-
 	params := []reflect.Type{}
 	valueHandlers := []func(reflect.Value){}
-	for i := 0; i < structTy.NumField(); i++ {
-		i := i
 
-		field := structTy.Field(i)
-		if field.IsExported() && !field.Anonymous && structValue.Field(i).IsZero() {
-			if _, skipFill := field.Tag.Lookup("managerSkipFill"); !skipFill {
-				params = append(params, field.Type)
-				valueHandlers = append(valueHandlers, func(value reflect.Value) {
-					structValue.Field(i).Set(value)
-				})
+	var populate func(structTy reflect.Type, structValue reflect.Value)
+	populate = func(structTy reflect.Type, structValue reflect.Value) {
+		for i := 0; i < structTy.NumField(); i++ {
+			i := i
+
+			field := structTy.Field(i)
+			if field.IsExported() && !field.Anonymous && structValue.Field(i).IsZero() {
+				if _, recurse := field.Tag.Lookup("managerRecurse"); recurse {
+					nestedType := field.Type
+					if nestedType.Kind() != reflect.Struct {
+						panic("managerRecurse fields must be of struct types")
+					}
+
+					populate(nestedType, structValue.Field(i))
+				} else if _, skipFill := field.Tag.Lookup("managerSkipFill"); !skipFill {
+					params = append(params, field.Type)
+					valueHandlers = append(valueHandlers, func(value reflect.Value) {
+						structValue.Field(i).Set(value)
+					})
+				}
 			}
 		}
 	}
+
+	populate(objTy.Elem(), reflect.ValueOf(obj).Elem())
 
 	return &pointerComponentFactory{
 		obj:           obj,

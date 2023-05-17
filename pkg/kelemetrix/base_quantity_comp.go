@@ -58,7 +58,7 @@ type BaseQuantityComp[T BaseQuantityDef] struct {
 	Logger   logrus.FieldLogger
 	Registry *Registry
 
-	Def T `managerSkipFill:""`
+	Def T `managerRecurse:""`
 }
 
 func (comp *BaseQuantityComp[T]) Options() manager.Options { return &comp.options }
