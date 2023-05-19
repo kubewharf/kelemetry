@@ -16,7 +16,7 @@ tags = ["username", "cluster", "group", "resource", "verb", "code", "errorReason
 [[metrics]]
 name = "cache_penetrations"
 quantifier = "request_count"
-tags = ["username", "cluster", "group", "resource", "verb"]
+tags = ["username", "cluster", "group", "resource", "verb", "hasSelector"]
     [[metrics.tagFilters]]
     tag = "code"
     oneOf = ["200"]
@@ -30,7 +30,7 @@ tags = ["username", "cluster", "group", "resource", "verb"]
 [[metrics]]
 name = "list_timeout"
 quantifier = "request_latency_ratio"
-tags = ["username", "cluster", "group", "resource"]
+tags = ["username", "cluster", "group", "resource", "hasSelector"]
     [[metrics.tagFilters]]
     tag = "code"
     oneOf = ["200"]

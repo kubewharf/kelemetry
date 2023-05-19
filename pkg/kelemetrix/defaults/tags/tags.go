@@ -93,6 +93,19 @@ var DefaultTags = []DefaultTag{
 
 		return "NonZero", nil
 	}},
+	{Name: "hasSelector", Mapper: func(m *audit.Message) (string, error) {
+		url, err := url.Parse(m.RequestURI)
+		if err != nil {
+			return "kelemetrix::ErrUriParse", fmt.Errorf("cannot parse request URI: %w", err)
+		}
+
+		query := url.Query()
+		if query.Has("labelSelector") || query.Has("fieldSelector") {
+			return "true", nil
+		}
+
+		return "false", nil
+	}},
 
 	// object related
 	{Name: "group", Mapper: func(m *audit.Message) (string, error) {
