@@ -91,7 +91,7 @@ func (config *comp) Init() error {
 		return fmt.Errorf("cannot open config file %s: %w", config.options.path, err)
 	}
 
-	if err := toml.NewDecoder(file).Decode(&config.value); err != nil {
+	if err := toml.NewDecoder(file).DisallowUnknownFields().Decode(&config.value); err != nil {
 		return fmt.Errorf("error decoding config file %s: %w", config.options.path, err)
 	}
 

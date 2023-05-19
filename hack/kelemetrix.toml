@@ -37,7 +37,7 @@ tags = ["username", "cluster", "group", "resource", "hasSelector"]
     [[metrics.tagFilters]]
     tag = "verb"
     oneOf = ["list"]
-    [[metrics.quantityFilter]]
+    [[metrics.quantityFilters]]
     quantity = "request_latency_ratio"
     operator = "<"
     threshold = 1.0
