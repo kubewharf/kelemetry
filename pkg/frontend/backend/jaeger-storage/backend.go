@@ -215,12 +215,6 @@ func (backend *Backend) List(
 				return false // not an object root
 			}
 
-			for reqKey, reqValue := range filterTags {
-				if value, exists := model.KeyValues(span.Tags).FindByKey(reqKey); !exists || value.VStr != reqValue {
-					return false // not a matched root
-				}
-			}
-
 			fullKey := objectInTrace{
 				traceId: span.TraceID,
 				key:     key,
@@ -228,6 +222,12 @@ func (backend *Backend) List(
 
 			if seenObjects.Has(fullKey) {
 				return false // a known root
+			}
+
+			for reqKey, reqValue := range filterTags {
+				if value, exists := model.KeyValues(span.Tags).FindByKey(reqKey); !exists || value.VStr != reqValue {
+					return false // not a matched root
+				}
 			}
 
 			seenObjects.Insert(fullKey)
