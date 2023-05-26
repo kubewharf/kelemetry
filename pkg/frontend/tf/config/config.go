@@ -47,8 +47,26 @@ type Config struct {
 	Steps []Step
 }
 
-type Step struct {
+type Step interface {
+	Run(tree *tftree.SpanTree)
+}
+
+type VisitorStep struct {
 	Visitor tftree.TreeVisitor
+}
+
+func (step VisitorStep) Run(tree *tftree.SpanTree) {
+	tree.Visit(step.Visitor)
+}
+
+type BatchStep struct {
+	Steps []Step
+}
+
+func (bs BatchStep) Run(tree *tftree.SpanTree) {
+	for _, step := range bs.Steps {
+		step.Run(tree)
+	}
 }
 
 type mux struct {

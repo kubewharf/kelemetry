@@ -16,10 +16,12 @@ package jaegerreader
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
@@ -30,8 +32,10 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/frontend/clusterlist"
 	transform "github.com/kubewharf/kelemetry/pkg/frontend/tf"
 	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
+	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/frontend/tracecache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
 func init() {
@@ -110,44 +114,73 @@ func (reader *spanReader) FindTraceIDs(ctx context.Context, query *spanstore.Tra
 }
 
 func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.TraceQueryParameters) ([]*model.Trace, error) {
-	thumbnails, err := reader.Backend.List(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-
 	configName := strings.TrimPrefix(query.ServiceName, "* ")
 	config := reader.TransformConfigs.GetByName(configName)
 	if config == nil {
 		return nil, fmt.Errorf("invalid display mode %q", query.ServiceName)
 	}
 
+	reader.Logger.WithField("query", query).
+		WithField("exclusive", config.UseSubtree).
+		WithField("config", config.Name).
+		Debug("start trace list")
+	thumbnails, err := reader.Backend.List(ctx, query, config.UseSubtree)
+	if err != nil {
+		return nil, err
+	}
+
+	var rootKey *tftree.GroupingKey
+	if rootKeyValue, ok := tftree.GroupingKeyFromMap(query.Tags); ok {
+		rootKey = &rootKeyValue
+	}
+
+	mergedEntries := mergeSegments(thumbnails)
+
 	cacheEntries := []tracecache.Entry{}
 	traces := []*model.Trace{}
-	for _, thumbnail := range thumbnails {
+	for _, entry := range mergedEntries {
 		cacheId := generateCacheId(config.Id)
+
+		identifiers := make([]json.RawMessage, len(entry.identifiers))
+		for i, identifier := range entry.identifiers {
+			idJson, err := json.Marshal(identifier)
+			if err != nil {
+				return nil, fmt.Errorf("thumbnail identifier marshal: %w", err)
+			}
+
+			identifiers[i] = json.RawMessage(idJson)
+		}
+
 		cacheEntries = append(cacheEntries, tracecache.Entry{
-			LowId:      cacheId.Low,
-			Identifier: thumbnail.Identifier,
+			LowId: cacheId.Low,
+			Value: tracecache.EntryValue{
+				Identifiers: identifiers,
+				StartTime:   query.StartTimeMin,
+				EndTime:     query.StartTimeMax,
+				RootObject:  rootKey,
+			},
 		})
 
-		for _, span := range thumbnail.Spans {
+		for _, span := range entry.spans {
 			span.TraceID = cacheId
 			for i := range span.References {
 				span.References[i].TraceID = cacheId
 			}
 		}
 
+		entry.spans = filterTimeRange(entry.spans, query.StartTimeMin, query.StartTimeMax)
+
 		trace := &model.Trace{
 			ProcessMap: []model.Trace_ProcessMapping{{
 				ProcessID: "0",
-				Process:   model.Process{ServiceName: fmt.Sprintf("%s %s", thumbnail.Cluster, thumbnail.Resource)},
+				Process:   model.Process{},
 			}},
-			Spans: thumbnail.Spans,
+			Spans: entry.spans,
 		}
 
 		displayMode := extractDisplayMode(cacheId)
 
-		if err := reader.Transformer.Transform(trace, thumbnail.RootSpan, displayMode); err != nil {
+		if err := reader.Transformer.Transform(trace, rootKey, displayMode); err != nil {
 			return nil, fmt.Errorf("trace transformation failed: %w", err)
 		}
 		traces = append(traces, trace)
@@ -159,29 +192,45 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 		}
 	}
 
+	reader.Logger.WithField("numTraces", len(traces)).Info("query trace list")
+
 	return traces, nil
 }
 
 func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (*model.Trace, error) {
-	identifier, err := reader.TraceCache.Fetch(ctx, cacheId.Low)
+	entry, err := reader.TraceCache.Fetch(ctx, cacheId.Low)
 	if err != nil {
 		return nil, fmt.Errorf("cannot lookup trace: %w", err)
 	}
+	if entry == nil {
+		return nil, fmt.Errorf("trace %v not found", cacheId)
+	}
 
-	trace, rootSpan, err := reader.Backend.Get(ctx, identifier, cacheId)
-	if err != nil {
-		return nil, fmt.Errorf("cannot fetch trace pointed by the cache: %w", err)
+	aggTrace := &model.Trace{
+		ProcessMap: []model.Trace_ProcessMapping{{
+			ProcessID: "0",
+			Process:   model.Process{},
+		}},
+	}
+
+	for _, identifier := range entry.Identifiers {
+		trace, err := reader.Backend.Get(ctx, identifier, cacheId, entry.StartTime, entry.EndTime)
+		if err != nil {
+			return nil, fmt.Errorf("cannot fetch trace pointed by the cache: %w", err)
+		}
+
+		clipped := filterTimeRange(trace.Spans, entry.StartTime, entry.EndTime)
+		aggTrace.Spans = append(aggTrace.Spans, clipped...)
 	}
 
 	displayMode := extractDisplayMode(cacheId)
-
-	if err := reader.Transformer.Transform(trace, rootSpan, displayMode); err != nil {
+	if err := reader.Transformer.Transform(aggTrace, entry.RootObject, displayMode); err != nil {
 		return nil, fmt.Errorf("trace transformation failed: %w", err)
 	}
 
-	reader.Logger.WithField("numTransformedSpans", len(trace.Spans)).Info("query trace tree")
+	reader.Logger.WithField("numTransformedSpans", len(aggTrace.Spans)).Info("query trace tree")
 
-	return trace, nil
+	return aggTrace, nil
 }
 
 const (
@@ -203,4 +252,25 @@ func generateCacheId(mode tfconfig.Id) model.TraceID {
 func extractDisplayMode(cacheId model.TraceID) tfconfig.Id {
 	displayMode := cacheId.High >> CacheIdHighBitShift
 	return tfconfig.Id(uint32(displayMode))
+}
+
+func filterTimeRange(spans []*model.Span, startTime, endTime time.Time) []*model.Span {
+	var retained []*model.Span
+
+	for _, span := range spans {
+		traceSource, exists := model.KeyValues(span.Tags).FindByKey(zconstants.TraceSource)
+		if exists && traceSource.VStr == zconstants.TraceSourceObject {
+			// pseudo span, timestamp has no meaning
+			span.StartTime = startTime
+			span.Duration = endTime.Sub(startTime)
+			retained = append(retained, span)
+		} else {
+			// normal span, filter away if start time is out of bounds
+			if startTime.Before(span.StartTime) && span.StartTime.Before(endTime) {
+				retained = append(retained, span)
+			}
+		}
+	}
+
+	return retained
 }

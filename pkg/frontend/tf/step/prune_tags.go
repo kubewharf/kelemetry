@@ -26,7 +26,7 @@ import (
 
 type ReplaceNameVisitor struct{}
 
-func (visitor ReplaceNameVisitor) Enter(tree tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
+func (visitor ReplaceNameVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	for _, tag := range span.Tags {
 		if tag.Key == zconstants.SpanName {
 			span.OperationName = tag.VStr
@@ -34,23 +34,14 @@ func (visitor ReplaceNameVisitor) Enter(tree tftree.SpanTree, span *model.Span) 
 		}
 	}
 
-	if span == tree.Root {
-		span.OperationName = fmt.Sprintf(
-			"%s / %s..%s",
-			span.OperationName,
-			span.StartTime.Format("15:04"),
-			span.StartTime.Add(span.Duration).Format("15:04"),
-		)
-	}
-
 	return visitor
 }
 
-func (visitor ReplaceNameVisitor) Exit(tree tftree.SpanTree, span *model.Span) {}
+func (visitor ReplaceNameVisitor) Exit(tree *tftree.SpanTree, span *model.Span) {}
 
 type PruneTagsVisitor struct{}
 
-func (visitor PruneTagsVisitor) Enter(tree tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
+func (visitor PruneTagsVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	span.Tags = removeZconstantKeys(span.Tags)
 
 	for i := range span.Logs {
@@ -58,10 +49,20 @@ func (visitor PruneTagsVisitor) Enter(tree tftree.SpanTree, span *model.Span) tf
 		log.Fields = removeZconstantKeys(log.Fields)
 	}
 
+	// add the timestamp to assist viewing time on list
+	if span == tree.Root {
+		span.OperationName = fmt.Sprintf(
+			"%s / %s..%s",
+			span.OperationName,
+			span.StartTime.Format("15:04:05"),
+			span.StartTime.Add(span.Duration).Format("15:04:05"),
+		)
+	}
+
 	return visitor
 }
 
-func (visitor PruneTagsVisitor) Exit(tree tftree.SpanTree, span *model.Span) {}
+func (visitor PruneTagsVisitor) Exit(tree *tftree.SpanTree, span *model.Span) {}
 
 func removeZconstantKeys(tags model.KeyValues) model.KeyValues {
 	newTags := model.KeyValues{}
