@@ -194,6 +194,7 @@ func getCollapseStep() tfconfig.Step {
 func (p *DefaultProvider) getInitialSteps() tfconfig.Step {
 	return tfconfig.BatchStep{
 		Steps: []tfconfig.Step{
+			tfconfig.VisitorStep{Visitor: tfstep.PruneChildlessVisitor{}},
 			tfconfig.VisitorStep{Visitor: tfstep.ReplaceNameVisitor{}},
 			tfconfig.VisitorStep{Visitor: tfstep.ObjectTagsVisitor{
 				ResourceTags: p.options.resourceTagsToCollect,

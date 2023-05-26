@@ -137,7 +137,7 @@ func (subtree spanNode) visit(visitor TreeVisitor) {
 	// enter before visitorStack is populated to allow removal
 
 	if _, stillExists := subtree.tree.spanMap[subtree.node.SpanID]; !stillExists {
-		// deleted during enter
+		// deleted during enter, skip exit
 		return
 	}
 
@@ -170,6 +170,11 @@ func (subtree spanNode) visit(visitor TreeVisitor) {
 	delete(subtree.tree.visitorStack, subtree.node.SpanID)
 
 	visitor.Exit(subtree.tree, subtree.node)
+	if _, stillExists := subtree.tree.spanMap[subtree.node.SpanID]; !stillExists {
+		// deleted during exit
+		return
+	}
+
 	subtree.tree.exited[subtree.node.SpanID] = struct{}{}
 
 	if len(subtree.tree.visitorStack) == 0 {
@@ -243,7 +248,7 @@ func (tree *SpanTree) Move(movedSpanId model.SpanID, newParentId model.SpanID) {
 // Deletes a span entirely from the tree.
 //
 // All remaining children also get deleted from the list of spans.
-// Can only be called when entering spanId or entering its parents (i.e. deleting descendents).
+// Can only be called when entering/exiting spanId or entering its parents (i.e. deleting descendents).
 // Cannot be used to delete the root span.
 // TreeVisitor.Exit will not be called if Delete is called during enter.
 func (tree *SpanTree) Delete(spanId model.SpanID) {
