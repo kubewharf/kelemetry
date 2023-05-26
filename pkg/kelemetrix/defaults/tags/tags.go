@@ -22,6 +22,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/utils/pointer"
 
 	"github.com/kubewharf/kelemetry/pkg/audit"
@@ -125,6 +126,14 @@ var DefaultTags = []DefaultTag{
 			return "", nil
 		}
 		return m.ObjectRef.Resource, nil
+	}},
+	// Combines `group` and `resource` together for compatibility with the `resource` tag in certain Kubernetes metrics.
+	{Name: "groupResource", Mapper: func(m *audit.Message) (string, error) {
+		if m.ObjectRef == nil {
+			return "", nil
+		}
+		gr := schema.GroupResource{Group: m.ObjectRef.APIGroup, Resource: m.ObjectRef.Resource}
+		return gr.String(), nil
 	}},
 	{Name: "subresource", Mapper: func(m *audit.Message) (string, error) {
 		if m.ObjectRef == nil {
