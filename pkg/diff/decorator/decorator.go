@@ -294,7 +294,7 @@ func (decorator *decorator) tryDecorate(
 	if cacheHit {
 		return cacheHitTypeTrue, nil
 	} else {
-		logger.WithField("object", message.ObjectRef).Warn("cannot associate diff cache")
+		logger.WithFields(object.AsFields("object")).Warn("cannot associate diff cache")
 		return cacheHitTypeFalse, err
 	}
 }
