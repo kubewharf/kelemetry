@@ -16,7 +16,6 @@ package local
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -28,16 +27,18 @@ import (
 
 func init() {
 	manager.Global.ProvideMuxImpl("jaeger-trace-cache/local", manager.Ptr(&localCache{
-		data: map[uint64]json.RawMessage{},
+		data: map[uint64]tracecache.EntryValue{},
 	}), tracecache.Cache.Persist)
 }
+
+var _ tracecache.Cache = &localCache{}
 
 type localCache struct {
 	manager.MuxImplBase
 
 	Logger logrus.FieldLogger
 
-	data     map[uint64]json.RawMessage
+	data     map[uint64]tracecache.EntryValue
 	dataLock sync.RWMutex
 }
 
@@ -56,23 +57,18 @@ func (cache *localCache) Persist(ctx context.Context, entries []tracecache.Entry
 	defer cache.dataLock.Unlock()
 
 	for _, entry := range entries {
-		j, err := json.Marshal(entry.Identifier)
-		if err != nil {
-			return err
-		}
-
-		cache.data[entry.LowId] = j
+		cache.data[entry.LowId] = entry.Value
 	}
 
 	return nil
 }
 
-func (cache *localCache) Fetch(ctx context.Context, lowId uint64) (json.RawMessage, error) {
+func (cache *localCache) Fetch(ctx context.Context, lowId uint64) (*tracecache.EntryValue, error) {
 	cache.dataLock.RLock()
 	defer cache.dataLock.RUnlock()
 
-	if j, exists := cache.data[lowId]; exists {
-		return j, nil
+	if value, exists := cache.data[lowId]; exists {
+		return &value, nil
 	}
 
 	return nil, fmt.Errorf("No trace cache for key %x", lowId)

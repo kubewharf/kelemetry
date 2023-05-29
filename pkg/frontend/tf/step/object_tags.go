@@ -25,8 +25,8 @@ type ObjectTagsVisitor struct {
 	ResourceTags []string
 }
 
-func (visitor ObjectTagsVisitor) Enter(tree tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
-	if tagKv, hasTag := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel); !hasTag || tagKv.VStr != "object" {
+func (visitor ObjectTagsVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
+	if tagKv, hasTag := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel); !hasTag || tagKv.VStr != zconstants.NestLevelObject {
 		return visitor
 	}
 	if _, hasTag := model.KeyValues(span.Tags).FindByKey("resource"); !hasTag {
@@ -40,17 +40,17 @@ func (visitor ObjectTagsVisitor) Enter(tree tftree.SpanTree, span *model.Span) t
 	return visitor
 }
 
-func (visitor ObjectTagsVisitor) Exit(tree tftree.SpanTree, span *model.Span) {}
+func (visitor ObjectTagsVisitor) Exit(tree *tftree.SpanTree, span *model.Span) {}
 
-func (visitor ObjectTagsVisitor) findTagRecursively(tree tftree.SpanTree, span *model.Span, tagKey string) model.KeyValue {
+func (visitor ObjectTagsVisitor) findTagRecursively(tree *tftree.SpanTree, span *model.Span, tagKey string) model.KeyValue {
 	if kv, hasTag := model.KeyValues(span.Tags).FindByKey(tagKey); hasTag {
 		return kv
 	}
 
 	for childId := range tree.Children(span.SpanID) {
 		childSpan := tree.Span(childId)
-		tagKv, _ := model.KeyValues(childSpan.Tags).FindByKey(zconstants.NestLevel)
-		if tagKv.VStr == "object" {
+		if tagKv, hasTag := model.KeyValues(childSpan.Tags).FindByKey(zconstants.NestLevel); hasTag &&
+			tagKv.VStr == zconstants.NestLevelObject {
 			continue
 		}
 		kv := visitor.findTagRecursively(tree, childSpan, tagKey)

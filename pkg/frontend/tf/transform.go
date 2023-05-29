@@ -20,7 +20,9 @@ import (
 	"fmt"
 
 	"github.com/jaegertracing/jaeger/model"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
@@ -40,6 +42,7 @@ func (options *TransformerOptions) EnableFlag() *bool { return nil }
 
 type Transformer struct {
 	options TransformerOptions
+	Logger  logrus.FieldLogger
 	Configs tfconfig.Provider
 }
 
@@ -48,7 +51,11 @@ func (transformer *Transformer) Init() error                     { return nil }
 func (transformer *Transformer) Start(ctx context.Context) error { return nil }
 func (transformer *Transformer) Close(ctx context.Context) error { return nil }
 
-func (transformer *Transformer) Transform(trace *model.Trace, rootSpan model.SpanID, configId tfconfig.Id) error {
+func (transformer *Transformer) Transform(trace *model.Trace, rootObject *tftree.GroupingKey, configId tfconfig.Id) error {
+	if len(trace.Spans) == 0 {
+		return fmt.Errorf("cannot transform empty trace")
+	}
+
 	config := transformer.Configs.GetById(configId)
 	if config == nil {
 		config = transformer.Configs.GetById(transformer.Configs.DefaultId())
@@ -56,21 +63,84 @@ func (transformer *Transformer) Transform(trace *model.Trace, rootSpan model.Spa
 
 	tree := tftree.NewSpanTree(trace)
 
-	if config.UseSubtree {
-		if err := tree.SetRoot(rootSpan); err != nil {
-			if errors.Is(err, tftree.ErrRootDoesNotExist) {
-				return fmt.Errorf("trace data does not contain desired root span %v as indicated by the exclusive flag (%w)", rootSpan, err)
-			}
+	transformer.groupDuplicates(tree)
 
-			return fmt.Errorf("cannot set root: %w", err)
+	if config.UseSubtree && rootObject != nil {
+		var rootSpan model.SpanID
+		hasRootSpan := false
+
+		for _, span := range tree.GetSpans() {
+			if key, hasKey := tftree.GroupingKeyFromSpan(span); hasKey && key == *rootObject {
+				rootSpan = span.SpanID
+				hasRootSpan = true
+			}
+		}
+
+		if hasRootSpan {
+			if err := tree.SetRoot(rootSpan); err != nil {
+				if errors.Is(err, tftree.ErrRootDoesNotExist) {
+					return fmt.Errorf(
+						"trace data does not contain desired root span %v as indicated by the exclusive flag (%w)",
+						rootSpan,
+						err,
+					)
+				}
+
+				return fmt.Errorf("cannot set root: %w", err)
+			}
 		}
 	}
 
 	for _, step := range config.Steps {
-		tree.Visit(step.Visitor)
+		step.Run(tree)
 	}
 
 	trace.Spans = tree.GetSpans()
 
 	return nil
+}
+
+// merge spans of the same object from multiple traces
+func (transformer *Transformer) groupDuplicates(tree *tftree.SpanTree) {
+	commonSpans := map[tftree.GroupingKey][]model.SpanID{}
+
+	for _, span := range tree.GetSpans() {
+		if key, hasKey := tftree.GroupingKeyFromSpan(span); hasKey {
+			commonSpans[key] = append(commonSpans[key], span.SpanID)
+		}
+	}
+
+	for _, spans := range commonSpans {
+		if len(spans) > 1 {
+			// only retain the first span
+
+			desiredParent := spans[0]
+
+			originalTags := tree.Span(desiredParent).Tags
+			originalTagKeys := make(sets.Set[string], len(originalTags))
+			for _, tag := range originalTags {
+				originalTagKeys.Insert(tag.Key)
+			}
+
+			for _, obsoleteParent := range spans[1:] {
+				for _, tag := range tree.Span(obsoleteParent).Tags {
+					if !originalTagKeys.Has(tag.Key) {
+						originalTags = append(originalTags, tag)
+						originalTagKeys.Insert(tag.Key)
+					}
+				}
+
+				children := tree.Children(obsoleteParent)
+				for child := range children {
+					tree.Move(child, desiredParent)
+				}
+
+				if tree.Root.SpanID == obsoleteParent {
+					tree.Root = tree.Span(desiredParent)
+				}
+
+				tree.Delete(obsoleteParent)
+			}
+		}
+	}
 }

@@ -20,8 +20,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"regexp"
 	"strings"
+	"time"
 
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/pkg/metrics"
@@ -31,10 +31,12 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	jaegerbackend "github.com/kubewharf/kelemetry/pkg/frontend/backend"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
 func init() {
@@ -61,8 +63,8 @@ type Backend struct {
 }
 
 type identifier struct {
-	TraceId string `json:"traceId"`
-	SpanId  uint64 `json:"spanId"`
+	TraceId model.TraceID `json:"traceId"`
+	SpanId  model.SpanID  `json:"spanId"`
 }
 
 var _ jaegerbackend.Backend = &Backend{}
@@ -156,6 +158,7 @@ func (backend *Backend) Close(ctx context.Context) error { return nil }
 func (backend *Backend) List(
 	ctx context.Context,
 	params *spanstore.TraceQueryParameters,
+	exclusive bool,
 ) ([]*jaegerbackend.TraceThumbnail, error) {
 	filterTags := map[string]string{}
 	for key, val := range params.Tags {
@@ -165,69 +168,113 @@ func (backend *Backend) List(
 		filterTags["cluster"] = params.OperationName
 	}
 
-	newParams := &spanstore.TraceQueryParameters{
-		ServiceName:  "object",
-		Tags:         filterTags,
-		StartTimeMin: params.StartTimeMin,
-		StartTimeMax: params.StartTimeMax,
-		DurationMin:  params.DurationMin,
-		DurationMax:  params.DurationMax,
-		NumTraces:    params.NumTraces,
-	}
+	// TODO support additional user-defined trace sources
+	var traces []*model.Trace
+	for _, traceSource := range zconstants.KnownTraceSources(false) {
+		if len(traces) >= params.NumTraces {
+			break
+		}
 
-	traces, err := backend.reader.FindTraces(ctx, newParams)
-	if err != nil {
-		return nil, fmt.Errorf("find traces from backend err: %w", err)
+		newParams := &spanstore.TraceQueryParameters{
+			ServiceName:  traceSource,
+			Tags:         filterTags,
+			StartTimeMin: params.StartTimeMin,
+			StartTimeMax: params.StartTimeMax,
+			DurationMin:  params.DurationMin,
+			DurationMax:  params.DurationMax,
+			NumTraces:    params.NumTraces - len(traces),
+		}
+
+		newTraces, err := backend.reader.FindTraces(ctx, newParams)
+		if err != nil {
+			return nil, fmt.Errorf("find traces from backend err: %w", err)
+		}
+
+		traces = append(traces, newTraces...)
 	}
 
 	var traceThumbnails []*jaegerbackend.TraceThumbnail
-	for _, trace := range traces {
-		for _, span := range trace.Spans {
-			resource, _ := model.KeyValues(span.Tags).FindByKey("resource")
-			span.Process = &model.Process{ServiceName: resource.GetVStr()}
-			slice := strings.Split(span.OperationName, "/")
-			if len(slice) > 1 {
-				span.OperationName = slice[1]
+
+	// a stateful function that determines only returns true for each valid resultant root span the first time
+	var deduplicator func(*model.Span) bool
+	if exclusive {
+		// exclusive mode, each object under trace should have a list entry
+		type objectInTrace struct {
+			traceId model.TraceID
+			key     tftree.GroupingKey
+		}
+		seenObjects := sets.New[objectInTrace]()
+		deduplicator = func(span *model.Span) bool {
+			key, hasKey := tftree.GroupingKeyFromSpan(span)
+			if !hasKey {
+				return false // not a root
 			}
-		}
-		var traceId string
-		if len(trace.Spans) > 0 {
-			traceId = trace.Spans[0].TraceID.String()
-		}
-		traceSpans := trace.Spans
-		if strings.Contains(params.ServiceName, "exclusive") {
-			traceSpans = filterSpanByTags(trace.Spans, newParams.Tags)
-		}
-		rootSpans := getRootSpan(traceSpans)
 
-		for _, rootSpan := range rootSpans {
-			cluster, _ := model.KeyValues(rootSpan.Tags).FindByKey("cluster")
-			resource, _ := model.KeyValues(rootSpan.Tags).FindByKey("resource")
-			rootSpan.Process = &model.Process{ServiceName: fmt.Sprintf("%s %s", cluster.GetVStr(), resource.GetVStr())}
+			field, hasField := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel)
+			if !hasField || field.VStr != zconstants.NestLevelObject {
+				return false // not an object root
+			}
 
-			rootSpan.References = nil
-			tree := tftree.NewSpanTree(trace)
+			fullKey := objectInTrace{
+				traceId: span.TraceID,
+				key:     key,
+			}
 
-			if err := tree.SetRoot(rootSpan.SpanID); err != nil {
-				if errors.Is(err, tftree.ErrRootDoesNotExist) {
-					return nil, fmt.Errorf(
-						"trace data does not contain desired root span %v as indicated by the exclusive flag",
-						rootSpan.SpanID,
-					)
+			if seenObjects.Has(fullKey) {
+				return false // a known root
+			}
+
+			for reqKey, reqValue := range filterTags {
+				if value, exists := model.KeyValues(span.Tags).FindByKey(reqKey); !exists || value.VStr != reqValue {
+					return false // not a matched root
+				}
+			}
+
+			seenObjects.Insert(fullKey)
+			return true
+		}
+	} else {
+		// non exclusive mode, display full trace, so we want each full trace to display exactly once.
+		seenTraces := sets.New[model.TraceID]()
+		deduplicator = func(span *model.Span) bool {
+			if len(span.References) > 0 {
+				return false // we only want the root
+			}
+
+			if seenTraces.Has(span.TraceID) {
+				return false
+			}
+
+			seenTraces.Insert(span.TraceID)
+			return true
+		}
+	}
+
+	for _, trace := range traces {
+		if len(trace.Spans) == 0 {
+			continue
+		}
+
+		for _, span := range trace.Spans {
+			if deduplicator(span) {
+				tree := tftree.NewSpanTree(trace)
+				if err := tree.SetRoot(span.SpanID); err != nil {
+					return nil, fmt.Errorf("unexpected SetRoot error for span ID from trace: %w", err)
 				}
 
-				return nil, fmt.Errorf("cannot set root: %w", err)
+				thumbnail := &jaegerbackend.TraceThumbnail{
+					Identifier: identifier{
+						TraceId: span.TraceID,
+						SpanId:  span.SpanID,
+					},
+					Spans: tree.GetSpans(),
+				}
+				traceThumbnails = append(traceThumbnails, thumbnail)
+
+				backend.Logger.WithField("ident", thumbnail.Identifier).
+					WithField("filteredSpans", len(thumbnail.Spans)).
+					Debug("matched trace")
 			}
-
-			spans := tree.GetSpans()
-
-			traceThumbnails = append(traceThumbnails, &jaegerbackend.TraceThumbnail{
-				Identifier: identifier{TraceId: traceId, SpanId: uint64(rootSpan.SpanID)},
-				Cluster:    cluster.GetVStr(),
-				Resource:   resource.GetVStr(),
-				RootSpan:   rootSpan.SpanID,
-				Spans:      spans,
-			})
 		}
 	}
 
@@ -238,80 +285,33 @@ func (backend *Backend) Get(
 	ctx context.Context,
 	identifierJson json.RawMessage,
 	traceId model.TraceID,
-) (*model.Trace, model.SpanID, error) {
-	var id identifier
-	if err := json.Unmarshal(identifierJson, &id); err != nil {
-		return nil, 0, fmt.Errorf("persisted invalid trace identifier: %w", err)
+	startTime, endTime time.Time,
+) (*model.Trace, error) {
+	var ident identifier
+	if err := json.Unmarshal(identifierJson, &ident); err != nil {
+		return nil, fmt.Errorf("persisted invalid trace identifier: %w", err)
 	}
 
-	mTraceID, err := model.TraceIDFromString(id.TraceId)
+	trace, err := backend.reader.GetTrace(ctx, ident.TraceId)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to convert the provided trace id: %w", err)
+		return nil, fmt.Errorf("failed to get trace from backend: %w", err)
 	}
 
-	trace, err := backend.reader.GetTrace(ctx, mTraceID)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to get trace from backend: %w", err)
+	if len(trace.Spans) == 0 {
+		return nil, fmt.Errorf("jaeger storage backend returned empty trace")
 	}
 
-	for _, span := range trace.Spans {
-		cluster, _ := model.KeyValues(span.Tags).FindByKey("cluster")
-		resource, _ := model.KeyValues(span.Tags).FindByKey("resource")
-		if span.SpanID == model.SpanID(id.SpanId) {
-			span.Process = &model.Process{ServiceName: fmt.Sprintf("%s %s", cluster.GetVStr(), resource.GetVStr())}
-		} else {
-			span.Process = &model.Process{ServiceName: resource.GetVStr()}
+	tree := tftree.NewSpanTree(trace)
+	if err := tree.SetRoot(ident.SpanId); err != nil {
+		if errors.Is(err, tftree.ErrRootDoesNotExist) {
+			return nil, fmt.Errorf("cached span does not exist in refreshed trace result: %w", err)
 		}
+
+		return nil, fmt.Errorf("error calling SetRoot: %w", err)
 	}
 
-	return trace, model.SpanID(id.SpanId), nil
-}
+	trace.Spans = tree.GetSpans()
+	backend.Logger.WithField("filteredSpans", len(trace.Spans)).Debug("fetched trace")
 
-func filterSpanByTags(spans []*model.Span, tags map[string]string) []*model.Span {
-	if len(tags) == 0 {
-		return spans
-	}
-	var result []*model.Span
-	spanMap := map[model.SpanID]*model.Span{}
-	for _, span := range spans {
-		tagsKeyVals := model.KeyValues(span.Tags)
-		match := true
-		for filterTagKey, filterTagVal := range tags {
-			if val, ok := tagsKeyVals.FindByKey(filterTagKey); ok {
-				if strings.Contains(filterTagVal, "*") {
-					if matchTag, err := regexp.MatchString(filterTagVal, val.GetVStr()); err != nil || !matchTag {
-						match = false
-						break
-					}
-				} else if val.GetVStr() != filterTagVal {
-					match = false
-					break
-				}
-			}
-		}
-		if match {
-			result = append(result, span)
-			spanMap[span.SpanID] = span
-		}
-	}
-
-	return result
-}
-
-func getRootSpan(spans []*model.Span) []*model.Span {
-	spanMap := map[model.SpanID]*model.Span{}
-	for _, span := range spans {
-		spanMap[span.SpanID] = span
-	}
-
-	var rootSpans []*model.Span
-	for _, span := range spans {
-		if len(span.References) == 0 {
-			rootSpans = append(rootSpans, span)
-		} else if _, ok := spanMap[span.References[0].SpanID]; !ok {
-			rootSpans = append(rootSpans, span)
-		}
-	}
-
-	return rootSpans
+	return trace, nil
 }
