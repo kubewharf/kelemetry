@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
   pages: write
   id-token: write
 
@@ -179,6 +180,7 @@ jobs:
             cp spa.html output/trace/ff20000000$(cat $trace_dir/trace_id)/index.html
             cp $trace_dir/api/traces/* output/api/traces/
           done
+          mv output/dot-usage/* output/
       - run: |
           cat <<EOF >output/index.html
           <html>
@@ -196,8 +198,8 @@ jobs:
               </p>
               <ul>
                 <li><a href="kelemetry-linux-amd64/kelemetry">Executable binary (Linux, amd64)</a></li>
-                <li><a href="dot-usage/USAGE.txt">Executable options</a></li>
-                <li><a href="dot-usage/depgraph.png">Internal dependency graph</a></li>
+                <li><a href="USAGE.txt">Executable options</a></li>
+                <li><a href="depgraph.png">Internal dependency graph</a></li>
               </ul>
 
               <h2>Previews</h2>
