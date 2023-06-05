@@ -17,7 +17,9 @@ package tracecache
 import (
 	"context"
 	"encoding/json"
+	"time"
 
+	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
 
@@ -29,12 +31,19 @@ func init() {
 
 type Cache interface {
 	Persist(ctx context.Context, entries []Entry) error
-	Fetch(ctx context.Context, lowId uint64) (json.RawMessage, error)
+	Fetch(ctx context.Context, lowId uint64) (*EntryValue, error)
 }
 
 type Entry struct {
-	LowId      uint64
-	Identifier any
+	LowId uint64
+	Value EntryValue
+}
+
+type EntryValue struct {
+	Identifiers []json.RawMessage   `json:"identifiers"`
+	StartTime   time.Time           `json:"startTime"`
+	EndTime     time.Time           `json:"endTime"`
+	RootObject  *tftree.GroupingKey `json:"rootObject"`
 }
 
 type mux struct {
@@ -45,6 +54,6 @@ func (mux *mux) Persist(ctx context.Context, entries []Entry) error {
 	return mux.Impl().(Cache).Persist(ctx, entries)
 }
 
-func (mux *mux) Fetch(ctx context.Context, lowId uint64) (json.RawMessage, error) {
+func (mux *mux) Fetch(ctx context.Context, lowId uint64) (*EntryValue, error) {
 	return mux.Impl().(Cache).Fetch(ctx, lowId)
 }

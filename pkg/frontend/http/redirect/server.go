@@ -134,8 +134,9 @@ func (server *server) handleGet(ctx *gin.Context, metric *requestMetric) (code i
 		ServiceName:   server.TransformConfigs.DefaultName(),
 		OperationName: cluster,
 		Tags:          tags,
-		StartTimeMin:  timestamp.Truncate(time.Minute * 30),
-		StartTimeMax:  timestamp.Truncate(time.Minute * 30).Add(time.Minute * 30),
+		StartTimeMin:  timestamp.Add(time.Minute * -30),
+		StartTimeMax:  timestamp.Add(time.Minute * 30),
+		NumTraces:     2,
 	}
 	traceIDs, err := server.SpanReader.FindTraceIDs(context.Background(), parameters)
 	if err != nil {

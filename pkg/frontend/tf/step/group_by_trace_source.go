@@ -30,7 +30,7 @@ type GroupByTraceSourceVisitor struct {
 	ShouldBeGrouped func(traceSource string) bool
 }
 
-func (visitor GroupByTraceSourceVisitor) Enter(tree tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
+func (visitor GroupByTraceSourceVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	nestLevel, hasNestLevel := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel)
 	if hasNestLevel && nestLevel.AsString() == pseudoSpanNestLevel {
 		// already grouped, don't recurse
@@ -79,4 +79,4 @@ func (visitor GroupByTraceSourceVisitor) Enter(tree tftree.SpanTree, span *model
 	return visitor
 }
 
-func (visitor GroupByTraceSourceVisitor) Exit(tree tftree.SpanTree, span *model.Span) {}
+func (visitor GroupByTraceSourceVisitor) Exit(tree *tftree.SpanTree, span *model.Span) {}

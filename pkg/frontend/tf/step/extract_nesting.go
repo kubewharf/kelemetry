@@ -28,7 +28,7 @@ type ExtractNestingVisitor struct {
 	MatchesNestLevel func(string) bool
 }
 
-func (visitor ExtractNestingVisitor) Enter(tree tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
+func (visitor ExtractNestingVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	if len(span.References) == 0 {
 		// we cannot extract the root span
 		return visitor
@@ -52,4 +52,4 @@ func (visitor ExtractNestingVisitor) Enter(tree tftree.SpanTree, span *model.Spa
 
 	return visitor
 }
-func (visitor ExtractNestingVisitor) Exit(tree tftree.SpanTree, span *model.Span) {}
+func (visitor ExtractNestingVisitor) Exit(tree *tftree.SpanTree, span *model.Span) {}

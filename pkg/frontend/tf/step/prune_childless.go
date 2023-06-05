@@ -18,26 +18,20 @@ import (
 	"github.com/jaegertracing/jaeger/model"
 
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
+	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
-type ClusterNameVisitor struct {
-	parentCluster string
+type PruneChildlessVisitor struct{}
+
+func (visitor PruneChildlessVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
+	return visitor
 }
 
-func (visitor ClusterNameVisitor) Enter(tree tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
-	var cluster string
-
-	for _, tag := range span.Tags {
-		if tag.Key == "cluster" {
-			cluster = tag.VStr
+// Prune in postorder traversal to recursively remove higher pseudospans without leaves.
+func (visitor PruneChildlessVisitor) Exit(tree *tftree.SpanTree, span *model.Span) {
+	if _, hasTag := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel); hasTag {
+		if len(tree.Children(span.SpanID)) == 0 && span.SpanID != tree.Root.SpanID {
+			tree.Delete(span.SpanID)
 		}
 	}
-
-	if span.SpanID != tree.Root.SpanID && cluster != visitor.parentCluster {
-		span.Process.ServiceName = cluster
-	}
-
-	return ClusterNameVisitor{parentCluster: cluster}
 }
-
-func (visitor ClusterNameVisitor) Exit(tree tftree.SpanTree, span *model.Span) {}
