@@ -20,12 +20,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("kelemetrix-registry", manager.Func(func() *Registry {
-		return &Registry{
-			TagProviderNameIndex: make(map[string]int),
-			QuantifierNameIndex:  make(map[string]int),
-		}
-	}))
+	manager.Global.Provide("kelemetrix-registry", manager.Func(NewRegistry))
 }
 
 type Registry struct {
@@ -34,6 +29,13 @@ type Registry struct {
 	TagProviderNameIndex map[string]int
 	Quantifiers          []Quantifier
 	QuantifierNameIndex  map[string]int
+}
+
+func NewRegistry() *Registry {
+	return &Registry{
+		TagProviderNameIndex: make(map[string]int),
+		QuantifierNameIndex:  make(map[string]int),
+	}
 }
 
 type IndexedTagProvider struct {

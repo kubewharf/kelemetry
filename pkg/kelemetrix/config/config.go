@@ -33,6 +33,12 @@ type Provider interface {
 	Get() *Config
 }
 
+type MockProvider struct {
+	Config *Config
+}
+
+func (provider *MockProvider) Get() *Config { return provider.Config }
+
 type Config struct {
 	Metrics []Metric
 }

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package kelemetrix
+package kelemetrixconsumer
 
 import (
 	"context"
@@ -67,9 +67,7 @@ type Consumer struct {
 	Registry *kelemetrix.Registry
 	Config   config.Provider
 
-	consumers           []mq.Consumer
-	requiredTags        sets.Set[string]
-	requiredQuantifiers sets.Set[string]
+	consumers []mq.Consumer
 
 	startupReady chan struct{}
 	tagNames     []string
@@ -92,7 +90,7 @@ func (consumer *Consumer) Init() error {
 			group,
 			partition,
 			func(ctx context.Context, fieldLogger logrus.FieldLogger, msgKey []byte, msgValue []byte) {
-				consumer.handleMessage(fieldLogger, msgValue, partition)
+				consumer.handleMessageRaw(fieldLogger, msgValue, partition)
 			},
 		)
 		if err != nil {
@@ -102,25 +100,33 @@ func (consumer *Consumer) Init() error {
 		consumer.consumers = append(consumer.consumers, mqConsumer)
 	}
 
+	return nil
+}
+
+func (consumer *Consumer) initTags() sets.Set[string] {
 	requiredTags := sets.New[string]()
-	requiredQuantifiers := sets.New[string]()
 
 	for _, metric := range consumer.Config.Get().Metrics {
 		requiredTags.Insert(metric.Tags...)
 		for _, filter := range metric.TagFilters {
 			requiredTags.Insert(filter.Tag)
 		}
+	}
 
+	return requiredTags
+}
+
+func (consumer *Consumer) initQuantifiers() sets.Set[string] {
+	requiredQuantifiers := sets.New[string]()
+
+	for _, metric := range consumer.Config.Get().Metrics {
 		requiredQuantifiers.Insert(metric.Quantifier)
 		for _, filter := range metric.QuantityFilters {
 			requiredQuantifiers.Insert(filter.Quantity)
 		}
 	}
 
-	consumer.requiredTags = requiredTags
-	consumer.requiredQuantifiers = requiredQuantifiers
-
-	return nil
+	return requiredQuantifiers
 }
 
 type indexedTagProvider struct {
@@ -288,13 +294,16 @@ func (filter quantityFilter) test(quantities []float64) bool {
 	return filter.acceptRightOfThreshold && isRight || filter.acceptEqualThreshold && isEqual
 }
 
-func (consumer *Consumer) Start(ctx context.Context) error {
-	tags, err := indexTagProviders(consumer.requiredTags, consumer.Registry)
+func (consumer *Consumer) PrepareTagsQuantifiers() error {
+	requiredTags := consumer.initTags()
+	requiredQuantifiers := consumer.initQuantifiers()
+
+	tags, err := indexTagProviders(requiredTags, consumer.Registry)
 	if err != nil {
 		return err
 	}
 
-	quantifiers, err := indexQuantifiers(consumer.requiredQuantifiers, consumer.Registry)
+	quantifiers, err := indexQuantifiers(requiredQuantifiers, consumer.Registry)
 	if err != nil {
 		return err
 	}
@@ -357,6 +366,14 @@ func (consumer *Consumer) Start(ctx context.Context) error {
 	consumer.quantifiers = quantifiers.quantifiers
 	consumer.handlers = handlers
 
+	return nil
+}
+
+func (consumer *Consumer) Start(ctx context.Context) error {
+	if err := consumer.PrepareTagsQuantifiers(); err != nil {
+		return err
+	}
+
 	close(consumer.startupReady)
 
 	return nil
@@ -397,7 +414,7 @@ func (h metricHandler) handle(tagValues []string, quantities []float64, hasQuant
 	h.metricFn(quantity, outputTags)
 }
 
-func (consumer *Consumer) handleMessage(
+func (consumer *Consumer) handleMessageRaw(
 	fieldLogger logrus.FieldLogger,
 	msgValue []byte,
 	partition mq.PartitionId,
@@ -412,15 +429,18 @@ func (consumer *Consumer) handleMessage(
 		return
 	}
 
+	consumer.HandleMessage(logger, message)
+}
+
+func (consumer *Consumer) HandleMessage(logger logrus.FieldLogger, message *audit.Message) {
 	tagValues := make([]string, len(consumer.tagNames))
 	for _, indexed := range consumer.tagProviders {
 		indexed.provider.ProvideValues(message, tagValues[indexed.startIndex:indexed.endIndex])
 	}
 
-	taggedLogger := logger
 	if consumer.options.logTags {
 		for i, tagValue := range tagValues {
-			taggedLogger = taggedLogger.WithField(fmt.Sprintf("tag.%s", consumer.tagNames[i]), tagValue)
+			logger = logger.WithField(fmt.Sprintf("tag.%s", consumer.tagNames[i]), tagValue)
 		}
 	}
 
@@ -433,7 +453,7 @@ func (consumer *Consumer) handleMessage(
 		hasQuantities[i] = ok
 
 		if ok && consumer.options.logQuantities {
-			taggedLogger = taggedLogger.WithField(fmt.Sprintf("quantity.%s", quantifier.Name()), quantity)
+			logger = logger.WithField(fmt.Sprintf("quantity.%s", quantifier.Name()), quantity)
 		}
 	}
 
@@ -441,7 +461,7 @@ func (consumer *Consumer) handleMessage(
 		handler.handle(tagValues, quantities, hasQuantities)
 	}
 
-	taggedLogger.Debug("export metrics")
+	logger.Debug("export metrics")
 }
 
 func (consumer *Consumer) Close(ctx context.Context) error { return nil }
