@@ -136,6 +136,21 @@ func NewDeque[T any](initialCapacity int) *Deque[T] {
 	}
 }
 
+// Returns all valid data in two slices.
+func (q *Deque[T]) LockedGetAll() [2][]T {
+	if q.end < q.start {
+		return [2][]T{
+			q.data[q.start:],
+			q.data[:q.end],
+		}
+	}
+
+	return [2][]T{
+		q.data[q.start:q.end],
+		nil,
+	}
+}
+
 // PushBack pushes an object to the end of the queue.
 //
 // This method has amortized O(1) time complexity and expands the capacity on demand.
