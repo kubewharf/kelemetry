@@ -40,7 +40,7 @@ func GroupingKeyFromMap(tags map[string]string) (key GroupingKey, ok bool) {
 	} {
 		*field, ok = tags[mapKey]
 		if !ok {
-			return
+			return key, false
 		}
 	}
 
