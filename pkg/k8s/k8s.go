@@ -137,17 +137,23 @@ func (clients *clusterClients) Close(ctx context.Context) error {
 	return nil
 }
 
-func (clients *clusterClients) Cluster(name string) (Client, error) {
+func (clients *clusterClients) tryCluster(name string) (Client, bool) {
 	clients.clientsLock.RLock()
+	defer clients.clientsLock.RUnlock()
+
 	client, exists := clients.clients[name]
-	clients.clientsLock.RUnlock()
-	if exists {
+	return client, exists
+}
+
+func (clients *clusterClients) Cluster(name string) (Client, error) {
+	if client, exists := clients.tryCluster(name); exists {
 		return client, nil
 	}
 
 	clients.clientsLock.Lock()
 	defer clients.clientsLock.Unlock()
-	client, exists = clients.clients[name]
+
+	client, exists := clients.clients[name]
 	if exists {
 		return client, nil
 	}
@@ -161,12 +167,12 @@ func (clients *clusterClients) Cluster(name string) (Client, error) {
 }
 
 func (clients *clusterClients) newClient(name string) (*client, error) {
-	config := clients.Config.Provide(name)
-	if config == nil {
+	cluster := clients.Config.Provide(name)
+	if cluster == nil {
 		return nil, fmt.Errorf("cluster %q is not available", name)
 	}
 
-	config = rest.CopyConfig(config)
+	config := rest.CopyConfig(cluster.Config)
 	config.QPS = clients.options.otherRestQps
 	config.Burst = clients.options.otherRestBurst
 
