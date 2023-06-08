@@ -197,11 +197,17 @@ func Ptr[CompTy any](obj CompTy) ComponentFactory {
 			if field.IsExported() && !field.Anonymous && structValue.Field(i).IsZero() {
 				if _, recurse := field.Tag.Lookup("managerRecurse"); recurse {
 					nestedType := field.Type
+					nestedValue := structValue.Field(i)
+
+					if nestedType.Kind() == reflect.Pointer {
+						nestedType = nestedType.Elem()
+						nestedValue = nestedValue.Elem()
+					}
 					if nestedType.Kind() != reflect.Struct {
 						panic("managerRecurse fields must be of struct types")
 					}
 
-					populate(nestedType, structValue.Field(i))
+					populate(nestedType, nestedValue)
 				} else if _, skipFill := field.Tag.Lookup("managerSkipFill"); !skipFill {
 					params = append(params, field.Type)
 					valueHandlers = append(valueHandlers, func(value reflect.Value) {
