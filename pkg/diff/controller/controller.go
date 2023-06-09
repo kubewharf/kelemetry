@@ -56,9 +56,14 @@ const (
 func init() {
 	manager.Global.Provide("diff-controller", manager.Ptr(&controller{
 		monitors: map[schema.GroupVersionResource]*monitor{},
-		taskPool: channel.NewUnboundedQueue[func() func()](16),
+		taskPool: channel.NewUnboundedQueue[workerTask](16),
 	}))
 }
+
+type (
+	workerTask = func() writerTask
+	writerTask = func(context.Context)
+)
 
 type ctrlOptions struct {
 	enable           bool
@@ -110,7 +115,7 @@ type controller struct {
 
 	// A queue of tasks to execute in each worker.
 	// Returns a function that must be executed once writer lease is acquired.
-	taskPool *channel.UnboundedQueue[func() func()]
+	taskPool *channel.UnboundedQueue[workerTask]
 
 	// Indicates how many active leader terms we acquired.
 	// Might be greater than 1 if we lost and immediately re-acquired leader lease.
@@ -199,7 +204,7 @@ func (ctrl *controller) Start(ctx context.Context) error {
 func runWorker(
 	ctx context.Context,
 	logger logrus.FieldLogger,
-	taskPool *channel.UnboundedQueue[func() func()],
+	taskPool *channel.UnboundedQueue[workerTask],
 	retentionPeriod time.Duration,
 	setWriteLeader <-chan bool,
 ) {
@@ -207,7 +212,7 @@ func runWorker(
 
 	type timedFunc struct {
 		expiry time.Time
-		fn     func()
+		fn     writerTask
 	}
 
 	isWriteLeader := false
@@ -226,7 +231,7 @@ func runWorker(
 
 			if writer != nil {
 				if isWriteLeader {
-					writer()
+					writer(ctx)
 				} else {
 					if first, hasFirst := writeQueue.LockedPeekFront(); hasFirst {
 						if time.Now().After(first.expiry) { // expired
@@ -246,7 +251,7 @@ func runWorker(
 
 			for _, slice := range oldWriteQueue.LockedGetAll() {
 				for _, fn := range slice {
-					fn.fn()
+					fn.fn(ctx)
 				}
 			}
 		}
@@ -479,14 +484,14 @@ func (ctrl *controller) startMonitor(gvr schema.GroupVersionResource, apiResourc
 	}
 	store.OnAdd = func(newObj *unstructured.Unstructured) {
 		if hasSynced.Load() {
-			ctrl.taskPool.Send(func() func() { return monitor.onNeedSnapshot(ctx, newObj, diffcache.SnapshotNameCreation) })
+			ctrl.taskPool.Send(func() writerTask { return monitor.onNeedSnapshot(ctx, newObj, diffcache.SnapshotNameCreation) })
 		}
 	}
 	store.OnUpdate = func(oldObj, newObj *unstructured.Unstructured) {
-		ctrl.taskPool.Send(func() func() { return monitor.onUpdate(ctx, oldObj, newObj) })
+		ctrl.taskPool.Send(func() writerTask { return monitor.onUpdate(ctx, oldObj, newObj) })
 	}
 	store.OnDelete = func(oldObj *unstructured.Unstructured) {
-		ctrl.taskPool.Send(func() func() { return monitor.onNeedSnapshot(ctx, oldObj, diffcache.SnapshotNameDeletion) })
+		ctrl.taskPool.Send(func() writerTask { return monitor.onNeedSnapshot(ctx, oldObj, diffcache.SnapshotNameDeletion) })
 	}
 
 	nsableReflectorClient := ctrl.Clients.TargetCluster().DynamicClient().Resource(gvr)
@@ -549,7 +554,7 @@ func (monitor *monitor) close() {
 func (monitor *monitor) onUpdate(
 	ctx context.Context,
 	oldObj, newObj *unstructured.Unstructured,
-) func() {
+) writerTask {
 	defer monitor.onUpdateMetric.DeferCount(monitor.ctrl.Clock.Now())
 
 	if oldObj.GetResourceVersion() == newObj.GetResourceVersion() {
@@ -580,10 +585,10 @@ func (monitor *monitor) onUpdate(
 		patch.DiffList = diffcmp.Compare(oldObj.Object, newObj.Object)
 	}
 
-	ctx, cancelFunc := context.WithTimeout(ctx, monitor.ctrl.options.storeTimeout)
-	defer cancelFunc()
+	return func(ctx context.Context) {
+		ctx, cancelFunc := context.WithTimeout(ctx, monitor.ctrl.options.storeTimeout)
+		defer cancelFunc()
 
-	return func() {
 		monitor.ctrl.Cache.Store(
 			ctx,
 			util.ObjectRefFromUnstructured(newObj, monitor.ctrl.Clients.TargetCluster().ClusterName(), monitor.gvr),
@@ -596,7 +601,7 @@ func (monitor *monitor) onNeedSnapshot(
 	ctx context.Context,
 	obj *unstructured.Unstructured,
 	snapshotName string,
-) func() {
+) writerTask {
 	defer monitor.onDeleteMetric.DeferCount(monitor.ctrl.Clock.Now())
 
 	redacted := monitor.testRedacted(obj)
@@ -613,7 +618,7 @@ func (monitor *monitor) onNeedSnapshot(
 			Error("cannot re-marshal unstructured object")
 	}
 
-	return func() {
+	return func(ctx context.Context) {
 		monitor.ctrl.Cache.StoreSnapshot(
 			ctx,
 			util.ObjectRefFromUnstructured(obj, monitor.ctrl.Clients.TargetCluster().ClusterName(), monitor.gvr),
