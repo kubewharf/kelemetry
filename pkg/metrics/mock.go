@@ -100,7 +100,7 @@ type MockEntry struct {
 	Hist []float64
 }
 
-// Returns the scalar valu, or 0 if the receiver is nil.
+// Returns the scalar value, or 0 if the receiver is nil.
 // Since this function is only used for assertions after running a test, the mutex is not locked.
 func (mi *MockEntry) GetIntUnsafe() float64 {
 	if mi == nil {
