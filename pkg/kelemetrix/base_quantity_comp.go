@@ -64,23 +64,27 @@ type BaseQuantityComp[T BaseQuantityDef] struct {
 func (comp *BaseQuantityComp[T]) Options() manager.Options { return &comp.options }
 
 func (comp *BaseQuantityComp[T]) Init() error {
-	comp.Registry.AddQuantifier(&baseQuantifierImpl[T]{comp: comp, def: comp.Def})
+	comp.Registry.AddQuantifier(&BaseQuantifier[T]{Logger: comp.Logger, Def: comp.Def})
 	return nil
 }
 
 func (comp *BaseQuantityComp[T]) Start(ctx context.Context) error { return nil }
 func (comp *BaseQuantityComp[T]) Close(ctx context.Context) error { return nil }
 
-type baseQuantifierImpl[T BaseQuantityDef] struct {
-	def  T
-	comp *BaseQuantityComp[T]
+type BaseQuantifier[T BaseQuantityDef] struct {
+	Logger logrus.FieldLogger
+	Def    T
 }
 
-func (q *baseQuantifierImpl[T]) Name() string     { return q.def.Name() }
-func (q *baseQuantifierImpl[T]) Type() MetricType { return q.def.Type() }
-func (q *baseQuantifierImpl[T]) Quantify(message *audit.Message) (float64, bool) {
-	if value, hasValue, err := q.def.Quantify(message); err != nil {
-		q.comp.Logger.WithError(err).Error("error generating quantity")
+func NewBaseQuantifierForTest[T BaseQuantityDef](def T) *BaseQuantifier[T] {
+	return &BaseQuantifier[T]{Logger: logrus.New(), Def: def}
+}
+
+func (q *BaseQuantifier[T]) Name() string     { return q.Def.Name() }
+func (q *BaseQuantifier[T]) Type() MetricType { return q.Def.Type() }
+func (q *BaseQuantifier[T]) Quantify(message *audit.Message) (float64, bool) {
+	if value, hasValue, err := q.Def.Quantify(message); err != nil {
+		q.Logger.WithError(err).Error("error generating quantity")
 		return 0, false
 	} else {
 		return value, hasValue

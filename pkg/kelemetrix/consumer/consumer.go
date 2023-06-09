@@ -37,28 +37,28 @@ func init() {
 }
 
 type Options struct {
-	enable        bool
-	consumerGroup string
-	partitions    []int32
-	logTags       bool
-	logQuantities bool
+	Enable        bool
+	ConsumerGroup string
+	Partitions    []int32
+	LogTags       bool
+	LogQuantities bool
 }
 
 func (options *Options) Setup(fs *pflag.FlagSet) {
-	fs.BoolVar(&options.enable, "kelemetrix-enable", false, "enable kelemetrix")
-	fs.StringVar(&options.consumerGroup, "kelemetrix-consumer-group", "kelemetrix", "audit consumer group name")
+	fs.BoolVar(&options.Enable, "kelemetrix-enable", false, "enable kelemetrix")
+	fs.StringVar(&options.ConsumerGroup, "kelemetrix-consumer-group", "kelemetrix", "audit consumer group name")
 	fs.Int32SliceVar(
-		&options.partitions,
+		&options.Partitions,
 		"kelemetrix-consumer-partition",
 		[]int32{0, 1, 2, 3, 4},
 		"audit message queue partitions to consume",
 	)
 
-	fs.BoolVar(&options.logTags, "kelemetrix-debug-log-tags", false, "log metric tags for debugging")
-	fs.BoolVar(&options.logQuantities, "kelemetrix-debug-log-quantities", false, "log metric quantities for debugging")
+	fs.BoolVar(&options.LogTags, "kelemetrix-debug-log-tags", false, "log metric tags for debugging")
+	fs.BoolVar(&options.LogQuantities, "kelemetrix-debug-log-quantities", false, "log metric quantities for debugging")
 }
 
-func (options *Options) EnableFlag() *bool { return &options.enable }
+func (options *Options) EnableFlag() *bool { return &options.Enable }
 
 type Consumer struct {
 	options  Options
@@ -83,8 +83,8 @@ func (consumer *Consumer) Options() manager.Options { return &consumer.options }
 func (consumer *Consumer) Init() error {
 	consumer.startupReady = make(chan struct{})
 
-	for _, partition := range consumer.options.partitions {
-		group := mq.ConsumerGroup(consumer.options.consumerGroup)
+	for _, partition := range consumer.options.Partitions {
+		group := mq.ConsumerGroup(consumer.options.ConsumerGroup)
 		partition := mq.PartitionId(partition)
 		mqConsumer, err := consumer.Mq.CreateConsumer(
 			group,
@@ -260,8 +260,9 @@ type quantityFilter struct {
 	quantityIndex int
 	threshold     float64
 
-	acceptRightOfThreshold bool
+	acceptLeftOfThreshold  bool
 	acceptEqualThreshold   bool
+	acceptRightOfThreshold bool
 }
 
 func newQuantityFilter(quantities *quantifierIndex, filter config.QuantityFilter) (quantityFilter, error) {
@@ -274,13 +275,13 @@ func newQuantityFilter(quantities *quantifierIndex, filter config.QuantityFilter
 
 	switch filter.Operator {
 	case config.QuantityOperatorGreater:
-		qf.acceptRightOfThreshold, qf.acceptEqualThreshold = true, false
+		qf.acceptLeftOfThreshold, qf.acceptEqualThreshold, qf.acceptRightOfThreshold = false, false, true
 	case config.QuantityOperatorLess:
-		qf.acceptRightOfThreshold, qf.acceptEqualThreshold = false, false
+		qf.acceptLeftOfThreshold, qf.acceptEqualThreshold, qf.acceptRightOfThreshold = true, false, false
 	case config.QuantityOperatorGreaterEq:
-		qf.acceptRightOfThreshold, qf.acceptEqualThreshold = true, true
+		qf.acceptLeftOfThreshold, qf.acceptEqualThreshold, qf.acceptRightOfThreshold = false, true, true
 	case config.QuantityOperatorLessEq:
-		qf.acceptRightOfThreshold, qf.acceptEqualThreshold = false, true
+		qf.acceptLeftOfThreshold, qf.acceptEqualThreshold, qf.acceptRightOfThreshold = true, true, false
 	default:
 		return qf, fmt.Errorf("unknown quantity operator %q", filter.Operator)
 	}
@@ -291,7 +292,8 @@ func newQuantityFilter(quantities *quantifierIndex, filter config.QuantityFilter
 func (filter quantityFilter) test(quantities []float64) bool {
 	isRight := quantities[filter.quantityIndex] > filter.threshold
 	isEqual := quantities[filter.quantityIndex] == filter.threshold
-	return filter.acceptRightOfThreshold && isRight || filter.acceptEqualThreshold && isEqual
+	isLeft := quantities[filter.quantityIndex] < filter.threshold
+	return filter.acceptRightOfThreshold && isRight || filter.acceptEqualThreshold && isEqual || filter.acceptLeftOfThreshold && isLeft
 }
 
 func (consumer *Consumer) PrepareTagsQuantifiers() error {
@@ -438,7 +440,7 @@ func (consumer *Consumer) HandleMessage(logger logrus.FieldLogger, message *audi
 		indexed.provider.ProvideValues(message, tagValues[indexed.startIndex:indexed.endIndex])
 	}
 
-	if consumer.options.logTags {
+	if consumer.options.LogTags {
 		for i, tagValue := range tagValues {
 			logger = logger.WithField(fmt.Sprintf("tag.%s", consumer.tagNames[i]), tagValue)
 		}
@@ -452,7 +454,7 @@ func (consumer *Consumer) HandleMessage(logger logrus.FieldLogger, message *audi
 		quantities[i] = quantity
 		hasQuantities[i] = ok
 
-		if ok && consumer.options.logQuantities {
+		if ok && consumer.options.LogQuantities {
 			logger = logger.WithField(fmt.Sprintf("quantity.%s", quantifier.Name()), quantity)
 		}
 	}
