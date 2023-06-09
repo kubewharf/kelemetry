@@ -17,6 +17,7 @@ package util
 import (
 	"fmt"
 
+	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -38,6 +39,17 @@ type ObjectRef struct {
 
 func (ref ObjectRef) String() string {
 	return fmt.Sprintf("%s/%s/%s/%s/%s", ref.Cluster, ref.Group, ref.Resource, ref.Namespace, ref.Name)
+}
+
+func (ref ObjectRef) AsFields(prefix string) logrus.Fields {
+	return logrus.Fields{
+		prefix + "Cluster":   ref.Cluster,
+		prefix + "Group":     ref.Group,
+		prefix + "Resource":  ref.Resource,
+		prefix + "Namespace": ref.Namespace,
+		prefix + "Name":      ref.Name,
+		prefix + "Uid":       ref.Uid,
+	}
 }
 
 func ObjectRefFromUnstructured(

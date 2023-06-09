@@ -193,7 +193,7 @@ func (aggregator *aggregator) Send(
 
 	aggregator.SinceEventMetric.
 		With(&sinceEventMetric{Cluster: object.Cluster, TraceSource: event.TraceSource}).
-		Histogram(aggregator.Clock.Since(event.Time).Nanoseconds())
+		Summary(float64(aggregator.Clock.Since(event.Time).Nanoseconds()))
 
 	var parentSpan tracer.SpanContext
 
@@ -241,7 +241,7 @@ func (aggregator *aggregator) Send(
 					if sendMetric.Error == nil {
 						sendMetric.Error = metrics.LabelError(err, "UnknownPrimaryPoll")
 						aggregator.Logger.
-							WithField("object", object).
+							WithFields(object.AsFields("object")).
 							WithField("event", event.Title).
 							WithError(err).
 							Warn("Unknown error for primary poll")
@@ -359,7 +359,7 @@ func (aggregator *aggregator) Send(
 
 	sendMetric.Success = true
 
-	aggregator.Logger.WithField("object", object).
+	aggregator.Logger.WithFields(object.AsFields("object")).
 		WithField("event", event.Title).
 		WithField("logs", len(event.Logs)).
 		Debug("CreateSpan")
@@ -423,7 +423,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 
 	logger := aggregator.Logger.
 		WithField("step", "getOrCreateSpan").
-		WithField("object", object).
+		WithFields(object.AsFields("object")).
 		WithField("field", field)
 
 	var reserveUid spancache.Uid
@@ -495,7 +495,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 
 	retryCountMetric := lazySpanRetryCountMetric(*lazySpanMetric)
 	defer func() {
-		aggregator.LazySpanRetryCountMetric.With(&retryCountMetric).Histogram(retries)
+		aggregator.LazySpanRetryCountMetric.With(&retryCountMetric).Summary(float64(retries))
 	}() // take the value of lazySpanMetric later
 
 	logger = logger.
@@ -585,7 +585,11 @@ func (aggregator *aggregator) createSpan(
 		return nil, metrics.LabelError(fmt.Errorf("cannot create span: %w", err), "CreateSpan")
 	}
 
-	aggregator.Logger.WithField("object", object).WithField("field", nestLevel).WithField("parent", parent).Debug("CreateSpan")
+	aggregator.Logger.
+		WithFields(object.AsFields("object")).
+		WithField("field", nestLevel).
+		WithField("parent", parent).
+		Debug("CreateSpan")
 
 	return spanContext, nil
 }

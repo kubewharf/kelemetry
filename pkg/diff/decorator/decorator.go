@@ -289,12 +289,12 @@ func (decorator *decorator) tryDecorate(
 		},
 		Resource: message.ObjectRef.Resource,
 		Success:  cacheHit,
-	}).Histogram(retryCount)
+	}).Summary(float64(retryCount))
 
 	if cacheHit {
 		return cacheHitTypeTrue, nil
 	} else {
-		logger.WithField("object", message.ObjectRef).Warn("cannot associate diff cache")
+		logger.WithFields(object.AsFields("object")).Warn("cannot associate diff cache")
 		return cacheHitTypeFalse, err
 	}
 }
@@ -338,7 +338,7 @@ func (decorator *decorator) tryUpdateOnce(
 			Version: message.ObjectRef.APIVersion,
 		},
 		Resource: message.ObjectRef.Resource,
-	}).Histogram(informerLatency.Nanoseconds())
+	}).Histogram(float64(informerLatency.Nanoseconds()))
 	event.WithTag("informer latency", informerLatency)
 
 	return true, nil

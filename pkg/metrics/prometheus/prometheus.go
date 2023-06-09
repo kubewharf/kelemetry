@@ -111,41 +111,46 @@ type metric struct {
 	name     string
 	tagNames []string
 
-	counterOnce, histogramOnce, gaugeOnce sync.Once
+	counterOnce, histogramOnce, summaryOnce, gaugeOnce sync.Once
 
 	counterVec   *prometheus.CounterVec
 	histogramVec *prometheus.HistogramVec
+	summaryVec   *prometheus.SummaryVec
 	gaugeVec     *prometheus.GaugeVec
 }
 
-func (metric *metric) Count(value int64, tags []string) {
+func (metric *metric) Count(value float64, tags []string) {
 	metric.counterOnce.Do(func() {
 		metric.counterVec = metric.factory.NewCounterVec(prometheus.CounterOpts{Name: metric.name + "_count"}, metric.tagNames)
 	})
 
-	metric.counterVec.WithLabelValues(tags...).Add(float64(value))
+	metric.counterVec.WithLabelValues(tags...).Add(value)
 }
 
-func (metric *metric) Histogram(value int64, tags []string) {
+func (metric *metric) Histogram(value float64, tags []string) {
 	metric.histogramOnce.Do(func() {
 		metric.histogramVec = metric.factory.NewHistogramVec(prometheus.HistogramOpts{Name: metric.name + "_histogram"}, metric.tagNames)
 	})
 
-	metric.histogramVec.WithLabelValues(tags...).Observe(float64(value))
+	metric.histogramVec.WithLabelValues(tags...).Observe(value)
 }
 
-func (metric *metric) Gauge(value int64, tags []string) {
+func (metric *metric) Summary(value float64, tags []string) {
+	metric.summaryOnce.Do(func() {
+		metric.summaryVec = metric.factory.NewSummaryVec(prometheus.SummaryOpts{Name: metric.name + "_summary"}, metric.tagNames)
+	})
+
+	metric.summaryVec.WithLabelValues(tags...).Observe(value)
+}
+
+func (metric *metric) Gauge(value float64, tags []string) {
 	metric.gaugeOnce.Do(func() {
 		metric.gaugeVec = metric.factory.NewGaugeVec(prometheus.GaugeOpts{Name: metric.name + "_gauge"}, metric.tagNames)
 	})
 
-	metric.gaugeVec.WithLabelValues(tags...).Add(float64(value))
+	metric.gaugeVec.WithLabelValues(tags...).Add(value)
 }
 
 func (metric *metric) Defer(time time.Time, tags []string) {
-	metric.histogramOnce.Do(func() {
-		metric.histogramVec = metric.factory.NewHistogramVec(prometheus.HistogramOpts{Name: metric.name + "_histogram"}, metric.tagNames)
-	})
-
-	metric.histogramVec.WithLabelValues(tags...).Observe(metric.clock.Since(time).Seconds())
+	metric.Histogram(float64(metric.clock.Since(time).Nanoseconds()), tags)
 }
