@@ -61,7 +61,7 @@ func (uq *UnboundedQueue[T]) Length() int {
 }
 
 func InitMetricLoop[T any, TagsT metrics.Tags](uq *UnboundedQueue[T], metricsClient metrics.Client, tags TagsT) {
-	metrics.NewMonitor(metricsClient, tags, func() int64 { return int64(uq.deque.GetAndResetLength()) })
+	metrics.NewMonitor(metricsClient, tags, func() float64 { return float64(uq.deque.GetAndResetLength()) })
 }
 
 // Sends an item to the queue.

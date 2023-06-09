@@ -57,7 +57,7 @@ func (mock *Mock) Get(name string, tags map[string]string) *MockEntry {
 	defer entry.mu.Unlock()
 
 	i := entry.Int
-	list := make([]int64, len(entry.Hist))
+	list := make([]float64, len(entry.Hist))
 	copy(list, entry.Hist)
 	return &MockEntry{Int: i, Hist: list}
 }
@@ -68,7 +68,7 @@ func (mock *Mock) PrintAll() string {
 		value := valueAny.(*MockEntry)
 		value.mu.Lock()
 		defer value.mu.Unlock()
-		s += fmt.Sprintf("\n%s: %d %v", key.(string), value.Int, value.Hist)
+		s += fmt.Sprintf("\n%s: %f %v", key.(string), value.Int, value.Hist)
 		return true
 	})
 	return s
@@ -96,21 +96,35 @@ type mockImpl struct {
 
 type MockEntry struct {
 	mu   sync.Mutex
-	Int  int64
-	Hist []int64
+	Int  float64
+	Hist []float64
+}
+
+// Returns the scalar valu, or 0 if the receiver is nil.
+// Since this function is only used for assertions after running a test, the mutex is not locked.
+func (mi *MockEntry) GetIntUnsafe() float64 {
+	if mi == nil {
+		return 0.0
+	}
+
+	return mi.Int
 }
 
 var _ MetricImpl = &mockImpl{}
 
-func (mi *mockImpl) Count(value int64, tags []string) {
+func (mi *mockImpl) Count(value float64, tags []string) {
 	mi.record(tags, func(entry *MockEntry) { entry.Int += value })
 }
 
-func (mi *mockImpl) Histogram(value int64, tags []string) {
+func (mi *mockImpl) Histogram(value float64, tags []string) {
 	mi.record(tags, func(entry *MockEntry) { entry.Hist = append(entry.Hist, value) })
 }
 
-func (mi *mockImpl) Gauge(value int64, tags []string) {
+func (mi *mockImpl) Summary(value float64, tags []string) {
+	mi.record(tags, func(entry *MockEntry) { entry.Hist = append(entry.Hist, value) })
+}
+
+func (mi *mockImpl) Gauge(value float64, tags []string) {
 	mi.record(tags, func(entry *MockEntry) { entry.Int = value })
 }
 

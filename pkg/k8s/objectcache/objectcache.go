@@ -86,8 +86,8 @@ func (oc *ObjectCache) Options() manager.Options { return &oc.options }
 
 func (oc *ObjectCache) Init() error {
 	oc.cache = freecache.NewCache(oc.options.cacheSize)
-	metrics.NewMonitor(oc.Metrics, &cacheSizeMetric{}, func() int64 { return oc.cache.EntryCount() })
-	metrics.NewMonitor(oc.Metrics, &cacheEvictionMetric{}, func() int64 { return oc.cache.EvacuateCount() })
+	metrics.NewMonitor(oc.Metrics, &cacheSizeMetric{}, func() float64 { return float64(oc.cache.EntryCount()) })
+	metrics.NewMonitor(oc.Metrics, &cacheEvictionMetric{}, func() float64 { return float64(oc.cache.EvacuateCount()) })
 	return nil
 }
 
