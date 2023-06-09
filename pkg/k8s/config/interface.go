@@ -16,6 +16,8 @@
 package k8sconfig
 
 import (
+	"time"
+
 	"k8s.io/client-go/rest"
 
 	"github.com/kubewharf/kelemetry/pkg/manager"
@@ -28,10 +30,6 @@ func init() {
 }
 
 type Config interface {
-	// ProvideTarget returns the rest config for the "target" cluster,
-	// i.e. the main cluster managed by this instance.
-	ProvideTarget() *rest.Config
-
 	// TargetName returns the name of thetarget cluster.
 	// ProvideTarget() is equivalent to Provide(TargetName()).
 	TargetName() string
@@ -39,21 +37,22 @@ type Config interface {
 	// Provide returns the rest config for a named cluster.
 	// Returns nil if the cluster is not available.
 	// Mainly used when the main cluster contains references to other clusters.
-	Provide(clusterName string) *rest.Config
+	Provide(clusterName string) *Cluster
+}
+
+type Cluster struct {
+	Config                *rest.Config
+	DefaultRequestTimeout time.Duration
 }
 
 type mux struct {
 	*manager.Mux
 }
 
-func (mux *mux) ProvideTarget() *rest.Config {
-	return mux.Impl().(Config).ProvideTarget()
-}
-
 func (mux *mux) TargetName() string {
 	return mux.Impl().(Config).TargetName()
 }
 
-func (mux *mux) Provide(clusterName string) *rest.Config {
+func (mux *mux) Provide(clusterName string) *Cluster {
 	return mux.Impl().(Config).Provide(clusterName)
 }
