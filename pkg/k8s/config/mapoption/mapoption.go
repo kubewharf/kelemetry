@@ -17,6 +17,7 @@ package mapoption
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/rest"
@@ -26,6 +27,8 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
 
+const K8sDefaultRequestTimeout = time.Minute
+
 func init() {
 	manager.Global.ProvideMuxImpl("kube-config/mapoption", manager.Ptr(&Provider{}), k8sconfig.Config.Provide)
 }
@@ -34,6 +37,7 @@ type options struct {
 	targetClusterName string
 	master            map[string]string
 	kubeconfig        map[string]string
+	requestTimeout    map[string]string
 }
 
 func (options *options) Setup(fs *pflag.FlagSet) {
@@ -45,6 +49,12 @@ func (options *options) Setup(fs *pflag.FlagSet) {
 	)
 	fs.StringToStringVar(&options.master, "kube-apiservers", map[string]string{}, "map of kube apiserver addresses")
 	fs.StringToStringVar(&options.kubeconfig, "kube-config-paths", map[string]string{}, "map of kube config paths")
+	fs.StringToStringVar(
+		&options.requestTimeout,
+		"kube-request-timeout",
+		map[string]string{},
+		"map of server-side request timeout, used in metrics",
+	)
 }
 
 func (options *options) EnableFlag() *bool { return nil }
@@ -53,8 +63,7 @@ type Provider struct {
 	manager.MuxImplBase
 	options options
 
-	configs      map[string]*rest.Config
-	targetConfig *rest.Config
+	configs map[string]*k8sconfig.Cluster
 }
 
 var _ k8sconfig.Config = &Provider{}
@@ -72,7 +81,7 @@ func (provider *Provider) Init() error {
 		names[name] = struct{}{}
 	}
 
-	provider.configs = make(map[string]*rest.Config, len(names))
+	provider.configs = make(map[string]*k8sconfig.Cluster, len(names))
 	for name := range names {
 		config, err := clientcmd.BuildConfigFromFlags(provider.options.master[name], provider.options.kubeconfig[name])
 		if err != nil {
@@ -81,13 +90,24 @@ func (provider *Provider) Init() error {
 
 		config = rest.AddUserAgent(config, "kelemetry")
 
-		provider.configs[name] = config
+		defaultRequestTimeout := K8sDefaultRequestTimeout
+		if value, exists := provider.options.requestTimeout[name]; exists {
+			defaultRequestTimeout, err = time.ParseDuration(value)
+			if err != nil {
+				return fmt.Errorf("invalid duration %q for cluster %q: %w", value, name, err)
+			}
+		}
+
+		provider.configs[name] = &k8sconfig.Cluster{
+			Config:                config,
+			DefaultRequestTimeout: defaultRequestTimeout,
+		}
 	}
 
-	targetConfig, hasTarget := provider.configs[provider.options.targetClusterName]
+	_, hasTarget := provider.configs[provider.options.targetClusterName]
 	if !hasTarget {
-		var err error
-		if targetConfig, err = rest.InClusterConfig(); err != nil {
+		inCluster, err := rest.InClusterConfig()
+		if err != nil {
 			return fmt.Errorf(
 				"target cluster %q does not exist, fallback to in-cluster config but fail: %w",
 				provider.options.targetClusterName,
@@ -95,10 +115,19 @@ func (provider *Provider) Init() error {
 			)
 		}
 
-		provider.configs[provider.options.targetClusterName] = targetConfig
-	}
+		defaultRequestTimeout := K8sDefaultRequestTimeout
+		if value, exists := provider.options.requestTimeout[provider.options.targetClusterName]; exists {
+			defaultRequestTimeout, err = time.ParseDuration(value)
+			if err != nil {
+				return fmt.Errorf("invalid duration %q for cluster %q: %w", value, provider.options.targetClusterName, err)
+			}
+		}
 
-	provider.targetConfig = targetConfig
+		provider.configs[provider.options.targetClusterName] = &k8sconfig.Cluster{
+			Config:                inCluster,
+			DefaultRequestTimeout: defaultRequestTimeout,
+		}
+	}
 
 	return nil
 }
@@ -107,10 +136,8 @@ func (provider *Provider) Start(ctx context.Context) error { return nil }
 
 func (provider *Provider) Close(ctx context.Context) error { return nil }
 
-func (provider *Provider) ProvideTarget() *rest.Config { return provider.targetConfig }
-
 func (provider *Provider) TargetName() string { return provider.options.targetClusterName }
 
-func (provider *Provider) Provide(clusterName string) *rest.Config {
+func (provider *Provider) Provide(clusterName string) *k8sconfig.Cluster {
 	return provider.configs[clusterName]
 }

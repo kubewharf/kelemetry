@@ -35,6 +35,8 @@ func init() {
 	}), tracecache.Cache.Persist)
 }
 
+var _ tracecache.Cache = &etcdCache{}
+
 type options struct {
 	endpoints   []string
 	prefix      string
@@ -101,12 +103,12 @@ func (cache *etcdCache) Persist(ctx context.Context, entries []tracecache.Entry)
 	for i, entry := range entries {
 		key := cache.cacheKey(entry.LowId)
 
-		identifierJson, err := json.Marshal(entry.Identifier)
+		valueJson, err := json.Marshal(entry.Value)
 		if err != nil {
 			return fmt.Errorf("cannot marshal entry %d: %w", i, err)
 		}
 
-		_, err = cache.client.Put(ctx, key, string(identifierJson))
+		_, err = cache.client.Put(ctx, key, string(valueJson))
 		if err != nil {
 			return fmt.Errorf("etcd write error: %w", err)
 		}
@@ -115,7 +117,7 @@ func (cache *etcdCache) Persist(ctx context.Context, entries []tracecache.Entry)
 	return nil
 }
 
-func (cache *etcdCache) Fetch(ctx context.Context, lowId uint64) (json.RawMessage, error) {
+func (cache *etcdCache) Fetch(ctx context.Context, lowId uint64) (*tracecache.EntryValue, error) {
 	resp, err := cache.client.Get(ctx, cache.cacheKey(lowId))
 	if err != nil {
 		return nil, fmt.Errorf("etcd get error: %w", err)
@@ -125,7 +127,13 @@ func (cache *etcdCache) Fetch(ctx context.Context, lowId uint64) (json.RawMessag
 		return nil, nil
 	}
 
-	return json.RawMessage(resp.Kvs[0].Value), nil
+	valueJson := resp.Kvs[0].Value
+	value := new(tracecache.EntryValue)
+	if err := json.Unmarshal(valueJson, value); err != nil {
+		return nil, fmt.Errorf("parse etcd response: %w", err)
+	}
+
+	return value, nil
 }
 
 func (cache *etcdCache) cacheKey(lowId uint64) string {

@@ -286,7 +286,7 @@ func (ctrl *controller) handleEvent(ctx context.Context, event *corev1.Event) {
 		return
 	}
 
-	aggregatorEvent := aggregatorevent.NewEvent("status", event.Reason, eventTime, "event").
+	aggregatorEvent := aggregatorevent.NewEvent(zconstants.NestLevelStatus, event.Reason, eventTime, zconstants.TraceSourceEvent).
 		WithTag("source", event.Source.Component).
 		WithTag("action", event.Action).
 		Log(zconstants.LogTypeEventMessage, event.Message)
@@ -310,7 +310,7 @@ func (ctrl *controller) handleEvent(ctx context.Context, event *corev1.Event) {
 		Group:    gvr.Group,
 		Version:  gvr.Version,
 		Resource: gvr.Resource,
-	}).Histogram(ctrl.Clock.Since(eventTime).Nanoseconds())
+	}).Summary(float64(ctrl.Clock.Since(eventTime).Nanoseconds()))
 
 	if err := ctrl.Aggregator.Send(ctx, util.ObjectRef{
 		Cluster:              clusterName,
@@ -375,7 +375,7 @@ func (ctrl *controller) syncConfigMap(ctx context.Context, startReadyCh chan<- s
 			break
 		}
 
-		if changed { // TODO delete this, only for testing
+		if changed {
 			configMap.Data[configMapLastUpdatedKey] = ctrl.Clock.Now().Format(time.RFC3339)
 			newConfigMap, err := ctrl.configMapClient.Update(ctx, configMap, metav1.UpdateOptions{})
 			if err != nil {
@@ -406,26 +406,26 @@ func (ctrl *controller) pollConfigLoop(
 	interval time.Duration,
 	configMap *corev1.ConfigMap,
 	updateCh <-chan func(*corev1.ConfigMap),
-) (changed, shutdown bool) {
+) (_changed, _shutdown bool) {
+	changed := false
+
 	until := ctrl.Clock.After(interval)
 
 	for {
 		// ctx and until have higher priority than updateCh
 		select {
 		case <-ctx.Done():
-			shutdown = true
-			return
+			return changed, true
 		case <-until:
-			return
+			return changed, false
 		default:
 		}
 
 		select {
 		case <-ctx.Done():
-			shutdown = true
-			return
+			return changed, true
 		case <-until:
-			return
+			return changed, false
 		case updater := <-updateCh:
 			changed = true
 			updater(configMap)

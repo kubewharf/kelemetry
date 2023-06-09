@@ -34,7 +34,7 @@ else
 	LOG_FILE_ARG ?=
 endif
 
-CONTROLLERS ?= audit-consumer,audit-producer,audit-webhook,event-informer,annotation-linker,owner-linker,resource-object-tag,resource-event-tag,diff-decorator,diff-controller,diff-api,pprof,jaeger-storage-plugin,jaeger-redirect-server
+CONTROLLERS ?= audit-consumer,audit-producer,audit-webhook,event-informer,annotation-linker,owner-linker,resource-object-tag,resource-event-tag,diff-decorator,diff-controller,diff-api,pprof,jaeger-storage-plugin,jaeger-redirect-server,kelemetrix
 ifeq ($(CONTROLLERS),)
 	ENABLE_ARGS ?=
 else
@@ -96,7 +96,6 @@ run: output/kelemetry $(DUMP_ROTATE_DEP)
 		--tracer-otel-endpoint=$(OTEL_EXPORTER_OTLP_ENDPOINT) \
 		--tracer-otel-insecure \
 		--jaeger-cluster-names=$(CLUSTER_NAME) \
-		--jaeger-storage-plugin-enable \
 		--jaeger-storage-plugin-address=0.0.0.0:17271 \
 		--jaeger-backend=jaeger-storage \
 		--jaeger-trace-cache=$(ETCD_OR_LOCAL) \
@@ -147,12 +146,23 @@ stack:
 		) \
 		$(COMPOSE_COMMAND)
 
+define QUICKSTART_JQ_PATCH
+		.version = "2.2" |
+			if $$KELEMETRY_IMAGE == "" then .services.kelemetry.build = "." else . end |
+			if $$KELEMETRY_IMAGE != "" then .services.kelemetry.image = $$KELEMETRY_IMAGE else . end
+endef
+
+export QUICKSTART_JQ_PATCH
 quickstart:
-	docker-compose -f quickstart.docker-compose.yaml up --no-recreate --no-start
+	docker-compose -f quickstart.docker-compose.yaml \
+		-f <(jq -n --arg KELEMETRY_IMAGE "$(KELEMETRY_IMAGE)" "$$QUICKSTART_JQ_PATCH") \
+		up --no-recreate --no-start
 	kubectl config view --raw --minify --flatten --merge >hack/client-kubeconfig.local.yaml
 	sed -i "s/0\.0\.0\.0/$$(docker network inspect kelemetry_default -f '{{(index .IPAM.Config 0).Gateway}}')/g" hack/client-kubeconfig.local.yaml
 	sed -i 's/certificate-authority-data: .*$$/insecure-skip-tls-verify: true/' hack/client-kubeconfig.local.yaml
-	docker-compose -f quickstart.docker-compose.yaml $(COMPOSE_COMMAND)
+	docker-compose -f quickstart.docker-compose.yaml \
+		-f <(jq -n --arg KELEMETRY_IMAGE "$(KELEMETRY_IMAGE)" "$$QUICKSTART_JQ_PATCH") \
+		$(COMPOSE_COMMAND)
 
 pre-commit: dot usage test
 	golangci-lint run --new-from-rev=main

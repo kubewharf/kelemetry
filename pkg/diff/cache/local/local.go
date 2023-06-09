@@ -153,7 +153,7 @@ func (cache *localCache) Fetch(
 		}
 	}
 
-	cache.Logger.WithField("object", object).Debugf("Cannot locate %v from %v", keyRv, keys)
+	cache.Logger.WithFields(object.AsFields("object")).Debugf("Cannot locate %v from %v", keyRv, keys)
 
 	return nil, nil
 }

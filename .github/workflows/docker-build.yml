@@ -1,4 +1,4 @@
-name: Build docker image
+name: Publish helm chart
 
 on:
   push:
@@ -6,47 +6,22 @@ on:
     branches: ["main"]
 
 jobs:
-  image:
-    name: Build docker image
-    runs-on: [ubuntu-20.04]
-    concurrency:
-      group: ${{ github.ref_type }}-${{ github.ref }}
-      cancel-in-progress: true
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set image tag for release
-        if: ${{ github.ref_type == 'tag' }}
-        run: echo "IMAGE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-      - name: Set image tag for release
-        if: ${{ github.ref_type == 'branch' }}
-        run: echo "IMAGE_TAG=dev" >> $GITHUB_ENV
-
-      - name: Build docker image
-        run: docker build -t ghcr.io/kubewharf/kelemetry:${IMAGE_TAG} .
-
-      - name: Docker login for ghcr
-        uses: docker/login-action@28218f9b04b4f3f62068d7b6ce6ca5b26e35336c
-        with:
-          registry: ghcr.io
-          username: ${{github.actor}}
-          password: ${{secrets.GITHUB_TOKEN}}
-      - run: docker push ghcr.io/kubewharf/kelemetry:${IMAGE_TAG}
-  chart:
+  publish-chart:
     name: Build helm chart
     runs-on: [ubuntu-20.04]
     if: ${{ github.ref_type == 'tag' }}
     steps:
       - uses: actions/checkout@v3
       - name: Docker login for ghcr
-        uses: docker/login-action@28218f9b04b4f3f62068d7b6ce6ca5b26e35336c
+        uses: docker/login-action@v2
         with:
           registry: ghcr.io
           username: ${{github.actor}}
           password: ${{secrets.GITHUB_TOKEN}}
 
       - name: Set image tag for release
-        run: echo "IMAGE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+        id: tag-name
+        run: echo "IMAGE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      - run: helm package charts/kelemetry --app-version="${IMAGE_TAG}" --version="${IMAGE_TAG}" -d output
-      - run: helm push output/kelemetry-chart-${IMAGE_TAG}.tgz oci://ghcr.io/kubewharf
+      - run: helm package charts/kelemetry --app-version="${IMAGE_TAG}" --version="${{steps.tag-name.outputs.IMAGE_TAG}}" -d output
+      - run: helm push output/kelemetry-chart-${{steps.tag-name.outputs.IMAGE_TAG}}.tgz oci://ghcr.io/kubewharf

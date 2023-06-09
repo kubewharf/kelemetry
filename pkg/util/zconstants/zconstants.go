@@ -28,8 +28,39 @@ const SpanName = Prefix + "kelemetryName"
 // The value is the folding type.
 const NestLevel = Prefix + "nestingLevel"
 
+const (
+	NestLevelObject   = "object"
+	NestLevelChildren = "children"
+	NestLevelSpec     = "spec"
+	NestLevelStatus   = "status"
+	NestLevelDeletion = "deletion"
+)
+
 // Identifies that the span represents an actual event (rather than as a pseudospan).
 const TraceSource = Prefix + "traceSource"
+
+const (
+	TraceSourceObject = "object"
+	TraceSourceAudit  = "audit"
+	TraceSourceEvent  = "event"
+)
+
+func KnownTraceSources(withPseudo bool) []string {
+	traceSources := []string{
+		// pseudo
+		TraceSourceObject,
+
+		// real
+		TraceSourceAudit,
+		TraceSourceEvent,
+	}
+
+	if !withPseudo {
+		traceSources = traceSources[1:]
+	}
+
+	return traceSources
+}
 
 // Classifies the type of a log line.
 // Logs without this attribute will not have special treatment.

@@ -41,8 +41,6 @@ func init() {
 	manager.Global.Provide("aggregator", manager.Ptr[Aggregator](&aggregator{}))
 }
 
-const ObjectField = "object"
-
 type options struct {
 	reserveTtl                   time.Duration
 	spanTtl                      time.Duration
@@ -195,7 +193,7 @@ func (aggregator *aggregator) Send(
 
 	aggregator.SinceEventMetric.
 		With(&sinceEventMetric{Cluster: object.Cluster, TraceSource: event.TraceSource}).
-		Histogram(aggregator.Clock.Since(event.Time).Nanoseconds())
+		Summary(float64(aggregator.Clock.Since(event.Time).Nanoseconds()))
 
 	var parentSpan tracer.SpanContext
 
@@ -243,7 +241,7 @@ func (aggregator *aggregator) Send(
 					if sendMetric.Error == nil {
 						sendMetric.Error = metrics.LabelError(err, "UnknownPrimaryPoll")
 						aggregator.Logger.
-							WithField("object", object).
+							WithFields(object.AsFields("object")).
 							WithField("event", event.Title).
 							WithError(err).
 							Warn("Unknown error for primary poll")
@@ -361,7 +359,7 @@ func (aggregator *aggregator) Send(
 
 	sendMetric.Success = true
 
-	aggregator.Logger.WithField("object", object).
+	aggregator.Logger.WithFields(object.AsFields("object")).
 		WithField("event", event.Title).
 		WithField("logs", len(event.Logs)).
 		Debug("CreateSpan")
@@ -385,7 +383,7 @@ func (aggregator *aggregator) ensureObjectSpan(
 	object util.ObjectRef,
 	eventTime time.Time,
 ) (tracer.SpanContext, error) {
-	return aggregator.getOrCreateSpan(ctx, object, "object", eventTime, func() (_ tracer.SpanContext, err error) {
+	return aggregator.getOrCreateSpan(ctx, object, zconstants.NestLevelObject, eventTime, func() (_ tracer.SpanContext, err error) {
 		// try to associate a parent object
 		parent := aggregator.Linkers.Lookup(ctx, object)
 		if parent == nil {
@@ -402,7 +400,7 @@ func (aggregator *aggregator) ensureChildrenSpan(
 	object util.ObjectRef,
 	eventTime time.Time,
 ) (tracer.SpanContext, error) {
-	return aggregator.getOrCreateSpan(ctx, object, "children", eventTime, func() (tracer.SpanContext, error) {
+	return aggregator.getOrCreateSpan(ctx, object, zconstants.NestLevelChildren, eventTime, func() (tracer.SpanContext, error) {
 		return aggregator.ensureObjectSpan(ctx, object, eventTime)
 	})
 }
@@ -425,7 +423,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 
 	logger := aggregator.Logger.
 		WithField("step", "getOrCreateSpan").
-		WithField("object", object).
+		WithFields(object.AsFields("object")).
 		WithField("field", field)
 
 	var reserveUid spancache.Uid
@@ -497,7 +495,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 
 	retryCountMetric := lazySpanRetryCountMetric(*lazySpanMetric)
 	defer func() {
-		aggregator.LazySpanRetryCountMetric.With(&retryCountMetric).Histogram(retries)
+		aggregator.LazySpanRetryCountMetric.With(&retryCountMetric).Summary(float64(retries))
 	}() // take the value of lazySpanMetric later
 
 	logger = logger.
@@ -548,7 +546,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 func (aggregator *aggregator) createSpan(
 	ctx context.Context,
 	object util.ObjectRef,
-	field string,
+	nestLevel string,
 	eventTime time.Time,
 	parent tracer.SpanContext,
 	followsFrom tracer.SpanContext,
@@ -556,8 +554,8 @@ func (aggregator *aggregator) createSpan(
 	remainderSeconds := eventTime.Unix() % int64(aggregator.options.spanTtl.Seconds())
 	startTime := eventTime.Add(-time.Duration(remainderSeconds) * time.Second)
 	span := tracer.Span{
-		Type:       field,
-		Name:       fmt.Sprintf("%s/%s %s", object.Resource, object.Name, field),
+		Type:       nestLevel,
+		Name:       fmt.Sprintf("%s/%s %s", object.Resource, object.Name, nestLevel),
 		StartTime:  startTime,
 		FinishTime: startTime.Add(aggregator.options.spanTtl),
 		Parent:     parent,
@@ -569,8 +567,8 @@ func (aggregator *aggregator) createSpan(
 			"group":                object.Group,
 			"version":              object.Version,
 			"resource":             object.Resource,
-			zconstants.NestLevel:   field,
-			zconstants.TraceSource: "object",
+			zconstants.NestLevel:   nestLevel,
+			zconstants.TraceSource: zconstants.TraceSourceObject,
 			"timeStamp":            startTime.Format(time.RFC3339),
 		},
 	}
@@ -578,7 +576,7 @@ func (aggregator *aggregator) createSpan(
 		span.Tags[tagKey] = tagValue
 	}
 
-	if field == "object" {
+	if nestLevel == zconstants.NestLevelObject {
 		aggregator.ObjectSpanDecorator.Decorate(ctx, object, span.Type, span.Tags)
 	}
 
@@ -587,7 +585,11 @@ func (aggregator *aggregator) createSpan(
 		return nil, metrics.LabelError(fmt.Errorf("cannot create span: %w", err), "CreateSpan")
 	}
 
-	aggregator.Logger.WithField("object", object).WithField("field", field).WithField("parent", parent).Debug("CreateSpan")
+	aggregator.Logger.
+		WithFields(object.AsFields("object")).
+		WithField("field", nestLevel).
+		WithField("parent", parent).
+		Debug("CreateSpan")
 
 	return spanContext, nil
 }
