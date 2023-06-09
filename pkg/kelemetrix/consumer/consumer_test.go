@@ -181,6 +181,8 @@ func doTest(
 	tagFilters []config.TagFilter,
 	quantityFilters []config.QuantityFilter,
 ) *metrics.Mock {
+	t.Helper()
+
 	logger := logrus.New()
 	logger.SetLevel(logrus.DebugLevel)
 
