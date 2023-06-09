@@ -1,0 +1,62 @@
+[[metrics]]
+name = "baseline"
+quantifier = "mq_latency"
+tags = ["cluster"]
+
+
+[[metrics]]
+name = "errors_by_user"
+quantifier = "request_count"
+tags = ["username", "cluster", "group", "resource", "verb", "code", "errorReason"]
+    [[metrics.tagFilters]]
+    tag = "code"
+    oneOf = ["[45].."]
+    isRegex = true
+
+[[metrics]]
+name = "cache_penetrations"
+quantifier = "request_count"
+tags = ["username", "cluster", "group", "resource", "verb", "hasSelector"]
+    [[metrics.tagFilters]]
+    tag = "code"
+    oneOf = ["200"]
+    [[metrics.tagFilters]]
+    tag = "resourceVersion"
+    oneOf = ["Empty"]
+    [[metrics.tagFilters]]
+    tag = "verb"
+    oneOf = ["list", "get"]
+
+[[metrics]]
+name = "list_timeout"
+quantifier = "request_latency_ratio"
+tags = ["username", "cluster", "group", "resource", "hasSelector"]
+    [[metrics.tagFilters]]
+    tag = "code"
+    oneOf = ["200"]
+    [[metrics.tagFilters]]
+    tag = "verb"
+    oneOf = ["list"]
+    [[metrics.quantityFilters]]
+    quantity = "request_latency_ratio"
+    operator = "<"
+    threshold = 1.0
+    # E.g. if timeout is 60s, a list timeout would take >60s, so ratio is <1
+
+[[metrics]]
+name = "watch_error"
+quantifier = "request_latency_ratio"
+tags = ["username", "cluster", "group", "resource"]
+    [[metrics.tagFilters]]
+    tag = "code"
+    oneOf = ["200"]
+    [[metrics.tagFilters]]
+    tag = "verb"
+    oneOf = ["watch"]
+    [[metrics.quantityFilters]]
+    quantity = "request_latency_ratio"
+    operator = ">"
+    threshold = 100.0
+    # client-go default watch timeout is [300s, 600s]: https://github.com/kubernetes/client-go/blob/v0.27.1/tools/cache/reflector.go#L155
+    # if a watch request is rejected, it should terminate in less than one second.
+

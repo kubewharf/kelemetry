@@ -20,6 +20,7 @@ import (
 	"hash/fnv"
 	"math/rand"
 	"sync/atomic"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
@@ -32,30 +33,30 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideMuxImpl("mq/local", manager.Ptr(&localQueue{
+	manager.Global.ProvideMuxImpl("mq/local", manager.Ptr(&LocalQueue{
 		consumers: map[mq.ConsumerGroup]map[mq.PartitionId]*localConsumer{},
 	}), mq.Queue.CreateProducer)
 }
 
-type localOptions struct {
-	partitionByObject bool
+type Options struct {
+	PartitionByObject bool
 }
 
-func (options *localOptions) Setup(fs *pflag.FlagSet) {
+func (options *Options) Setup(fs *pflag.FlagSet) {
 	fs.BoolVar(
-		&options.partitionByObject,
+		&options.PartitionByObject,
 		"mq-local-partition-by-object",
 		false,
 		"Whether to partition events of the same object to the same worker",
 	)
 }
 
-func (options *localOptions) EnableFlag() *bool { return nil }
+func (options *Options) EnableFlag() *bool { return nil }
 
-type localQueue struct {
+type LocalQueue struct {
 	manager.MuxImplBase
 
-	options localOptions
+	options Options
 	Logger  logrus.FieldLogger
 	Metrics metrics.Client
 
@@ -71,15 +72,15 @@ type lagMetric struct {
 
 func (*lagMetric) MetricName() string { return "audit_mq_local_lag" }
 
-func (_ *localQueue) MuxImplName() (name string, isDefault bool) { return "local", true }
+func (_ *LocalQueue) MuxImplName() (name string, isDefault bool) { return "local", true }
 
-func (q *localQueue) Options() manager.Options { return &q.options }
+func (q *LocalQueue) Options() manager.Options { return &q.options }
 
-func (q *localQueue) Init() error {
+func (q *LocalQueue) Init() error {
 	return nil
 }
 
-func (q *localQueue) Start(ctx context.Context) error {
+func (q *LocalQueue) Start(ctx context.Context) error {
 	numPartitions := -1
 	for group, consumers := range q.consumers {
 		if numPartitions != -1 && numPartitions != len(consumers) {
@@ -103,11 +104,11 @@ func (q *localQueue) Start(ctx context.Context) error {
 	return nil
 }
 
-func (q *localQueue) Close(ctx context.Context) error {
+func (q *LocalQueue) Close(ctx context.Context) error {
 	return nil
 }
 
-func (q *localQueue) CreateProducer() (_ mq.Producer, err error) {
+func (q *LocalQueue) CreateProducer() (_ mq.Producer, err error) {
 	if q.producer == nil {
 		q.producer = q.newLocalProducer()
 	}
@@ -117,11 +118,11 @@ func (q *localQueue) CreateProducer() (_ mq.Producer, err error) {
 
 type localProducer struct {
 	logger        logrus.FieldLogger
-	queue         *localQueue
+	queue         *LocalQueue
 	offsetCounter int64
 }
 
-func (q *localQueue) newLocalProducer() *localProducer {
+func (q *LocalQueue) newLocalProducer() *localProducer {
 	return &localProducer{
 		logger: q.Logger.WithField("submod", "producer"),
 		queue:  q,
@@ -130,7 +131,7 @@ func (q *localQueue) newLocalProducer() *localProducer {
 
 func (producer *localProducer) Send(partitionKey []byte, value []byte) error {
 	var partition int32
-	if producer.queue.options.partitionByObject && partitionKey != nil {
+	if producer.queue.options.PartitionByObject && partitionKey != nil {
 		keyHasher := fnv.New32()
 		_, _ = keyHasher.Write(partitionKey) // fnv.Write is infallible
 		hash := keyHasher.Sum32()
@@ -155,7 +156,7 @@ func (producer *localProducer) Send(partitionKey []byte, value []byte) error {
 	return nil
 }
 
-func (q *localQueue) CreateConsumer(group mq.ConsumerGroup, partition mq.PartitionId, handler mq.MessageHandler) (mq.Consumer, error) {
+func (q *LocalQueue) CreateConsumer(group mq.ConsumerGroup, partition mq.PartitionId, handler mq.MessageHandler) (mq.Consumer, error) {
 	if _, exists := q.consumers[group]; !exists {
 		q.consumers[group] = map[mq.PartitionId]*localConsumer{}
 	}
@@ -168,18 +169,19 @@ func (q *localQueue) CreateConsumer(group mq.ConsumerGroup, partition mq.Partiti
 	metrics.NewMonitor(q.Metrics, &lagMetric{
 		ConsumerGroup: group,
 		Partition:     partition,
-	}, func() int64 { return int64(consumer.uq.Length()) })
+	}, func() float64 { return float64(consumer.uq.Length()) })
 	q.consumers[group][partition] = consumer
 	return consumer, nil
 }
 
 type localConsumer struct {
-	logger  logrus.FieldLogger
-	handler mq.MessageHandler
-	uq      *channel.UnboundedQueue[localMessage]
+	logger      logrus.FieldLogger
+	handler     mq.MessageHandler
+	uq          *channel.UnboundedQueue[localMessage]
+	completions atomic.Int64
 }
 
-func (q *localQueue) newConsumer(group mq.ConsumerGroup, partition mq.PartitionId, handler mq.MessageHandler) *localConsumer {
+func (q *LocalQueue) newConsumer(group mq.ConsumerGroup, partition mq.PartitionId, handler mq.MessageHandler) *localConsumer {
 	return &localConsumer{
 		logger:  q.Logger.WithField("submod", "consumer").WithField("group", string(group)).WithField("partition", int32(partition)),
 		handler: handler,
@@ -199,11 +201,25 @@ func (consumer *localConsumer) start(ctx context.Context) {
 				}
 
 				consumer.handler(ctx, consumer.logger.WithField("offset", message.offset), message.key, message.value)
+
+				consumer.completions.Add(1)
 			case <-ctx.Done():
 				return
 			}
 		}
 	}()
+}
+
+// Busy-waits until all consumers have no lagging messages at some point.
+// Only used for testing.
+func (q *LocalQueue) WaitForCompletions(request int64) {
+	for _, partitions := range q.consumers {
+		for _, consumer := range partitions {
+			for consumer.completions.Load() < request {
+				time.Sleep(time.Millisecond)
+			}
+		}
+	}
 }
 
 type localMessage struct {
