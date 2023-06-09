@@ -76,7 +76,7 @@ func (ctrl *controller) Close(ctx context.Context) error {
 func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) *util.ObjectRef {
 	raw := object.Raw
 
-	logger := ctrl.Logger.WithField("object", object)
+	logger := ctrl.Logger.WithFields(object.AsFields("object"))
 
 	if raw == nil {
 		logger.Debug("Fetching dynamic object")
