@@ -109,7 +109,13 @@ func (api *api) handleGet(ctx *gin.Context) error {
 	name := ctx.Param("name")
 	rv := ctx.Param("rv")
 
+	cluster := api.Clients.TargetCluster().ClusterName()
+	if clusterQuery := ctx.Query("cluster"); clusterQuery != "" {
+		cluster = clusterQuery
+	}
+
 	raw, err := api.ObjectCache.Get(ctx, util.ObjectRef{
+		Cluster: cluster,
 		GroupVersionResource: schema.GroupVersionResource{
 			Group:    group,
 			Version:  version,
@@ -125,7 +131,7 @@ func (api *api) handleGet(ctx *gin.Context) error {
 		return ctx.AbortWithError(404, fmt.Errorf("object does not exist"))
 	}
 
-	object := util.ObjectRefFromUnstructured(raw, api.Clients.TargetCluster().ClusterName(), schema.GroupVersionResource{
+	object := util.ObjectRefFromUnstructured(raw, cluster, schema.GroupVersionResource{
 		Group:    group,
 		Version:  version,
 		Resource: resource,
@@ -156,6 +162,11 @@ func (api *api) handleScan(ctx *gin.Context) error {
 	namespace := ctx.Param("namespace")
 	name := ctx.Param("name")
 
+	cluster := api.Clients.TargetCluster().ClusterName()
+	if clusterQuery := ctx.Query("cluster"); clusterQuery != "" {
+		cluster = clusterQuery
+	}
+
 	limitString := ctx.Query("100")
 	limit := 100
 	if parsedLimit, err := strconv.Atoi(limitString); err == nil {
@@ -163,6 +174,7 @@ func (api *api) handleScan(ctx *gin.Context) error {
 	}
 
 	raw, err := api.ObjectCache.Get(ctx, util.ObjectRef{
+		Cluster: cluster,
 		GroupVersionResource: schema.GroupVersionResource{
 			Group:    group,
 			Version:  version,
@@ -178,7 +190,7 @@ func (api *api) handleScan(ctx *gin.Context) error {
 		return ctx.AbortWithError(404, fmt.Errorf("object does not exist"))
 	}
 
-	object := util.ObjectRefFromUnstructured(raw, api.Clients.TargetCluster().ClusterName(), schema.GroupVersionResource{
+	object := util.ObjectRefFromUnstructured(raw, cluster, schema.GroupVersionResource{
 		Group:    group,
 		Version:  version,
 		Resource: resource,
