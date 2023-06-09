@@ -143,7 +143,7 @@ func (d *ResourceTagger) DecorateTag(ctx context.Context, object util.ObjectRef,
 		return
 	}
 
-	logger := d.Logger.WithField("object", object).WithField("traceSource", traceSource)
+	logger := d.Logger.WithFields(object.AsFields("object")).WithField("traceSource", traceSource)
 	tagMetric := &tagEventMetric{TraceSource: traceSource, Result: "Unknown"}
 	defer d.TagEventMetric.DeferCount(time.Now(), tagMetric)
 
