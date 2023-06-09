@@ -30,3 +30,12 @@ jobs:
         with:
           args: --timeout=10m
           only-new-issues: true
+
+  typos:
+    name: Check typos
+    runs-on: [ubuntu-20.04]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: crate-ci/typos@master
+        with:
+          config: hack/typos.toml

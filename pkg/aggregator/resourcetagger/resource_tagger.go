@@ -96,7 +96,7 @@ func (d *ResourceTagger) registerTagMapping() error {
 	for _, resourceTagMapping := range d.options.resourceTagMappings {
 		slices := strings.Split(resourceTagMapping, "#")
 		if len(slices) != 2 {
-			return fmt.Errorf("invalide resource tag mapping %s", resourceTagMapping)
+			return fmt.Errorf("invalid resource tag mapping %s", resourceTagMapping)
 		}
 		resource := slices[0]
 		tagMappings := slices[1]
@@ -106,7 +106,7 @@ func (d *ResourceTagger) registerTagMapping() error {
 		for _, tagMapping := range strings.Split(tagMappings, ";") {
 			tagSlice := strings.Split(tagMapping, ":")
 			if len(tagSlice) != 2 {
-				return fmt.Errorf("invalide tag mapping %s (%s)", resourceTagMapping, tagMapping)
+				return fmt.Errorf("invalid tag mapping %s (%s)", resourceTagMapping, tagMapping)
 			}
 			tagKey := tagSlice[0]
 			tagJsonPath := tagSlice[1]
