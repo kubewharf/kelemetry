@@ -56,3 +56,12 @@ func (mux *mux) TargetName() string {
 func (mux *mux) Provide(clusterName string) *Cluster {
 	return mux.Impl().(Config).Provide(clusterName)
 }
+
+type MockConfig struct {
+	TargetClusterName string
+	Clusters          map[string]*Cluster
+}
+
+func (c *MockConfig) TargetName() string { return c.TargetClusterName }
+
+func (c *MockConfig) Provide(clusterName string) *Cluster { return c.Clusters[clusterName] }

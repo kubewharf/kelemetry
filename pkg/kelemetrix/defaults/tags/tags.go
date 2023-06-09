@@ -31,7 +31,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("kelemetrix-default-tags", manager.Ptr(&DefaultTagProvider{}))
+	manager.Global.Provide("kelemetrix-default-tags", manager.Ptr(&DefaultTagProviderComp{}))
 }
 
 type DefaultTag struct {
@@ -161,33 +161,37 @@ func (options *Options) Setup(fs *pflag.FlagSet) {}
 
 func (options *Options) EnableFlag() *bool { return pointer.Bool(true) }
 
-type DefaultTagProvider struct {
+type DefaultTagProviderComp struct {
 	options  Options
 	Logger   logrus.FieldLogger
 	Registry *kelemetrix.Registry
 }
 
-func (tp *DefaultTagProvider) Options() manager.Options { return &tp.options }
+func (tp *DefaultTagProviderComp) Options() manager.Options { return &tp.options }
 
-func (tp *DefaultTagProvider) Init() error {
-	for _, tag := range DefaultTags {
-		tp.Registry.AddTagProvider(&provider{tag: tag, logger: tp.Logger.WithField("tagProvider", tag.Name)})
-	}
+func (tp *DefaultTagProviderComp) Init() error {
+	Register(tp.Logger, tp.Registry.AddTagProvider)
 
 	return nil
 }
 
-func (tp *DefaultTagProvider) Start(ctx context.Context) error { return nil }
-func (tp *DefaultTagProvider) Close(ctx context.Context) error { return nil }
+func Register(logger logrus.FieldLogger, registry func(kelemetrix.TagProvider)) {
+	for _, tag := range DefaultTags {
+		registry(&Provider{tag: tag, logger: logger.WithField("tagProvider", tag.Name)})
+	}
+}
 
-type provider struct {
+func (tp *DefaultTagProviderComp) Start(ctx context.Context) error { return nil }
+func (tp *DefaultTagProviderComp) Close(ctx context.Context) error { return nil }
+
+type Provider struct {
 	tag    DefaultTag
 	logger logrus.FieldLogger
 }
 
-func (p *provider) TagNames() []string { return []string{p.tag.Name} }
+func (p *Provider) TagNames() []string { return []string{p.tag.Name} }
 
-func (p *provider) ProvideValues(message *audit.Message, slice []string) {
+func (p *Provider) ProvideValues(message *audit.Message, slice []string) {
 	if value, err := p.tag.Mapper(message); err != nil {
 		p.logger.WithError(err).Error("error generating tag")
 		if strings.HasPrefix(value, "kelemetrix::Err") {
