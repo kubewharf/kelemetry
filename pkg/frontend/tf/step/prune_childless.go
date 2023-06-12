@@ -17,9 +17,18 @@ package tfstep
 import (
 	"github.com/jaegertracing/jaeger/model"
 
+	tfscheme "github.com/kubewharf/kelemetry/pkg/frontend/tf/scheme"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
+	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
+
+func init() {
+	manager.Global.Provide(
+		"tf-step/prune-childless-visitor",
+		manager.Ptr(&tfscheme.RegisterStep[*tfscheme.VisitorStep[PruneChildlessVisitor]]{Kind: "PruneChildlessVisitor"}),
+	)
+}
 
 type PruneChildlessVisitor struct{}
 

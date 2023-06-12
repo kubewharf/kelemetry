@@ -17,12 +17,21 @@ package tfstep
 import (
 	"github.com/jaegertracing/jaeger/model"
 
+	tfscheme "github.com/kubewharf/kelemetry/pkg/frontend/tf/scheme"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
+	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
+func init() {
+	manager.Global.Provide(
+		"tf-step/object-tags-visitor",
+		manager.Ptr(&tfscheme.RegisterStep[*tfscheme.VisitorStep[ObjectTagsVisitor]]{Kind: "ObjectTagsVisitor"}),
+	)
+}
+
 type ObjectTagsVisitor struct {
-	ResourceTags []string
+	ResourceTags []string `json:"resourceTags"`
 }
 
 func (visitor ObjectTagsVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {

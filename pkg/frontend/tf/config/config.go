@@ -15,7 +15,9 @@
 package tfconfig
 
 import (
-	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
+	"strconv"
+
+	tfscheme "github.com/kubewharf/kelemetry/pkg/frontend/tf/scheme"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
 
@@ -35,6 +37,15 @@ type Provider interface {
 
 type Id uint32
 
+func (id *Id) UnmarshalText(text []byte) error {
+	i, err := strconv.ParseUint(string(text), 16, 32)
+	if err != nil {
+		return err
+	}
+	*id = Id(uint32(i))
+	return nil
+}
+
 type Config struct {
 	// The config ID, used to generate the cache ID.
 	Id Id
@@ -44,29 +55,7 @@ type Config struct {
 	// If false, displays the whole trace including parent and sibling spans.
 	UseSubtree bool
 	// The steps to transform the tree
-	Steps []Step
-}
-
-type Step interface {
-	Run(tree *tftree.SpanTree)
-}
-
-type VisitorStep struct {
-	Visitor tftree.TreeVisitor
-}
-
-func (step VisitorStep) Run(tree *tftree.SpanTree) {
-	tree.Visit(step.Visitor)
-}
-
-type BatchStep struct {
-	Steps []Step
-}
-
-func (bs BatchStep) Run(tree *tftree.SpanTree) {
-	for _, step := range bs.Steps {
-		step.Run(tree)
-	}
+	Steps []tfscheme.Step
 }
 
 type mux struct {

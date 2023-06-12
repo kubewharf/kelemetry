@@ -20,9 +20,22 @@ import (
 
 	"github.com/jaegertracing/jaeger/model"
 
+	tfscheme "github.com/kubewharf/kelemetry/pkg/frontend/tf/scheme"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
+	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
+
+func init() {
+	manager.Global.Provide(
+		"tf-step/replace-name-visitor",
+		manager.Ptr(&tfscheme.RegisterStep[*tfscheme.VisitorStep[ReplaceNameVisitor]]{Kind: "ReplaceNameVisitor"}),
+	)
+	manager.Global.Provide(
+		"tf-step/prune-tags-visitor",
+		manager.Ptr(&tfscheme.RegisterStep[*tfscheme.VisitorStep[PruneTagsVisitor]]{Kind: "PruneTagsVisitor"}),
+	)
+}
 
 type ReplaceNameVisitor struct{}
 

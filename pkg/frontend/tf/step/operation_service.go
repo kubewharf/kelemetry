@@ -20,21 +20,34 @@ import (
 
 	"github.com/jaegertracing/jaeger/model"
 
+	tfscheme "github.com/kubewharf/kelemetry/pkg/frontend/tf/scheme"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
+	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
-type ReplaceDest uint8
+func init() {
+	manager.Global.Provide(
+		"tf-step/service-operation-replace-visitor",
+		manager.Ptr(&tfscheme.RegisterStep[*tfscheme.VisitorStep[ServiceOperationReplaceVisitor]]{Kind: "ServiceOperationReplaceVisitor"}),
+	)
+	manager.Global.Provide(
+		"tf-step/cluster-name-visitor",
+		manager.Ptr(&tfscheme.RegisterStep[*tfscheme.VisitorStep[ClusterNameVisitor]]{Kind: "ClusterNameVisitor"}),
+	)
+}
+
+type ReplaceDest string
 
 const (
-	ReplaceDestService ReplaceDest = iota
-	ReplaceDestOperation
+	ReplaceDestService   ReplaceDest = "service"
+	ReplaceDestOperation ReplaceDest = "operation"
 )
 
 type ServiceOperationReplaceVisitor struct {
-	TraceSource string
-	Dest        ReplaceDest
-	Source      []string
+	TraceSource string      `json:"traceSource"`
+	Dest        ReplaceDest `json:"dest"`
+	Source      []string    `json:"source"`
 }
 
 func (visitor ServiceOperationReplaceVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {

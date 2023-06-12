@@ -182,7 +182,7 @@ func Ptr[CompTy any](obj CompTy) ComponentFactory {
 
 	objTy := reflect.TypeOf(obj)
 	if !(objTy.Kind() == reflect.Ptr && objTy.Elem().Kind() == reflect.Struct) {
-		panic("manager.Pointer() only accepts pointer-to-struct")
+		panic("manager.Ptr() only accepts pointer-to-struct")
 	}
 
 	params := []reflect.Type{}

@@ -17,15 +17,24 @@ package tfstep
 import (
 	"github.com/jaegertracing/jaeger/model"
 
+	tfscheme "github.com/kubewharf/kelemetry/pkg/frontend/tf/scheme"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
+	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
+
+func init() {
+	manager.Global.Provide(
+		"tf-step/extract-nesting-visitor",
+		manager.Ptr(&tfscheme.RegisterStep[*tfscheme.VisitorStep[ExtractNestingVisitor]]{Kind: "ExtractNestingVisitor"}),
+	)
+}
 
 // Deletes spans matching MatchesNestLevel and brings their children one level up.
 type ExtractNestingVisitor struct {
 	// NestLevels returns true if the span should be deleted.
 	// It is only called on spans with the tag zconstants.Nesting
-	MatchesNestLevel func(string) bool
+	MatchesNestLevel StringFilter `json:"matchesNestLevel"`
 }
 
 func (visitor ExtractNestingVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
@@ -35,7 +44,7 @@ func (visitor ExtractNestingVisitor) Enter(tree *tftree.SpanTree, span *model.Sp
 	}
 
 	if nestLevel, ok := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel); ok {
-		if visitor.MatchesNestLevel(nestLevel.AsString()) {
+		if visitor.MatchesNestLevel.Test(nestLevel.AsString()) {
 			childrenMap := tree.Children(span.SpanID)
 			childrenCopy := make([]model.SpanID, 0, len(childrenMap))
 			for childId := range childrenMap {

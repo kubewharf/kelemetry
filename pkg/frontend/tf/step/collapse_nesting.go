@@ -15,14 +15,24 @@
 package tfstep
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 
 	"github.com/jaegertracing/jaeger/model"
 
+	tfscheme "github.com/kubewharf/kelemetry/pkg/frontend/tf/scheme"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
+	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
+
+func init() {
+	manager.Global.Provide(
+		"tf-step/collapse-nesting-visitor",
+		manager.Ptr(&tfscheme.RegisterStep[*tfscheme.VisitorStep[CollapseNestingVisitor]]{Kind: "CollapseNestingVisitor"}),
+	)
+}
 
 // Deletes child spans with a traceSource and injects them as logs in the nesting span.
 //
@@ -30,49 +40,62 @@ import (
 //
 // Must be followed by PruneTagsVisitor in the last step.
 type CollapseNestingVisitor struct {
-	ShouldCollapse   func(traceSource string) bool
-	TagMappings      map[string][]TagMapping  // key = traceSource
-	AuditDiffClasses *AuditDiffClassification // key = prefix
-	LogClassifier    func(traceSource string, attrs model.KeyValues) (key string, value string, shouldDisplay bool)
-	LogTypeMapping   map[zconstants.LogType]string // key = log type, value = log field
+	ShouldCollapse   StringFilter                  `json:"shouldCollapse"`   // tests traceSource
+	TagMappings      map[string][]TagMapping       `json:"tagMappings"`      // key = traceSource
+	AuditDiffClasses AuditDiffClassification       `json:"auditDiffClasses"` // key = prefix
+	LogTypeMapping   map[zconstants.LogType]string `json:"logTypeMapping"`   // key = log type, value = log field
 }
 
 type TagMapping struct {
-	FromSpanTag string
-	ToLogField  string
+	FromSpanTag string `json:"fromSpanTag"`
+	ToLogField  string `json:"toLogField"`
 }
 
 type AuditDiffClassification struct {
-	SpecificFields map[string]AuditDiffClass // key = field in the form `metadata.resourceVersion`
-	DefaultClass   AuditDiffClass
+	SpecificFields AuditDiffFieldClasses `json:"fields"`
+	DefaultClass   AuditDiffClass        `json:"default"`
+}
+
+type AuditDiffFieldClasses struct {
+	fieldMap map[string]*AuditDiffClass // key = field in the form `metadata.resourceVersion`
+}
+
+func (c *AuditDiffFieldClasses) UnmarshalJSON(buf []byte) error {
+	type FieldClass struct {
+		Fields []string       `json:"fields"`
+		Class  AuditDiffClass `json:"class"`
+	}
+
+	var raw []FieldClass
+
+	if err := json.Unmarshal(buf, &raw); err != nil {
+		return err
+	}
+
+	specific := make(map[string]*AuditDiffClass)
+	for _, fc := range raw {
+		class := fc.Class
+		for _, field := range fc.Fields {
+			specific[field] = &class
+		}
+	}
+
+	c.fieldMap = specific
+	return nil
 }
 
 type AuditDiffClass struct {
-	ShouldDisplay bool
-	Name          string
-	Priority      int
+	ShouldDisplay bool   `json:"shouldDisplay"`
+	Name          string `json:"name"`
+	Priority      int    `json:"priority"`
 }
 
-func NewAuditDiffClassification(defaultClass AuditDiffClass) *AuditDiffClassification {
-	return &AuditDiffClassification{
-		SpecificFields: map[string]AuditDiffClass{},
-		DefaultClass:   defaultClass,
-	}
-}
-
-func (classes *AuditDiffClassification) AddClass(class AuditDiffClass, fields []string) *AuditDiffClassification {
-	for _, field := range fields {
-		classes.SpecificFields[field] = class
-	}
-	return classes
-}
-
-func (classes *AuditDiffClassification) Get(prefix string) AuditDiffClass {
-	if class, hasSpecific := classes.SpecificFields[prefix]; hasSpecific {
+func (classes *AuditDiffClassification) Get(prefix string) *AuditDiffClass {
+	if class, hasSpecific := classes.SpecificFields.fieldMap[prefix]; hasSpecific {
 		return class
 	}
 
-	return classes.DefaultClass
+	return &classes.DefaultClass
 }
 
 func (visitor CollapseNestingVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
@@ -99,7 +122,7 @@ func (visitor CollapseNestingVisitor) processChild(tree *tftree.SpanTree, span *
 		return
 	}
 	traceSource := traceSourceKv.VStr
-	if !visitor.ShouldCollapse(traceSource) {
+	if !visitor.ShouldCollapse.Test(traceSource) {
 		return
 	}
 

@@ -1,0 +1,140 @@
+configs:
+  - id: "00000000"
+    name: "tree"
+    steps:
+      - kind: Batch
+        batchName: initial
+      - kind: Batch
+        batchName: final
+  - id: "10000000"
+    name: "timeline"
+    steps:
+      - kind: Batch
+        batchName: initial
+      - kind: ExtractNestingVisitor
+        batchName:
+          oneOf: []
+          negate: true
+      - kind: Batch
+        batchName: final
+  - id: "20000000"
+    name: "tracing"
+    steps:
+      - kind: Batch
+        batchName: initial
+      - kind: ExtractNestingVisitor
+        matchesNestLevel:
+          oneOf: ["object"]
+          negate: true
+      - kind: Batch
+        batchName: collapse
+      - kind: CompactDurationVisitor
+      - kind: Batch
+        batchName: final
+  - id: "21000000"
+    name: "tracing (exclusive)"
+    useSubtree: true
+    steps:
+      - kind: Batch
+        batchName: initial
+      - kind: ExtractNestingVisitor
+        matchesNestLevel:
+          oneOf: ["object"]
+          negate: true
+      - kind: Batch
+        batchName: collapse
+      - kind: CompactDurationVisitor
+      - kind: Batch
+        batchName: final
+  - id: "30000000"
+    name: "grouped"
+    steps:
+      - kind: Batch
+        batchName: initial
+      - kind: ExtractNestingVisitor
+        matchesNestLevel:
+          oneOf: ["object"]
+          negate: true
+      - kind: Batch
+        batchName: collapse
+      - kind: GroupByTraceSourceVisitor
+        shouldBeGrouped:
+          oneOf: ["event"]
+          negate: true
+      - kind: CompactDurationVisitor
+      - kind: Batch
+        batchName: final
+  - id: "31000000"
+    name: "grouped (exclusive)"
+    steps:
+      - kind: Batch
+        batchName: initial
+      - kind: ExtractNestingVisitor
+        matchesNestLevel:
+          oneOf: ["object"]
+          negate: true
+      - kind: Batch
+        batchName: collapse
+      - kind: GroupByTraceSourceVisitor
+        shouldBeGrouped:
+          oneOf: ["event"]
+          negate: true
+      - kind: CompactDurationVisitor
+      - kind: Batch
+        batchName: final
+
+batches:
+  - name: initial
+    steps:
+      - kind: PruneChildlessVisitor
+      - kind: ReplaceNameVisitor
+      - kind: ObjectTagsVisitor
+        resourceTags: ["nodes"]
+      - kind: ServiceOperationReplaceVisitor
+        traceSource: "object"
+        dest: service
+        source: ["resource"]
+      - kind: ServiceOperationReplaceVisitor
+        traceSource: "object"
+        dest: operation
+        source: ["namespace", "name"]
+  - name: final
+    steps:
+      - kind: ClusterNameVisitor
+      - kind: PruneTagsVisitor
+  - name: collapse
+    steps:
+      - kind: CollapseNestingVisitor
+        shouldCollapse:
+          oneOf: []
+          negate: true
+        tagMappings:
+          "audit":
+            - fromSpanTag: "userAgent"
+              toLogField: "userAgent"
+            - fromSpanTag: "sourceIP"
+              toLogField: "sourceIP"
+          "event":
+            - fromSpanTag: "action"
+              toLogField: "action"
+            - fromSpanTag: "source"
+              toLogField: "source"
+        auditDiffClasses:
+          default:
+            shouldDisplay: true
+            name: "diff"
+            priority: 0
+          fields:
+            - class:
+                shouldDisplay: true
+                name: "verbose diff"
+                priority: 10
+              fields:
+                - "metadata.resourceVersion"
+                - "metadata.generation"
+        logTypeMapping:
+          event/message: "message"
+          audit/objectSnapshot: "snapshot"
+          realError: "error"
+          realVerbose: ""
+          kelemetryError: "_debug"

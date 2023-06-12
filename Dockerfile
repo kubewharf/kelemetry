@@ -14,4 +14,8 @@ RUN go build -v .
 FROM alpine
 COPY --from=build /src/kelemetry /usr/local/bin/kelemetry
 
+RUN mkdir -p /app/hack
+WORKDIR /app
+ADD hack/tfconfig.yaml hack/tfconfig.yaml
+
 ENTRYPOINT ["kelemetry"]
