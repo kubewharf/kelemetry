@@ -56,18 +56,25 @@ const (
 func init() {
 	manager.Global.Provide("diff-controller", manager.Ptr(&controller{
 		monitors: map[schema.GroupVersionResource]*monitor{},
-		taskPool: channel.NewUnboundedQueue[func()](16),
+		taskPool: channel.NewUnboundedQueue[workerTask](16),
 	}))
 }
+
+type (
+	workerTask = func() writerTask
+	writerTask = func(context.Context)
+)
 
 type ctrlOptions struct {
 	enable           bool
 	redact           string
 	deletionSnapshot bool
 
-	storeTimeout   time.Duration
-	workerCount    int
-	electorOptions multileader.Config
+	storeTimeout time.Duration
+	workerCount  int
+
+	watchElectorOptions multileader.Config
+	writeElectorOptions multileader.Config
 }
 
 func (options *ctrlOptions) Setup(fs *pflag.FlagSet) {
@@ -81,7 +88,8 @@ func (options *ctrlOptions) Setup(fs *pflag.FlagSet) {
 	fs.BoolVar(&options.deletionSnapshot, "diff-controller-deletion-snapshot", true, "take a snapshot of objects during deletion")
 	fs.DurationVar(&options.storeTimeout, "diff-controller-store-timeout", time.Second*10, "timeout for storing cache")
 	fs.IntVar(&options.workerCount, "diff-controller-worker-count", 8, "number of workers for all object types to compute diff")
-	options.electorOptions.SetupOptions(fs, "diff-controller", "diff controller", 3)
+	options.watchElectorOptions.SetupOptions(fs, "diff-controller", "diff controller", 2)
+	options.writeElectorOptions.SetupOptions(fs, "diff-writer", "diff controller cache writer", 1)
 }
 
 func (options *ctrlOptions) EnableFlag() *bool { return &options.enable }
@@ -101,10 +109,18 @@ type controller struct {
 	OnCreateMetric    *metrics.Metric[*onCreateMetric]
 	OnUpdateMetric    *metrics.Metric[*onUpdateMetric]
 	OnDeleteMetric    *metrics.Metric[*onDeleteMetric]
-	elector           *multileader.Elector
+	watchElector      *multileader.Elector
 	monitors          map[schema.GroupVersionResource]*monitor
 	monitorsLock      sync.RWMutex
-	taskPool          *channel.UnboundedQueue[func()]
+
+	// A queue of tasks to execute in each worker.
+	// Returns a function that must be executed once writer lease is acquired.
+	taskPool *channel.UnboundedQueue[workerTask]
+
+	// Indicates how many active leader terms we acquired.
+	// Might be greater than 1 if we lost and immediately re-acquired leader lease.
+	isWriteLeader       atomic.Int32
+	setWriteLeaderChans []chan<- bool
 }
 
 var _ manager.Component = &controller{}
@@ -151,16 +167,16 @@ func (ctrl *controller) Init() (err error) {
 
 	ctrl.discoveryResyncCh = cdc.AddResyncHandler()
 
-	ctrl.elector, err = multileader.NewElector(
+	ctrl.watchElector, err = multileader.NewElector(
 		"kelemetry-diff-controller",
-		ctrl.Logger.WithField("submod", "leader-elector"),
+		ctrl.Logger.WithField("submod", "watch-leader-elector"),
 		ctrl.Clock,
-		&ctrl.options.electorOptions,
+		&ctrl.options.watchElectorOptions,
 		ctrl.Clients.TargetCluster(),
 		ctrl.Metrics,
 	)
 	if err != nil {
-		return fmt.Errorf("cannot create leader elector: %w", err)
+		return fmt.Errorf("cannot create watch leader elector: %w", err)
 	}
 
 	channel.InitMetricLoop(ctrl.taskPool, ctrl.Metrics, &taskPoolMetric{})
@@ -169,18 +185,38 @@ func (ctrl *controller) Init() (err error) {
 }
 
 func (ctrl *controller) Start(ctx context.Context) error {
-	go ctrl.elector.Run(ctx, ctrl.resyncMonitorsLoop)
-	go ctrl.elector.RunLeaderMetricLoop(ctx)
+	setWriteLeaderChans := make([]chan<- bool, ctrl.options.workerCount)
 
 	for i := 0; i < ctrl.options.workerCount; i++ {
-		go runWorker(ctx, ctrl.Logger.WithField("worker", i), ctrl.taskPool)
+		ch := make(chan bool, 1)
+		setWriteLeaderChans[i] = ch
+		go runWorker(ctx, ctrl.Logger.WithField("worker", i), ctrl.taskPool, ctrl.options.watchElectorOptions.LeaseDuration, ch)
 	}
+
+	ctrl.setWriteLeaderChans = setWriteLeaderChans
+
+	go ctrl.watchElector.Run(ctx, ctrl.resyncMonitorsLoop)
+	go ctrl.watchElector.RunLeaderMetricLoop(ctx)
 
 	return nil
 }
 
-func runWorker(ctx context.Context, logger logrus.FieldLogger, taskPool *channel.UnboundedQueue[func()]) {
+func runWorker(
+	ctx context.Context,
+	logger logrus.FieldLogger,
+	taskPool *channel.UnboundedQueue[workerTask],
+	retentionPeriod time.Duration,
+	setWriteLeader <-chan bool,
+) {
 	defer shutdown.RecoverPanic(logger)
+
+	type timedFunc struct {
+		expiry time.Time
+		fn     writerTask
+	}
+
+	isWriteLeader := false
+	writeQueue := channel.NewDeque[timedFunc](16)
 
 	for {
 		select {
@@ -191,17 +227,83 @@ func runWorker(ctx context.Context, logger logrus.FieldLogger, taskPool *channel
 				return
 			}
 
-			task()
+			writer := task()
+
+			if writer != nil {
+				if isWriteLeader {
+					writer(ctx)
+				} else {
+					if first, hasFirst := writeQueue.LockedPeekFront(); hasFirst {
+						if time.Now().After(first.expiry) { // expired
+							writeQueue.LockedPopFront()
+						}
+					}
+					writeQueue.LockedPushBack(timedFunc{
+						expiry: time.Now().Add(retentionPeriod),
+						fn:     writer,
+					})
+				}
+			}
+		case newValue := <-setWriteLeader:
+			isWriteLeader = newValue
+			oldWriteQueue := writeQueue
+			writeQueue = channel.NewDeque[timedFunc](16)
+
+			for _, slice := range oldWriteQueue.LockedGetAll() {
+				for _, fn := range slice {
+					fn.fn(ctx)
+				}
+			}
 		}
 	}
 }
 
 func (ctrl *controller) Close(ctx context.Context) error { return nil }
 
+func (ctrl *controller) broadcastWriteLeader(b bool) {
+	for _, ch := range ctrl.setWriteLeaderChans {
+		go func(ch chan<- bool, b bool) {
+			ch <- b
+		}(ch, b)
+	}
+}
+
 func (ctrl *controller) resyncMonitorsLoop(ctx context.Context) {
 	logger := ctrl.Logger.WithField("submod", "resync")
 
 	defer shutdown.RecoverPanic(logger)
+
+	writeElector, err := multileader.NewElector(
+		"kelemetry-diff-cache-writer",
+		ctrl.Logger.WithField("submod", "write-leader-elector"),
+		ctrl.Clock,
+		&ctrl.options.writeElectorOptions,
+		ctrl.Clients.TargetCluster(),
+		ctrl.Metrics,
+	)
+	if err != nil {
+		logger.WithError(err).Error("cannot create write leader elector")
+		return
+	}
+
+	go writeElector.Run(ctx, func(ctx context.Context) {
+		count := ctrl.isWriteLeader.Add(1)
+		if count == 1 {
+			ctrl.broadcastWriteLeader(true)
+		}
+
+		defer func() {
+			count := ctrl.isWriteLeader.Add(-1)
+			if count == 0 {
+				ctrl.broadcastWriteLeader(false)
+			}
+		}()
+
+		<-ctx.Done()
+		ctrl.Clock.Sleep(ctrl.options.watchElectorOptions.LeaseDuration)
+	})
+
+	go writeElector.RunLeaderMetricLoop(ctx)
 
 	for {
 		stopped := false
@@ -382,14 +484,14 @@ func (ctrl *controller) startMonitor(gvr schema.GroupVersionResource, apiResourc
 	}
 	store.OnAdd = func(newObj *unstructured.Unstructured) {
 		if hasSynced.Load() {
-			ctrl.taskPool.Send(func() { monitor.onNeedSnapshot(ctx, newObj, diffcache.SnapshotNameCreation) })
+			ctrl.taskPool.Send(func() writerTask { return monitor.onNeedSnapshot(ctx, newObj, diffcache.SnapshotNameCreation) })
 		}
 	}
 	store.OnUpdate = func(oldObj, newObj *unstructured.Unstructured) {
-		ctrl.taskPool.Send(func() { monitor.onUpdate(ctx, oldObj, newObj) })
+		ctrl.taskPool.Send(func() writerTask { return monitor.onUpdate(ctx, oldObj, newObj) })
 	}
 	store.OnDelete = func(oldObj *unstructured.Unstructured) {
-		ctrl.taskPool.Send(func() { monitor.onNeedSnapshot(ctx, oldObj, diffcache.SnapshotNameDeletion) })
+		ctrl.taskPool.Send(func() writerTask { return monitor.onNeedSnapshot(ctx, oldObj, diffcache.SnapshotNameDeletion) })
 	}
 
 	nsableReflectorClient := ctrl.Clients.TargetCluster().DynamicClient().Resource(gvr)
@@ -452,12 +554,12 @@ func (monitor *monitor) close() {
 func (monitor *monitor) onUpdate(
 	ctx context.Context,
 	oldObj, newObj *unstructured.Unstructured,
-) {
+) writerTask {
 	defer monitor.onUpdateMetric.DeferCount(monitor.ctrl.Clock.Now())
 
 	if oldObj.GetResourceVersion() == newObj.GetResourceVersion() {
 		// no change
-		return
+		return nil
 	}
 
 	if oldDelTs, newDelTs := oldObj.GetDeletionTimestamp(), newObj.GetDeletionTimestamp(); oldDelTs.IsZero() && !newDelTs.IsZero() {
@@ -483,20 +585,23 @@ func (monitor *monitor) onUpdate(
 		patch.DiffList = diffcmp.Compare(oldObj.Object, newObj.Object)
 	}
 
-	ctx, cancelFunc := context.WithTimeout(ctx, monitor.ctrl.options.storeTimeout)
-	defer cancelFunc()
-	monitor.ctrl.Cache.Store(
-		ctx,
-		util.ObjectRefFromUnstructured(newObj, monitor.ctrl.Clients.TargetCluster().ClusterName(), monitor.gvr),
-		patch,
-	)
+	return func(ctx context.Context) {
+		ctx, cancelFunc := context.WithTimeout(ctx, monitor.ctrl.options.storeTimeout)
+		defer cancelFunc()
+
+		monitor.ctrl.Cache.Store(
+			ctx,
+			util.ObjectRefFromUnstructured(newObj, monitor.ctrl.Clients.TargetCluster().ClusterName(), monitor.gvr),
+			patch,
+		)
+	}
 }
 
 func (monitor *monitor) onNeedSnapshot(
 	ctx context.Context,
 	obj *unstructured.Unstructured,
 	snapshotName string,
-) {
+) writerTask {
 	defer monitor.onDeleteMetric.DeferCount(monitor.ctrl.Clock.Now())
 
 	redacted := monitor.testRedacted(obj)
@@ -513,16 +618,18 @@ func (monitor *monitor) onNeedSnapshot(
 			Error("cannot re-marshal unstructured object")
 	}
 
-	monitor.ctrl.Cache.StoreSnapshot(
-		ctx,
-		util.ObjectRefFromUnstructured(obj, monitor.ctrl.Clients.TargetCluster().ClusterName(), monitor.gvr),
-		snapshotName,
-		&diffcache.Snapshot{
-			ResourceVersion: obj.GetResourceVersion(),
-			Redacted:        redacted, // we still persist redacted objects for ownerReferences lookup
-			Value:           objRaw,
-		},
-	)
+	return func(ctx context.Context) {
+		monitor.ctrl.Cache.StoreSnapshot(
+			ctx,
+			util.ObjectRefFromUnstructured(obj, monitor.ctrl.Clients.TargetCluster().ClusterName(), monitor.gvr),
+			snapshotName,
+			&diffcache.Snapshot{
+				ResourceVersion: obj.GetResourceVersion(),
+				Redacted:        redacted, // we still persist redacted objects for ownerReferences lookup
+				Value:           objRaw,
+			},
+		)
+	}
 }
 
 func (monitor *monitor) testRedacted(obj *unstructured.Unstructured) bool {
