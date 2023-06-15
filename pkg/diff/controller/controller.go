@@ -606,9 +606,6 @@ func (monitor *monitor) onNeedSnapshot(
 
 	redacted := monitor.testRedacted(obj)
 
-	ctx, cancelFunc := context.WithTimeout(ctx, monitor.ctrl.options.storeTimeout)
-	defer cancelFunc()
-
 	objRaw, err := json.Marshal(obj)
 	if err != nil {
 		monitor.logger.WithError(err).
@@ -619,6 +616,9 @@ func (monitor *monitor) onNeedSnapshot(
 	}
 
 	return func(ctx context.Context) {
+		ctx, cancelFunc := context.WithTimeout(ctx, monitor.ctrl.options.storeTimeout)
+		defer cancelFunc()
+
 		monitor.ctrl.Cache.StoreSnapshot(
 			ctx,
 			util.ObjectRefFromUnstructured(obj, monitor.ctrl.Clients.TargetCluster().ClusterName(), monitor.gvr),
