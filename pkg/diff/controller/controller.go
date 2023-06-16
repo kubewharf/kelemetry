@@ -608,9 +608,6 @@ func (monitor *monitor) onNeedSnapshot(
 
 	redacted := monitor.testRedacted(obj)
 
-	ctx, cancelFunc := context.WithTimeout(ctx, monitor.ctrl.options.storeTimeout)
-	defer cancelFunc()
-
 	objRaw, err := json.Marshal(obj)
 	if err != nil {
 		monitor.logger.WithError(err).
