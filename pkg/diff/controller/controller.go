@@ -585,13 +585,15 @@ func (monitor *monitor) onUpdate(
 		patch.DiffList = diffcmp.Compare(oldObj.Object, newObj.Object)
 	}
 
+	objectRef := util.ObjectRefFromUnstructured(newObj, monitor.ctrl.Clients.TargetCluster().ClusterName(), monitor.gvr).Clone()
+
 	return func(ctx context.Context) {
 		ctx, cancelFunc := context.WithTimeout(ctx, monitor.ctrl.options.storeTimeout)
 		defer cancelFunc()
 
 		monitor.ctrl.Cache.Store(
 			ctx,
-			util.ObjectRefFromUnstructured(newObj, monitor.ctrl.Clients.TargetCluster().ClusterName(), monitor.gvr),
+			objectRef,
 			patch,
 		)
 	}
@@ -615,16 +617,19 @@ func (monitor *monitor) onNeedSnapshot(
 			Error("cannot re-marshal unstructured object")
 	}
 
+	objectRef := util.ObjectRefFromUnstructured(obj, monitor.ctrl.Clients.TargetCluster().ClusterName(), monitor.gvr).Clone()
+	snapshotRv := obj.GetResourceVersion()
+
 	return func(ctx context.Context) {
 		ctx, cancelFunc := context.WithTimeout(ctx, monitor.ctrl.options.storeTimeout)
 		defer cancelFunc()
 
 		monitor.ctrl.Cache.StoreSnapshot(
 			ctx,
-			util.ObjectRefFromUnstructured(obj, monitor.ctrl.Clients.TargetCluster().ClusterName(), monitor.gvr),
+			objectRef,
 			snapshotName,
 			&diffcache.Snapshot{
-				ResourceVersion: obj.GetResourceVersion(),
+				ResourceVersion: snapshotRv,
 				Redacted:        redacted, // we still persist redacted objects for ownerReferences lookup
 				Value:           objRaw,
 			},
