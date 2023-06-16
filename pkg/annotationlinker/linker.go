@@ -31,7 +31,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("annotation-linker", manager.Ptr(&controller{}))
+	manager.Global.ProvideListImpl("annotation-linker", manager.Ptr(&controller{}), &manager.List[linker.Linker]{})
 }
 
 type options struct {
@@ -47,7 +47,6 @@ func (options *options) EnableFlag() *bool { return &options.enable }
 type controller struct {
 	options        options
 	Logger         logrus.FieldLogger
-	Linkers        linker.LinkerList
 	Clients        k8s.Clients
 	DiscoveryCache discovery.DiscoveryCache
 	ObjectCache    *objectcache.ObjectCache
@@ -55,23 +54,10 @@ type controller struct {
 
 var _ manager.Component = &controller{}
 
-func (ctrl *controller) Options() manager.Options {
-	return &ctrl.options
-}
-
-func (ctrl *controller) Init() error {
-	ctrl.Linkers.AddLinker(ctrl)
-
-	return nil
-}
-
-func (ctrl *controller) Start(ctx context.Context) error {
-	return nil
-}
-
-func (ctrl *controller) Close(ctx context.Context) error {
-	return nil
-}
+func (ctrl *controller) Options() manager.Options        { return &ctrl.options }
+func (ctrl *controller) Init() error                     { return nil }
+func (ctrl *controller) Start(ctx context.Context) error { return nil }
+func (ctrl *controller) Close(ctx context.Context) error { return nil }
 
 func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) *util.ObjectRef {
 	raw := object.Raw

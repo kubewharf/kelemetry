@@ -18,36 +18,8 @@ import (
 	"context"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator/aggregatorevent"
-	"github.com/kubewharf/kelemetry/pkg/manager"
 )
-
-func init() {
-	manager.Global.Provide("audit-decorator-list", manager.Ptr[DecoratorList](&decoratorList{}))
-}
 
 type Decorator interface {
 	Decorate(ctx context.Context, message *Message, event *aggregatorevent.Event)
-}
-
-type DecoratorList interface {
-	manager.Component
-
-	AddDecorator(decorator Decorator)
-
-	Decorate(ctx context.Context, message *Message, event *aggregatorevent.Event)
-}
-
-type decoratorList struct {
-	manager.BaseComponent
-	decorators []Decorator
-}
-
-func (list *decoratorList) AddDecorator(decorator Decorator) {
-	list.decorators = append(list.decorators, decorator)
-}
-
-func (list *decoratorList) Decorate(ctx context.Context, message *Message, event *aggregatorevent.Event) {
-	for _, decorator := range list.decorators {
-		decorator.Decorate(ctx, message, event)
-	}
 }

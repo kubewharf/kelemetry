@@ -42,10 +42,8 @@ There are a few extension points for the Kelemetry builtin packages:
 
 - The blue components in the dependency graph above.
   They are "mux components" that can be substituted with new (esp. vendor-specific) implementations of the interface.
-- Associate related objects to group their traces together.
-  Use the `LinkerList` API.
-- Add extra information to audit spans.
-  Use the `DecoratorList` API.
+- The orange components in the dependency graph above.
+  They are "list components" that can be extended with new (esp. vendor-specific) implementations of the interface.
 - Add new spans to objects.
   Use the `Aggregator` API.
 
@@ -126,6 +124,24 @@ and additionally embeds `manager.MuxImplBase` and provides the method `MuxImplNa
 Only one component in the whole project can return `true` in the `isDefault` return value of `MuxImplName`.
 It must return `nil` for `Options.DisableFlag`
 and would be disabled if it is not selected in the options.
+
+#### List components
+
+A list component is an interface that may have multiple implementations.
+Unlike mux components which only select one implementation,
+all enabled implementations of a list component are tracked in a `*manager.List[Interface]` object.
+
+The implementations are registered with the `ProvideListImpl` method:
+
+```go
+func init() {
+  manager.Global.ProvideListImpl("implementation-name", manager.Ptr(&implType{}), &manager.List[Interface]{})
+}
+```
+
+The list of implementations can be retrieved by requesting a dependency field `*manager.List[Interface]`.
+List implementations are always initialized before `*manager.List[Interface]` users.
+The list is only populated before the `Init` stage.
 
 ### Audit
 

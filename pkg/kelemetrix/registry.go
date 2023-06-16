@@ -38,11 +38,6 @@ func NewRegistry() *Registry {
 	}
 }
 
-type IndexedTagProvider struct {
-	Provider                   TagProvider
-	StartTagIndex, EndTagIndex int
-}
-
 type TagProvider interface {
 	TagNames() []string
 

@@ -27,7 +27,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("resource-object-tag", manager.Ptr(&ObjectSpanTag{}))
+	manager.Global.ProvideListImpl("resource-object-tag", manager.Ptr(&ObjectSpanTag{}), &manager.List[objectspandecorator.Decorator]{})
 }
 
 type options struct {
@@ -43,25 +43,15 @@ func (options *options) EnableFlag() *bool {
 }
 
 type ObjectSpanTag struct {
-	UnionEventDecorator objectspandecorator.UnionEventDecorator
-	ResourceTagger      *resourcetagger.ResourceTagger
-	options             options
+	ResourceTagger *resourcetagger.ResourceTagger
+	options        options
 }
 
 var _ manager.Component = &ObjectSpanTag{}
 
-func (d *ObjectSpanTag) Options() manager.Options {
-	return &d.options
-}
-
-func (d *ObjectSpanTag) Init() error {
-	d.UnionEventDecorator.AddDecorator(d)
-
-	return nil
-}
-
+func (d *ObjectSpanTag) Options() manager.Options        { return &d.options }
+func (d *ObjectSpanTag) Init() error                     { return nil }
 func (d *ObjectSpanTag) Start(ctx context.Context) error { return nil }
-
 func (d *ObjectSpanTag) Close(ctx context.Context) error { return nil }
 
 func (d *ObjectSpanTag) Decorate(ctx context.Context, object util.ObjectRef, traceSource string, tags map[string]string) {
