@@ -120,14 +120,14 @@ type SubObjectId struct {
 type aggregator struct {
 	options   options
 	Clock     clock.Clock
-	Linkers   linker.LinkerList
+	Linkers   *manager.List[linker.Linker]
 	Logger    logrus.FieldLogger
 	SpanCache spancache.Cache
 	Tracer    tracer.Tracer
 	Metrics   metrics.Client
 
-	EventDecorator      eventdecorator.UnionEventDecorator
-	ObjectSpanDecorator objectspandecorator.UnionEventDecorator
+	EventDecorators      *manager.List[eventdecorator.Decorator]
+	ObjectSpanDecorators *manager.List[objectspandecorator.Decorator]
 
 	SendMetric               *metrics.Metric[*sendMetric]
 	SinceEventMetric         *metrics.Metric[*sinceEventMetric]
@@ -306,7 +306,9 @@ func (aggregator *aggregator) Send(
 		}
 	}
 
-	aggregator.EventDecorator.Decorate(ctx, object, event)
+	for _, decorator := range aggregator.EventDecorators.Impls {
+		decorator.Decorate(ctx, object, event)
+	}
 
 	span := tracer.Span{
 		Type:       event.TraceSource,
@@ -385,7 +387,15 @@ func (aggregator *aggregator) ensureObjectSpan(
 ) (tracer.SpanContext, error) {
 	return aggregator.getOrCreateSpan(ctx, object, zconstants.NestLevelObject, eventTime, func() (_ tracer.SpanContext, err error) {
 		// try to associate a parent object
-		parent := aggregator.Linkers.Lookup(ctx, object)
+		var parent *util.ObjectRef
+
+		for _, linker := range aggregator.Linkers.Impls {
+			parent = linker.Lookup(ctx, object)
+			if parent != nil {
+				break
+			}
+		}
+
 		if parent == nil {
 			return nil, nil
 		}
@@ -577,7 +587,9 @@ func (aggregator *aggregator) createSpan(
 	}
 
 	if nestLevel == zconstants.NestLevelObject {
-		aggregator.ObjectSpanDecorator.Decorate(ctx, object, span.Type, span.Tags)
+		for _, decorator := range aggregator.ObjectSpanDecorators.Impls {
+			decorator.Decorate(ctx, object, span.Type, span.Tags)
+		}
 	}
 
 	spanContext, err := aggregator.Tracer.CreateSpan(span)

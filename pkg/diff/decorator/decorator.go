@@ -38,7 +38,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("diff-decorator", manager.Ptr(&decorator{}))
+	manager.Global.ProvideListImpl("diff-decorator", manager.Ptr(&decorator{}), &manager.List[audit.Decorator]{})
 }
 
 type decoratorOptions struct {
@@ -82,7 +82,6 @@ type decorator struct {
 	Logger  logrus.FieldLogger
 	Clock   clock.Clock
 	Cache   diffcache.Cache
-	List    audit.DecoratorList
 
 	DiffMetric            *metrics.Metric[*diffMetric]
 	InformerLatencyMetric *metrics.Metric[*informerLatencyMetric]
@@ -119,22 +118,10 @@ type retryCountMetric struct {
 
 func (*retryCountMetric) MetricName() string { return "diff_decorator_retry_count" }
 
-func (decorator *decorator) Options() manager.Options {
-	return &decorator.options
-}
-
-func (decorator *decorator) Init() error {
-	decorator.List.AddDecorator(decorator)
-	return nil
-}
-
-func (decorator *decorator) Start(ctx context.Context) error {
-	return nil
-}
-
-func (decorator *decorator) Close(ctx context.Context) error {
-	return nil
-}
+func (decorator *decorator) Options() manager.Options        { return &decorator.options }
+func (decorator *decorator) Init() error                     { return nil }
+func (decorator *decorator) Start(ctx context.Context) error { return nil }
+func (decorator *decorator) Close(ctx context.Context) error { return nil }
 
 func (decorator *decorator) Decorate(ctx context.Context, message *audit.Message, event *aggregatorevent.Event) {
 	logger := decorator.Logger.

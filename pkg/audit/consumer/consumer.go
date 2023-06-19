@@ -85,7 +85,7 @@ type receiver struct {
 	Clock          clock.Clock
 	Aggregator     aggregator.Aggregator
 	Mq             mq.Queue
-	DecoratorList  audit.DecoratorList
+	DecoratorList  *manager.List[audit.Decorator]
 	Filter         filter.Filter
 	Metrics        metrics.Client
 	DiscoveryCache discovery.DiscoveryCache
@@ -281,7 +281,9 @@ func (recv *receiver) handleItem(
 		}
 	}
 
-	recv.DecoratorList.Decorate(ctx, message, event)
+	for _, decorator := range recv.DecoratorList.Impls {
+		decorator.Decorate(ctx, message, event)
+	}
 
 	recv.E2eLatencyMetric.With(&e2eLatencyMetric{
 		Cluster:  message.Cluster,

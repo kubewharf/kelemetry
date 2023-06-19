@@ -17,37 +17,9 @@ package objectspandecorator
 import (
 	"context"
 
-	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util"
 )
 
-func init() {
-	manager.Global.Provide("object-span-union-decorator", manager.Ptr[UnionEventDecorator](&unionDecorator{}))
-}
-
 type Decorator interface {
 	Decorate(ctx context.Context, object util.ObjectRef, traceSource string, tags map[string]string)
-}
-
-type UnionEventDecorator interface {
-	manager.Component
-
-	AddDecorator(decorator Decorator)
-
-	Decorate(ctx context.Context, object util.ObjectRef, traceSource string, tags map[string]string)
-}
-
-type unionDecorator struct {
-	manager.BaseComponent
-	decorators []Decorator
-}
-
-func (union *unionDecorator) AddDecorator(decorator Decorator) {
-	union.decorators = append(union.decorators, decorator)
-}
-
-func (union *unionDecorator) Decorate(ctx context.Context, object util.ObjectRef, traceSource string, tags map[string]string) {
-	for _, decorator := range union.decorators {
-		decorator.Decorate(ctx, object, traceSource, tags)
-	}
 }

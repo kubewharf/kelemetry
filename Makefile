@@ -122,6 +122,7 @@ usage: output/kelemetry
 dot: output/kelemetry
 	./output/kelemetry --dot=depgraph.dot
 	dot -Tpng depgraph.dot >depgraph.png
+	dot -Tsvg depgraph.dot >depgraph.svg
 
 output/kelemetry: go.mod go.sum $(shell find -type f -name "*.go")
 	go build -v $(RACE_ARG) -ldflags=$(LDFLAGS) -o $@ $(BUILD_ARGS) .
