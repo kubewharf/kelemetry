@@ -20,7 +20,7 @@ import (
 
 	"github.com/jaegertracing/jaeger/model"
 
-	tfscheme "github.com/kubewharf/kelemetry/pkg/frontend/tf/scheme"
+	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
@@ -29,13 +29,13 @@ import (
 func init() {
 	manager.Global.ProvideListImpl(
 		"tf-step/service-operation-replace-visitor",
-		manager.Ptr(&tfscheme.VisitorStep[ServiceOperationReplaceVisitor]{}),
-		&manager.List[tfscheme.RegisteredStep]{},
+		manager.Ptr(&tfconfig.VisitorStep[ServiceOperationReplaceVisitor]{}),
+		&manager.List[tfconfig.RegisteredStep]{},
 	)
 	manager.Global.ProvideListImpl(
 		"tf-step/cluster-name-visitor",
-		manager.Ptr(&tfscheme.VisitorStep[ClusterNameVisitor]{}),
-		&manager.List[tfscheme.RegisteredStep]{},
+		manager.Ptr(&tfconfig.VisitorStep[ClusterNameVisitor]{}),
+		&manager.List[tfconfig.RegisteredStep]{},
 	)
 }
 

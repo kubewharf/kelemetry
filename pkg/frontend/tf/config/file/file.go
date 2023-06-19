@@ -25,7 +25,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
-	tfscheme "github.com/kubewharf/kelemetry/pkg/frontend/tf/scheme"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
 
@@ -49,9 +48,11 @@ func (options *options) EnableFlag() *bool { return nil }
 type FileProvider struct {
 	manager.MuxImplBase
 
-	Scheme tfscheme.Scheme
+	RegisteredSteps     *manager.List[tfconfig.RegisteredStep]
+	RegisteredModifiers *manager.List[tfconfig.Modifier]
 
 	options        options
+	names          []string
 	configs        map[tfconfig.Id]*tfconfig.Config
 	nameToConfigId map[string]tfconfig.Id
 	defaultConfig  tfconfig.Id
@@ -97,8 +98,9 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 	}
 
 	var file struct {
-		Batches []Batch `json:"batches"`
-		Configs []struct {
+		Modifiers map[string]tfconfig.Id `json:"modifiers"`
+		Batches   []Batch                `json:"batches"`
+		Configs   []struct {
 			Id         tfconfig.Id     `json:"id"`
 			Name       string          `json:"name"`
 			UseSubtree bool            `json:"useSubtree"`
@@ -109,9 +111,33 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 		return fmt.Errorf("parse tfconfig error: %w", err)
 	}
 
-	batches := map[string][]tfscheme.Step{}
+	var modifiers []func(*tfconfig.Config)
+	for modifierName, bitmask := range file.Modifiers {
+		modifierName := modifierName
+		bitmask := bitmask
+
+		var matched tfconfig.Modifier
+		for _, modifier := range p.RegisteredModifiers.Impls {
+			if modifierName == modifier.ModifierName() {
+				matched = modifier
+				break
+			}
+		}
+
+		if matched == nil {
+			return fmt.Errorf("parse tfconfig modifier error: unknown modifier name %q", modifierName)
+		}
+
+		modifiers = append(modifiers, func(config *tfconfig.Config) {
+			config.Id |= bitmask
+			config.Name += fmt.Sprintf(" [%s]", modifierName)
+			matched.Modify(config)
+		})
+	}
+
+	batches := map[string][]tfconfig.Step{}
 	for _, batch := range file.Batches {
-		steps, err := tfscheme.ParseSteps(batch.Steps, p.Scheme, batches)
+		steps, err := tfconfig.ParseSteps(batch.Steps, batches, p.RegisteredSteps.Impls)
 		if err != nil {
 			return fmt.Errorf("parse tfconfig batch error: %w", err)
 		}
@@ -120,7 +146,7 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 	}
 
 	for _, raw := range file.Configs {
-		steps, err := tfscheme.ParseSteps(raw.Steps, p.Scheme, batches)
+		steps, err := tfconfig.ParseSteps(raw.Steps, batches, p.RegisteredSteps.Impls)
 		if err != nil {
 			return fmt.Errorf("parse tfconfig step error: %w", err)
 		}
@@ -132,13 +158,28 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 			Steps:      steps,
 		}
 
-		p.Register(config)
+		p.register(config)
+	}
+
+	for _, modifier := range modifiers {
+		var newEntries []*tfconfig.Config
+
+		for _, config := range p.configs {
+			newConfig := config.Clone()
+			modifier(newConfig)
+			newEntries = append(newEntries, newConfig)
+		}
+
+		for _, newEntry := range newEntries {
+			p.register(newEntry)
+		}
 	}
 
 	return nil
 }
 
-func (p *FileProvider) Register(config *tfconfig.Config) {
+func (p *FileProvider) register(config *tfconfig.Config) {
+	p.names = append(p.names, config.Name)
 	p.configs[config.Id] = config
 	p.nameToConfigId[config.Name] = config.Id
 }
@@ -147,11 +188,7 @@ func (p *FileProvider) Start(ctx context.Context) error { return nil }
 func (p *FileProvider) Close(ctx context.Context) error { return nil }
 
 func (p *FileProvider) Names() []string {
-	names := make([]string, 0, len(p.nameToConfigId))
-	for name := range p.nameToConfigId {
-		names = append(names, name)
-	}
-	return names
+	return p.names
 }
 
 func (p *FileProvider) DefaultName() string { return p.configs[p.defaultConfig].Name }

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -73,6 +74,9 @@ func initGenericMetric[T Tags](gm *Metric[T], mux *mux) {
 	if tagsTy.Kind() == reflect.Pointer {
 		tagsTy = tagsTy.Elem()
 	}
+
+	mux.metricPoolMu.Lock()
+	defer mux.metricPoolMu.Unlock()
 
 	if metric, exists := mux.metricPool[name]; exists {
 		if metric.MetricType() != tagsTy {
@@ -199,15 +203,19 @@ func (metric TaggedMetric) DeferCount(start time.Time) {
 
 type mux struct {
 	*manager.Mux
-	Logger     logrus.FieldLogger
-	monitors   []func(context.Context)
-	metricPool map[string]AnyMetric
+	Logger       logrus.FieldLogger
+	monitors     []func(context.Context)
+	metricPoolMu sync.Mutex
+	metricPool   map[string]AnyMetric
 }
 
 func (mux *mux) impl() *mux { return mux }
 
 func NewDynamic(client Client, name string, tagNames []string) MetricImpl {
 	mux := client.impl()
+
+	mux.metricPoolMu.Lock()
+	defer mux.metricPoolMu.Unlock()
 
 	var metricImpl MetricImpl
 	if metric, exists := mux.metricPool[name]; exists {

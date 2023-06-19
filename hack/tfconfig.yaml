@@ -31,21 +31,6 @@ configs:
       - kind: CompactDurationVisitor
       - kind: Batch
         batchName: final
-  - id: "21000000"
-    name: "tracing (exclusive)"
-    useSubtree: true
-    steps:
-      - kind: Batch
-        batchName: initial
-      - kind: ExtractNestingVisitor
-        matchesNestLevel:
-          oneOf: ["object"]
-          negate: true
-      - kind: Batch
-        batchName: collapse
-      - kind: CompactDurationVisitor
-      - kind: Batch
-        batchName: final
   - id: "30000000"
     name: "grouped"
     steps:
@@ -64,24 +49,9 @@ configs:
       - kind: CompactDurationVisitor
       - kind: Batch
         batchName: final
-  - id: "31000000"
-    name: "grouped (exclusive)"
-    steps:
-      - kind: Batch
-        batchName: initial
-      - kind: ExtractNestingVisitor
-        matchesNestLevel:
-          oneOf: ["object"]
-          negate: true
-      - kind: Batch
-        batchName: collapse
-      - kind: GroupByTraceSourceVisitor
-        shouldBeGrouped:
-          oneOf: ["event"]
-          negate: true
-      - kind: CompactDurationVisitor
-      - kind: Batch
-        batchName: final
+
+modifiers:
+  exclusive: "01000000"
 
 batches:
   - name: initial

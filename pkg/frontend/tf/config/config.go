@@ -17,7 +17,6 @@ package tfconfig
 import (
 	"strconv"
 
-	tfscheme "github.com/kubewharf/kelemetry/pkg/frontend/tf/scheme"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
 
@@ -55,7 +54,19 @@ type Config struct {
 	// If false, displays the whole trace including parent and sibling spans.
 	UseSubtree bool
 	// The steps to transform the tree
-	Steps []tfscheme.Step
+	Steps []Step
+}
+
+func (config *Config) Clone() *Config {
+	steps := make([]Step, len(config.Steps))
+	copy(steps, config.Steps) // no need to deep clone each step
+
+	return &Config{
+		Id:         config.Id,
+		Name:       config.Name,
+		UseSubtree: config.UseSubtree,
+		Steps:      steps,
+	}
 }
 
 type mux struct {

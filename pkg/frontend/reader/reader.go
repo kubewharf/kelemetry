@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"sort"
 	"strings"
 	"time"
 
@@ -79,7 +78,6 @@ func (reader *spanReader) GetServices(ctx context.Context) ([]string, error) {
 		}
 	}
 
-	sort.Strings(configNames[1:])
 	reader.Logger.WithField("services", configNames).Info("query display mode list")
 
 	return configNames, nil

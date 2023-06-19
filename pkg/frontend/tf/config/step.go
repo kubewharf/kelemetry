@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tfscheme
+package tfconfig
 
 import (
 	"encoding/json"
@@ -76,7 +76,7 @@ func (step *BatchStep) Run(tree *tftree.SpanTree) {
 	}
 }
 
-func ParseSteps(buf []byte, scheme Scheme, batches map[string][]Step) ([]Step, error) {
+func ParseSteps(buf []byte, batches map[string][]Step, registeredSteps []RegisteredStep) ([]Step, error) {
 	raw := []json.RawMessage{}
 
 	if err := json.Unmarshal(buf, &raw); err != nil {
@@ -85,7 +85,7 @@ func ParseSteps(buf []byte, scheme Scheme, batches map[string][]Step) ([]Step, e
 
 	steps := make([]Step, len(raw))
 	for i, stepBuf := range raw {
-		step, err := scheme.Unmarshal(batches, stepBuf)
+		step, err := UnmarshalStep(batches, stepBuf, registeredSteps)
 		if err != nil {
 			return nil, err
 		}
@@ -94,4 +94,37 @@ func ParseSteps(buf []byte, scheme Scheme, batches map[string][]Step) ([]Step, e
 	}
 
 	return steps, nil
+}
+
+func UnmarshalStep(batches map[string][]Step, buf []byte, registeredSteps []RegisteredStep) (Step, error) {
+	var hasKind struct {
+		Kind string `json:"kind"`
+	}
+	if err := json.Unmarshal(buf, &hasKind); err != nil {
+		return nil, fmt.Errorf("JSON object must have \"kind\" field: %w", err)
+	}
+
+	if hasKind.Kind == "Batch" {
+		var hasBatchName struct {
+			BatchName string `json:"batchName"`
+		}
+		if err := json.Unmarshal(buf, &hasBatchName); err != nil {
+			return nil, fmt.Errorf("JSON object must have \"batchName\" field: %w", err)
+		}
+
+		batch, exists := batches[hasBatchName.BatchName]
+		if !exists {
+			return nil, fmt.Errorf("unknown batch %q", hasBatchName.BatchName)
+		}
+
+		return &BatchStep{Steps: batch}, nil
+	}
+
+	for _, step := range registeredSteps {
+		if step.Kind() == hasKind.Kind {
+			return step.UnmarshalNewJSON(buf)
+		}
+	}
+
+	return nil, fmt.Errorf("unknown kind %q", hasKind.Kind)
 }
