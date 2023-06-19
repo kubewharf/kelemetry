@@ -111,7 +111,7 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 		return fmt.Errorf("parse tfconfig error: %w", err)
 	}
 
-	var modifiers []func(*tfconfig.Config)
+	modifiers := make([]func(*tfconfig.Config), 0, len(file.Modifiers))
 	for modifierName, bitmask := range file.Modifiers {
 		modifierName := modifierName
 		bitmask := bitmask
