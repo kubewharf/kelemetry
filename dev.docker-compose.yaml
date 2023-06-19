@@ -26,8 +26,8 @@ services:
   jaeger-query:
     image: jaegertracing/jaeger-query:1.42
     environment:
-      GRPC_STORAGE_SERVER: host.docker.internal:17271 # run on host directly
       SPAN_STORAGE_TYPE: grpc-plugin
+      GRPC_STORAGE_SERVER: host.docker.internal:17271 # run on host directly
     ports:
       - 0.0.0.0:16686:16686
     restart: always
@@ -39,7 +39,7 @@ services:
       SPAN_STORAGE_TYPE: grpc-plugin
       GRPC_STORAGE_SERVER: remote-badger:17271
     ports:
-      - 127.0.0.1:4317:4317
+      - 0.0.0.0:4317:4317
     restart: always
   # Backend badger storage
   # Feel free to override environment.SPAN_STORAGE_TYPE to other storages given the proper configuration.
@@ -54,6 +54,16 @@ services:
       - 127.0.0.1:17272:17271
     volumes:
       - badger:/mnt/badger
+
+  # Web frontend for raw trace database view.
+  jaeger-query-raw:
+    image: jaegertracing/jaeger-query:1.42
+    environment:
+      SPAN_STORAGE_TYPE: grpc-plugin
+      GRPC_STORAGE_SERVER: remote-badger:17271
+    ports:
+      - 0.0.0.0:26686:16686
+    restart: always
 
 volumes:
   etcd: {}

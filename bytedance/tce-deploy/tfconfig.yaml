@@ -51,19 +51,7 @@ configs:
         batchName: final
 
 modifiers:
-  "01000000":
-    displayName: exclusive
-    modifierName: exclusive
-  "00000001":
-    displayName: apiserver trace
-    modifierName: extension
-    args:
-      kind: JaegerStorage
-      storageArgs:
-        span-storage.type: grpc-plugin
-        grpc-storage.server: 127.0.0.1:17272
-      service: apiserver
-      operation: KubernetesAPI
+  exclusive: "01000000"
 
 batches:
   - name: initial

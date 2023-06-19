@@ -49,7 +49,7 @@ type FileProvider struct {
 	manager.MuxImplBase
 
 	RegisteredSteps     *manager.List[tfconfig.RegisteredStep]
-	RegisteredModifiers *manager.List[tfconfig.Modifier]
+	RegisteredModifiers *manager.List[tfconfig.ModifierFactory]
 
 	options        options
 	names          []string
@@ -97,9 +97,15 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 		Steps json.RawMessage `json:"steps"`
 	}
 
+	type modifierConfig struct {
+		DisplayName  string          `json:"displayName"`
+		ModifierName string          `json:"modifierName"`
+		Args         json.RawMessage `json:"args"`
+	}
+
 	var file struct {
-		Modifiers map[string]tfconfig.Id `json:"modifiers"`
-		Batches   []Batch                `json:"batches"`
+		Modifiers map[tfconfig.Id]modifierConfig `json:"modifiers"`
+		Batches   []Batch                        `json:"batches"`
 		Configs   []struct {
 			Id         tfconfig.Id     `json:"id"`
 			Name       string          `json:"name"`
@@ -112,25 +118,29 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 	}
 
 	modifiers := make([]func(*tfconfig.Config), 0, len(file.Modifiers))
-	for modifierName, bitmask := range file.Modifiers {
-		modifierName := modifierName
+	for bitmask, modifierConfig := range file.Modifiers {
 		bitmask := bitmask
 
 		var matched tfconfig.Modifier
-		for _, modifier := range p.RegisteredModifiers.Impls {
-			if modifierName == modifier.ModifierName() {
-				matched = modifier
+		for _, factory := range p.RegisteredModifiers.Impls {
+			if modifierConfig.ModifierName == factory.ModifierName() {
+				var err error
+				matched, err = factory.Build([]byte(modifierConfig.Args))
+				if err != nil {
+					return fmt.Errorf("parse tfconfig modifier error: invalid modifier args: %w", err)
+				}
+
 				break
 			}
 		}
 
 		if matched == nil {
-			return fmt.Errorf("parse tfconfig modifier error: unknown modifier name %q", modifierName)
+			return fmt.Errorf("parse tfconfig modifier error: unknown modifier name %q", modifierConfig.ModifierName)
 		}
 
 		modifiers = append(modifiers, func(config *tfconfig.Config) {
 			config.Id |= bitmask
-			config.Name += fmt.Sprintf(" [%s]", modifierName)
+			config.Name += fmt.Sprintf(" [%s]", modifierConfig.ModifierName)
 			matched.Modify(config)
 		})
 	}

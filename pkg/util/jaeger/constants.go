@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tfconfig
+package utiljaeger
 
-type ModifierFactory interface {
-	ModifierName() string
-
-	Build(jsonBuf []byte) (Modifier, error)
-}
-
-type Modifier interface {
-	Modify(config *Config)
+var SpanStorageTypesToAddFlag = []string{
+	"cassandra",
+	"elasticsearch",
+	"kafka",
+	"grpc-plugin",
+	"badger",
 }

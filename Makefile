@@ -133,6 +133,9 @@ kind:
 	sed "s/host.docker.internal/$$( \
 		docker network inspect kind -f '{{(index .IPAM.Config 0).Gateway}}' \
 	)/g" hack/audit-kubeconfig.yaml >hack/audit-kubeconfig.local.yaml
+	sed "s/host.docker.internal/$$( \
+		docker network inspect kind -f '{{(index .IPAM.Config 0).Gateway}}' \
+	)/g" hack/tracing-config.yaml >hack/tracing-config.local.yaml
 	cd hack && kind create cluster --config kind-cluster.yaml
 
 COMPOSE_COMMAND ?= up --build -d --remove-orphans

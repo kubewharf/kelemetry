@@ -7,15 +7,15 @@ networking:
   apiServerAddress: "0.0.0.0"
 nodes:
   - role: control-plane
-    image: kindest/node:v1.25.3
+    image: kindest/node:v1.27.3
     kubeadmConfigPatches:
       - |
         kind: ClusterConfiguration
         apiServer:
           extraArgs:
             audit-webhook-config-file: /mnt/audit/audit-kubeconfig.local.yaml
+            tracing-config-file: /mnt/audit/tracing-config.local.yaml
             audit-policy-file: /mnt/audit/audit-policy.yaml
-            feature-gates: ServerSideApply=false
           extraVolumes:
             - name: audit-config
               hostPath: /mnt/audit
@@ -27,4 +27,4 @@ nodes:
         containerPath: /mnt/audit
         readOnly: true
   - role: worker
-    image: kindest/node:v1.25.3
+    image: kindest/node:v1.27.3
