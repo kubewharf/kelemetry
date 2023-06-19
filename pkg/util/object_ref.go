@@ -16,6 +16,7 @@ package util
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -35,6 +36,24 @@ type ObjectRef struct {
 	Uid types.UID
 
 	Raw *unstructured.Unstructured `json:"-"`
+}
+
+// Returns a new ObjectRef with all strings cloned again
+// to ensure this object does not reference more data than it needs.
+//
+// Does not copy the Raw field.
+func (ref ObjectRef) Clone() ObjectRef {
+	return ObjectRef{
+		Cluster: strings.Clone(ref.Cluster),
+		GroupVersionResource: schema.GroupVersionResource{
+			Group:    strings.Clone(ref.Group),
+			Version:  strings.Clone(ref.Version),
+			Resource: strings.Clone(ref.Resource),
+		},
+		Namespace: strings.Clone(ref.Namespace),
+		Name:      strings.Clone(ref.Name),
+		Uid:       types.UID(strings.Clone(string(ref.Uid))),
+	}
 }
 
 func (ref ObjectRef) String() string {
