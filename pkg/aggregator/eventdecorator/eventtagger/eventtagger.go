@@ -28,7 +28,7 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("resource-event-tag", manager.Ptr(&eventTagDecorator{}))
+	manager.Global.ProvideListImpl("resource-event-tag", manager.Ptr(&eventTagDecorator{}), &manager.List[eventdecorator.Decorator]{})
 }
 
 type options struct {
@@ -52,28 +52,23 @@ func (options *options) EnableFlag() *bool {
 type eventTagDecorator struct {
 	ResourceTagger *resourcetagger.ResourceTagger
 	options        options
-	EventDecorator eventdecorator.UnionEventDecorator
 	filterVerbs    map[string]struct{}
 }
 
 var _ manager.Component = &eventTagDecorator{}
 
-func (d *eventTagDecorator) Options() manager.Options {
-	return &d.options
-}
+func (d *eventTagDecorator) Options() manager.Options { return &d.options }
 
 func (d *eventTagDecorator) Init() error {
-	d.EventDecorator.AddDecorator(d)
-
 	d.filterVerbs = map[string]struct{}{}
 	for _, item := range d.options.filterVerbs {
 		d.filterVerbs[item] = struct{}{}
 	}
+
 	return nil
 }
 
 func (d *eventTagDecorator) Start(ctx context.Context) error { return nil }
-
 func (d *eventTagDecorator) Close(ctx context.Context) error { return nil }
 
 func (d *eventTagDecorator) Decorate(ctx context.Context, object util.ObjectRef, event *aggregatorevent.Event) {

@@ -20,22 +20,39 @@ import (
 
 	"github.com/jaegertracing/jaeger/model"
 
+	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
+	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
-type ReplaceDest uint8
+func init() {
+	manager.Global.ProvideListImpl(
+		"tf-step/service-operation-replace-visitor",
+		manager.Ptr(&tfconfig.VisitorStep[ServiceOperationReplaceVisitor]{}),
+		&manager.List[tfconfig.RegisteredStep]{},
+	)
+	manager.Global.ProvideListImpl(
+		"tf-step/cluster-name-visitor",
+		manager.Ptr(&tfconfig.VisitorStep[ClusterNameVisitor]{}),
+		&manager.List[tfconfig.RegisteredStep]{},
+	)
+}
+
+type ReplaceDest string
 
 const (
-	ReplaceDestService ReplaceDest = iota
-	ReplaceDestOperation
+	ReplaceDestService   ReplaceDest = "service"
+	ReplaceDestOperation ReplaceDest = "operation"
 )
 
 type ServiceOperationReplaceVisitor struct {
-	TraceSource string
-	Dest        ReplaceDest
-	Source      []string
+	TraceSource string      `json:"traceSource"`
+	Dest        ReplaceDest `json:"dest"`
+	Source      []string    `json:"source"`
 }
+
+func (ServiceOperationReplaceVisitor) Kind() string { return "ServiceOperationReplaceVisitor" }
 
 func (visitor ServiceOperationReplaceVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	tags := model.KeyValues(span.Tags)
@@ -70,6 +87,8 @@ func (visitor ServiceOperationReplaceVisitor) Exit(tree *tftree.SpanTree, span *
 type ClusterNameVisitor struct {
 	parentCluster string
 }
+
+func (ClusterNameVisitor) Kind() string { return "ClusterNameVisitor" }
 
 func (visitor ClusterNameVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	tags := model.KeyValues(span.Tags)

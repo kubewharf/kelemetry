@@ -24,6 +24,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"k8s.io/utils/pointer"
 
 	reflectutil "github.com/kubewharf/kelemetry/pkg/util/reflect"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
@@ -65,6 +66,11 @@ type NoOptions struct{}
 func (*NoOptions) Setup(fs *pflag.FlagSet) {}
 func (*NoOptions) EnableFlag() *bool       { return nil }
 
+type AlwaysEnableOptions struct{}
+
+func (*AlwaysEnableOptions) Setup(fs *pflag.FlagSet) {}
+func (*AlwaysEnableOptions) EnableFlag() *bool       { return pointer.Bool(true) }
+
 type UtilContext struct {
 	ComponentName string
 	ComponentType reflect.Type
@@ -77,7 +83,6 @@ type componentInfo struct {
 	name         string
 	ty           reflect.Type
 	component    Component
-	order        int
 	dependents   uint
 	dependencies map[reflect.Type]*componentInfo
 }
@@ -101,6 +106,9 @@ type Manager struct {
 	componentFactories map[reflect.Type]*componentFactory
 	preBuildTasks      []func()
 	onInitHooks        map[reflect.Type][]func() error
+	listImpls          map[reflect.Type][]reflect.Type
+	lateDependentsOf   map[reflect.Type][]reflect.Type
+	lateDependenciesOf map[reflect.Type][]reflect.Type
 
 	components map[reflect.Type]*componentInfo
 
@@ -112,6 +120,9 @@ func New() *Manager {
 		utils:              map[reflect.Type]utilFactory{},
 		componentFactories: map[reflect.Type]*componentFactory{},
 		onInitHooks:        map[reflect.Type][]func() error{},
+		listImpls:          map[reflect.Type][]reflect.Type{},
+		lateDependentsOf:   map[reflect.Type][]reflect.Type{},
+		lateDependenciesOf: map[reflect.Type][]reflect.Type{},
 	}
 }
 
@@ -182,7 +193,7 @@ func Ptr[CompTy any](obj CompTy) ComponentFactory {
 
 	objTy := reflect.TypeOf(obj)
 	if !(objTy.Kind() == reflect.Ptr && objTy.Elem().Kind() == reflect.Struct) {
-		panic("manager.Pointer() only accepts pointer-to-struct")
+		panic("manager.Ptr() only accepts pointer-to-struct")
 	}
 
 	params := []reflect.Type{}
@@ -257,6 +268,15 @@ func (manager *Manager) provideComponent(name string, factory ComponentFactory) 
 	compTy := factory.ComponentType()
 	params := factory.Params()
 
+	for _, paramTy := range params {
+		if paramTy.Implements(reflectutil.TypeOf[ListInterface]()) {
+			list := reflect.Zero(paramTy).Interface().(ListInterface)
+			if _, exists := manager.componentFactories[paramTy]; !exists {
+				manager.initListComponent(list)
+			}
+		}
+	}
+
 	cf := &componentFactory{
 		name:     name,
 		muxImpls: []reflect.Type{},
@@ -273,14 +293,22 @@ func (manager *Manager) provideComponent(name string, factory ComponentFactory) 
 
 		deps := map[reflect.Type]*componentInfo{}
 
-		args := make([]reflect.Value, len(params))
-		for i := 0; i < len(args); i++ {
-			arg, err := manager.resolve(params[i], &ctx, deps)
+		args := make([]reflect.Value, 0, len(params)+len(manager.lateDependenciesOf[compTy]))
+		for _, param := range params {
+			arg, err := manager.resolve(param, &ctx, deps)
 			if err != nil {
 				return nil, err
 			}
 
-			args[i] = reflect.ValueOf(arg)
+			args = append(args, reflect.ValueOf(arg))
+		}
+		for _, dep := range manager.lateDependenciesOf[compTy] {
+			arg, err := manager.resolve(dep, &ctx, deps)
+			if err != nil {
+				return nil, err
+			}
+
+			args = append(args, reflect.ValueOf(arg))
 		}
 
 		var impls []MuxImpl
@@ -308,14 +336,14 @@ func (manager *Manager) provideComponent(name string, factory ComponentFactory) 
 			}
 		}
 
-		return &componentInfo{
+		info := &componentInfo{
 			name:         name,
 			ty:           compTy,
 			component:    comp,
-			order:        len(manager.components),
 			dependents:   0,
 			dependencies: deps,
-		}, nil
+		}
+		return info, nil
 	}
 
 	manager.componentFactories[compTy] = cf
@@ -334,6 +362,70 @@ func (manager *Manager) ProvideMuxImpl(name string, factory ComponentFactory, in
 		factory := manager.componentFactories[itfTy]
 		factory.muxImpls = append(factory.muxImpls, compTy)
 	})
+}
+
+func (manager *Manager) ProvideListImpl(name string, factory ComponentFactory, list ListInterface) {
+	compTy := manager.provideComponent(name, factory)
+
+	listTy := reflect.TypeOf(list)
+	interfaceTy := list.listInterfaceTy()
+
+	if _, exists := manager.componentFactories[listTy]; !exists {
+		manager.initListComponent(list)
+	}
+
+	manager.lateDependenciesOf[listTy] = append(manager.lateDependenciesOf[listTy], compTy)
+	manager.lateDependentsOf[compTy] = append(manager.lateDependentsOf[compTy], listTy)
+
+	manager.listImpls[interfaceTy] = append(manager.listImpls[interfaceTy], compTy)
+}
+
+func (manager *Manager) initListComponent(list ListInterface) {
+	itfTy := list.listInterfaceTy()
+	manager.provideComponent(itfTy.String()+"-list", list.listFactory(manager))
+}
+
+type List[T any] struct {
+	BaseComponent
+	Impls []T
+}
+
+type ListInterface interface {
+	listInterfaceTy() reflect.Type
+	listFactory(manager *Manager) ComponentFactory
+	listRemoveImpl(obj Component)
+}
+
+func (*List[T]) listInterfaceTy() reflect.Type { return reflectutil.TypeOf[T]() }
+
+func (*List[T]) listFactory(manager *Manager) ComponentFactory {
+	return &listComponentFactory[T]{manager: manager}
+}
+
+func (list *List[T]) listRemoveImpl(obj Component) {
+	newList := []T{}
+	for _, impl := range list.Impls {
+		if any(impl) == obj {
+			continue
+		}
+		newList = append(newList, impl)
+	}
+	list.Impls = newList
+}
+
+type listComponentFactory[T any] struct{ manager *Manager }
+
+func (*listComponentFactory[T]) ComponentType() reflect.Type { return reflectutil.TypeOf[*List[T]]() }
+func (*listComponentFactory[T]) Params() []reflect.Type      { return nil }
+func (f *listComponentFactory[T]) Call(args []reflect.Value) []reflect.Value {
+	impls := []T{}
+	for _, arg := range args {
+		impls = append(impls, arg.Interface().(T))
+	}
+
+	return []reflect.Value{reflect.ValueOf(&List[T]{
+		Impls: impls,
+	})}
 }
 
 // A generic type that implements GenericUtil can be used as a component parameter.
@@ -359,6 +451,7 @@ func (manager *Manager) resolve(
 	}
 
 	factory, hasUtilFactory := manager.utils[req]
+
 	if req.Implements(reflectutil.TypeOf[GenericUtil]()) {
 		if req.Kind() != reflect.Pointer {
 			panic("GenericUtil must be implemented on pointer receivers")
@@ -417,6 +510,9 @@ func (manager *Manager) resolve(
 		if ctx != nil {
 			// ctx describes the dependent, nil if this is not requested from a dependent
 			info.dependents += 1
+			if manager.lateDependentsOf[info.ty] != nil && info.dependents > 1 {
+				return nil, fmt.Errorf("list implementations cannot have any dependents other than the list")
+			}
 		}
 		deps[req] = info
 		return info.component, nil
@@ -450,9 +546,10 @@ func (manager *Manager) Build() error {
 }
 
 type dotNode struct {
-	name  string
-	ty    reflect.Type
-	isMux bool
+	name   string
+	ty     reflect.Type
+	isMux  bool
+	isList bool
 }
 
 func (manager *Manager) Dot() string {
@@ -466,10 +563,12 @@ func (manager *Manager) Dot() string {
 			}
 		}
 		_, isMux := info.component.(MuxInterface)
+		_, isList := info.component.(ListInterface)
 		*list = append(*list, dotNode{
-			name:  info.name,
-			ty:    ty,
-			isMux: isMux,
+			name:   info.name,
+			ty:     ty,
+			isMux:  isMux,
+			isList: isList,
 		})
 	}
 
@@ -480,7 +579,7 @@ func (manager *Manager) Dot() string {
 	}
 
 	cleanName := func(name string) string {
-		return strings.ReplaceAll(strings.ReplaceAll(name, "/", "\\n"), "-", "\\n")
+		return strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(name, "/", "\\n"), "-", "\\n"), ".", "\\n")
 	}
 
 	out := "digraph G {\n"
@@ -495,6 +594,9 @@ func (manager *Manager) Dot() string {
 			style, fillColor := "", "white"
 			if node.isMux {
 				style, fillColor = "filled", "#2288ff"
+			}
+			if node.isList {
+				style, fillColor = "filled", "#ff8822"
 			}
 			out += fmt.Sprintf(
 				"\t\tn%d [label=\"%s\", style=\"%s\", fillcolor=\"%s\"]\n",
@@ -543,6 +645,20 @@ func (manager *Manager) SetupFlags(fs *pflag.FlagSet) {
 }
 
 func (manager *Manager) TrimDisabled(logger logrus.FieldLogger) {
+	for _, comp := range manager.components {
+		enableFlag := comp.component.Options().EnableFlag()
+		if enableFlag != nil && !*enableFlag {
+			dependents := manager.lateDependentsOf[comp.ty]
+			for _, dependent := range dependents {
+				delete(manager.components[dependent].dependencies, comp.ty)
+				if list, isList := comp.component.(ListInterface); isList {
+					list.listRemoveImpl(comp.component)
+				}
+				comp.dependents -= 1
+			}
+		}
+	}
+
 	disabled := map[reflect.Type]*componentInfo{}
 
 	for {
@@ -619,22 +735,52 @@ func (manager *Manager) TrimDisabled(logger logrus.FieldLogger) {
 			}
 
 			logger.Fatalf(
-				"Cannot disable %q because %v depend on it but are not disabled",
+				"Cannot disable %q because %d components (%v) depend on it but are not disabled",
 				disabledComp.name,
+				disabledComp.dependents,
 				dependents,
 			)
 			return
 		}
 	}
 
+	manager.orderComponents()
+}
+
+func (manager *Manager) orderComponents() {
 	manager.orderedComponents = make([]*componentInfo, 0, len(manager.components))
-	for _, comp := range manager.components {
-		manager.orderedComponents = append(manager.orderedComponents, comp)
+	keys := map[reflect.Type]uint8{}
+	for key := range manager.components {
+		keys[key] = 2
+	}
+	for len(keys) > 0 {
+		var key reflect.Type
+		for key_ := range keys {
+			key = key_
+			break
+		}
+		if err := manager.insertDeps(key, &manager.orderedComponents, keys); err != nil {
+			panic(fmt.Sprintf("dependency cycle detected: %v", err))
+		}
+	}
+}
+
+func (manager *Manager) insertDeps(of reflect.Type, into *[]*componentInfo, keys map[reflect.Type]uint8) []reflect.Type {
+	if step, exists := keys[of]; !exists {
+		return nil // already inserted
+	} else if step == 1 {
+		return []reflect.Type{of}
 	}
 
-	sort.Slice(manager.orderedComponents, func(i, j int) bool {
-		return manager.orderedComponents[i].order < manager.orderedComponents[j].order
-	})
+	keys[of] = 1
+	for dep := range manager.components[of].dependencies {
+		if err := manager.insertDeps(dep, into, keys); err != nil {
+			return append(err, of)
+		}
+	}
+	*into = append(*into, manager.components[of])
+	delete(keys, of)
+	return nil
 }
 
 func (manager *Manager) Init(ctx context.Context, logger logrus.FieldLogger) error {

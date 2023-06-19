@@ -20,11 +20,28 @@ import (
 
 	"github.com/jaegertracing/jaeger/model"
 
+	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
+	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
+func init() {
+	manager.Global.ProvideListImpl(
+		"tf-step/replace-name-visitor",
+		manager.Ptr(&tfconfig.VisitorStep[ReplaceNameVisitor]{}),
+		&manager.List[tfconfig.RegisteredStep]{},
+	)
+	manager.Global.ProvideListImpl(
+		"tf-step/prune-tags-visitor",
+		manager.Ptr(&tfconfig.VisitorStep[PruneTagsVisitor]{}),
+		&manager.List[tfconfig.RegisteredStep]{},
+	)
+}
+
 type ReplaceNameVisitor struct{}
+
+func (ReplaceNameVisitor) Kind() string { return "ReplaceNameVisitor" }
 
 func (visitor ReplaceNameVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	for _, tag := range span.Tags {
@@ -40,6 +57,8 @@ func (visitor ReplaceNameVisitor) Enter(tree *tftree.SpanTree, span *model.Span)
 func (visitor ReplaceNameVisitor) Exit(tree *tftree.SpanTree, span *model.Span) {}
 
 type PruneTagsVisitor struct{}
+
+func (PruneTagsVisitor) Kind() string { return "PruneTagsVisitor" }
 
 func (visitor PruneTagsVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	span.Tags = removeZconstantKeys(span.Tags)

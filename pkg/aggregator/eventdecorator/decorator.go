@@ -18,37 +18,9 @@ import (
 	"context"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator/aggregatorevent"
-	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util"
 )
 
-func init() {
-	manager.Global.Provide("event-union-decorator", manager.Ptr[UnionEventDecorator](&unionDecorator{}))
-}
-
 type Decorator interface {
 	Decorate(ctx context.Context, object util.ObjectRef, event *aggregatorevent.Event)
-}
-
-type UnionEventDecorator interface {
-	manager.Component
-
-	AddDecorator(decorator Decorator)
-
-	Decorate(ctx context.Context, object util.ObjectRef, event *aggregatorevent.Event)
-}
-
-type unionDecorator struct {
-	manager.BaseComponent
-	decorators []Decorator
-}
-
-func (union *unionDecorator) AddDecorator(decorator Decorator) {
-	union.decorators = append(union.decorators, decorator)
-}
-
-func (union *unionDecorator) Decorate(ctx context.Context, object util.ObjectRef, event *aggregatorevent.Event) {
-	for _, decorator := range union.decorators {
-		decorator.Decorate(ctx, object, event)
-	}
 }

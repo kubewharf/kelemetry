@@ -19,16 +19,28 @@ import (
 
 	"github.com/jaegertracing/jaeger/model"
 
+	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
+	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
+
+func init() {
+	manager.Global.ProvideListImpl(
+		"tf-step/group-by-trace-source-visitor",
+		manager.Ptr(&tfconfig.VisitorStep[GroupByTraceSourceVisitor]{}),
+		&manager.List[tfconfig.RegisteredStep]{},
+	)
+}
 
 const pseudoSpanNestLevel = "groupByTraceSource"
 
 // Splits span logs into pseudospans grouped by traceSource.
 type GroupByTraceSourceVisitor struct {
-	ShouldBeGrouped func(traceSource string) bool
+	ShouldBeGrouped StringFilter `json:"shouldBeGrouped"`
 }
+
+func (GroupByTraceSourceVisitor) Kind() string { return "GroupByTraceSourceVisitor" }
 
 func (visitor GroupByTraceSourceVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	nestLevel, hasNestLevel := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel)
@@ -42,7 +54,7 @@ func (visitor GroupByTraceSourceVisitor) Enter(tree *tftree.SpanTree, span *mode
 	index := map[string][]model.Log{}
 	for _, log := range span.Logs {
 		traceSource, hasTraceSource := model.KeyValues(log.Fields).FindByKey(zconstants.TraceSource)
-		if hasTraceSource && visitor.ShouldBeGrouped(traceSource.AsString()) {
+		if hasTraceSource && visitor.ShouldBeGrouped.Test(traceSource.AsString()) {
 			index[traceSource.AsString()] = append(index[traceSource.AsString()], log)
 		} else {
 			remainingLogs = append(remainingLogs, log)

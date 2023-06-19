@@ -17,43 +17,9 @@ package linker
 import (
 	"context"
 
-	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util"
 )
 
-func init() {
-	manager.Global.Provide("aggregator-linker-list", manager.Ptr[LinkerList](&linkerList{}))
-}
-
 type Linker interface {
 	Lookup(ctx context.Context, object util.ObjectRef) *util.ObjectRef
-}
-
-type LinkerList interface {
-	manager.Component
-
-	AddLinker(linker Linker)
-
-	Lookup(ctx context.Context, object util.ObjectRef) *util.ObjectRef
-}
-
-type linkerList struct {
-	manager.BaseComponent
-	linkers []Linker
-}
-
-func (list *linkerList) AddLinker(linker Linker) {
-	list.linkers = append(list.linkers, linker)
-}
-
-func (list *linkerList) Lookup(ctx context.Context, object util.ObjectRef) *util.ObjectRef {
-	for _, linker := range list.linkers {
-		parent := linker.Lookup(ctx, object)
-
-		if parent != nil {
-			return parent
-		}
-	}
-
-	return nil
 }

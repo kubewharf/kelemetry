@@ -17,13 +17,25 @@ package tfstep
 import (
 	"github.com/jaegertracing/jaeger/model"
 
+	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
+	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
-type ObjectTagsVisitor struct {
-	ResourceTags []string
+func init() {
+	manager.Global.ProvideListImpl(
+		"tf-step/object-tags-visitor",
+		manager.Ptr(&tfconfig.VisitorStep[ObjectTagsVisitor]{}),
+		&manager.List[tfconfig.RegisteredStep]{},
+	)
 }
+
+type ObjectTagsVisitor struct {
+	ResourceTags []string `json:"resourceTags"`
+}
+
+func (ObjectTagsVisitor) Kind() string { return "ObjectTagsVisitor" }
 
 func (visitor ObjectTagsVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	if tagKv, hasTag := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel); !hasTag || tagKv.VStr != zconstants.NestLevelObject {

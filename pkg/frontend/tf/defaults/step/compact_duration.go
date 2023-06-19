@@ -19,12 +19,24 @@ import (
 
 	"github.com/jaegertracing/jaeger/model"
 
+	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
+	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
+func init() {
+	manager.Global.ProvideListImpl(
+		"tf-step/compact-duration-visitor",
+		manager.Ptr(&tfconfig.VisitorStep[CompactDurationVisitor]{}),
+		&manager.List[tfconfig.RegisteredStep]{},
+	)
+}
+
 // Reduce pseudospan duration into a "flame" shape.
 type CompactDurationVisitor struct{}
+
+func (CompactDurationVisitor) Kind() string { return "CompactDurationVisitor" }
 
 func (visitor CompactDurationVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	return visitor

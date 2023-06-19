@@ -12,14 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package audit
+package tfconfig
 
-import (
-	"context"
+type Modifier interface {
+	ModifierName() string
 
-	"github.com/kubewharf/kelemetry/pkg/aggregator/aggregatorevent"
-)
-
-type Decorator interface {
-	Decorate(ctx context.Context, message *Message, event *aggregatorevent.Event)
+	Modify(config *Config)
 }
