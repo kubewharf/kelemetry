@@ -19,15 +19,34 @@ import (
 	"fmt"
 
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
+	"github.com/kubewharf/kelemetry/pkg/manager"
 )
 
 type Step interface {
 	Run(tree *tftree.SpanTree)
 }
 
-type VisitorStep[V tftree.TreeVisitor] struct {
-	Visitor V
+type RegisteredStep interface {
+	Step
+
+	Kind() string
+
+	UnmarshalNewJSON(buf []byte) (Step, error)
 }
+
+type RegisteredVisitor interface {
+	tftree.TreeVisitor
+
+	Kind() string
+}
+
+type VisitorStep[V RegisteredVisitor] struct {
+	manager.BaseComponent
+
+	Visitor V `managerSkipFill:""`
+}
+
+func (step *VisitorStep[V]) Options() manager.Options { return &manager.AlwaysEnableOptions{} }
 
 func (step *VisitorStep[V]) UnmarshalJSON(buf []byte) error {
 	return json.Unmarshal(buf, &step.Visitor)
@@ -35,6 +54,16 @@ func (step *VisitorStep[V]) UnmarshalJSON(buf []byte) error {
 
 func (step *VisitorStep[V]) Run(tree *tftree.SpanTree) {
 	tree.Visit(step.Visitor)
+}
+
+func (step *VisitorStep[V]) Kind() string { return step.Visitor.Kind() }
+
+func (*VisitorStep[V]) UnmarshalNewJSON(buf []byte) (Step, error) {
+	step := &VisitorStep[V]{}
+	if err := step.UnmarshalJSON(buf); err != nil {
+		return nil, err
+	}
+	return step, nil
 }
 
 type BatchStep struct {

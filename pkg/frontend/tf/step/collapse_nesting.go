@@ -28,9 +28,10 @@ import (
 )
 
 func init() {
-	manager.Global.Provide(
+	manager.Global.ProvideListImpl(
 		"tf-step/collapse-nesting-visitor",
-		manager.Ptr(&tfscheme.RegisterStep[*tfscheme.VisitorStep[CollapseNestingVisitor]]{Kind: "CollapseNestingVisitor"}),
+		manager.Ptr(&tfscheme.VisitorStep[CollapseNestingVisitor]{}),
+		&manager.List[tfscheme.RegisteredStep]{},
 	)
 }
 
@@ -45,6 +46,8 @@ type CollapseNestingVisitor struct {
 	AuditDiffClasses AuditDiffClassification       `json:"auditDiffClasses"` // key = prefix
 	LogTypeMapping   map[zconstants.LogType]string `json:"logTypeMapping"`   // key = log type, value = log field
 }
+
+func (CollapseNestingVisitor) Kind() string { return "CollapseNestingVisitor" }
 
 type TagMapping struct {
 	FromSpanTag string `json:"fromSpanTag"`

@@ -24,15 +24,18 @@ import (
 )
 
 func init() {
-	manager.Global.Provide(
+	manager.Global.ProvideListImpl(
 		"tf-step/object-tags-visitor",
-		manager.Ptr(&tfscheme.RegisterStep[*tfscheme.VisitorStep[ObjectTagsVisitor]]{Kind: "ObjectTagsVisitor"}),
+		manager.Ptr(&tfscheme.VisitorStep[ObjectTagsVisitor]{}),
+		&manager.List[tfscheme.RegisteredStep]{},
 	)
 }
 
 type ObjectTagsVisitor struct {
 	ResourceTags []string `json:"resourceTags"`
 }
+
+func (ObjectTagsVisitor) Kind() string { return "ObjectTagsVisitor" }
 
 func (visitor ObjectTagsVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	if tagKv, hasTag := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel); !hasTag || tagKv.VStr != zconstants.NestLevelObject {

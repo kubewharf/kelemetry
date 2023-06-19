@@ -27,13 +27,15 @@ import (
 )
 
 func init() {
-	manager.Global.Provide(
+	manager.Global.ProvideListImpl(
 		"tf-step/service-operation-replace-visitor",
-		manager.Ptr(&tfscheme.RegisterStep[*tfscheme.VisitorStep[ServiceOperationReplaceVisitor]]{Kind: "ServiceOperationReplaceVisitor"}),
+		manager.Ptr(&tfscheme.VisitorStep[ServiceOperationReplaceVisitor]{}),
+		&manager.List[tfscheme.RegisteredStep]{},
 	)
-	manager.Global.Provide(
+	manager.Global.ProvideListImpl(
 		"tf-step/cluster-name-visitor",
-		manager.Ptr(&tfscheme.RegisterStep[*tfscheme.VisitorStep[ClusterNameVisitor]]{Kind: "ClusterNameVisitor"}),
+		manager.Ptr(&tfscheme.VisitorStep[ClusterNameVisitor]{}),
+		&manager.List[tfscheme.RegisteredStep]{},
 	)
 }
 
@@ -49,6 +51,8 @@ type ServiceOperationReplaceVisitor struct {
 	Dest        ReplaceDest `json:"dest"`
 	Source      []string    `json:"source"`
 }
+
+func (ServiceOperationReplaceVisitor) Kind() string { return "ServiceOperationReplaceVisitor" }
 
 func (visitor ServiceOperationReplaceVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	tags := model.KeyValues(span.Tags)
@@ -83,6 +87,8 @@ func (visitor ServiceOperationReplaceVisitor) Exit(tree *tftree.SpanTree, span *
 type ClusterNameVisitor struct {
 	parentCluster string
 }
+
+func (ClusterNameVisitor) Kind() string { return "ClusterNameVisitor" }
 
 func (visitor ClusterNameVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	tags := model.KeyValues(span.Tags)

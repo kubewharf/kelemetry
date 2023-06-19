@@ -24,6 +24,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"k8s.io/utils/pointer"
 
 	reflectutil "github.com/kubewharf/kelemetry/pkg/util/reflect"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
@@ -64,6 +65,11 @@ type NoOptions struct{}
 
 func (*NoOptions) Setup(fs *pflag.FlagSet) {}
 func (*NoOptions) EnableFlag() *bool       { return nil }
+
+type AlwaysEnableOptions struct{}
+
+func (*AlwaysEnableOptions) Setup(fs *pflag.FlagSet) {}
+func (*AlwaysEnableOptions) EnableFlag() *bool       { return pointer.Bool(true) }
 
 type UtilContext struct {
 	ComponentName string
@@ -376,7 +382,7 @@ func (manager *Manager) ProvideListImpl(name string, factory ComponentFactory, l
 
 func (manager *Manager) initListComponent(list ListInterface) {
 	itfTy := list.listInterfaceTy()
-	manager.provideComponent(itfTy.String() + "-list", list.listFactory(manager))
+	manager.provideComponent(itfTy.String()+"-list", list.listFactory(manager))
 }
 
 type List[T any] struct {

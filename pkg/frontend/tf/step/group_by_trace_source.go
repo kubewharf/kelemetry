@@ -26,9 +26,10 @@ import (
 )
 
 func init() {
-	manager.Global.Provide(
+	manager.Global.ProvideListImpl(
 		"tf-step/group-by-trace-source-visitor",
-		manager.Ptr(&tfscheme.RegisterStep[*tfscheme.VisitorStep[GroupByTraceSourceVisitor]]{Kind: "GroupByTraceSourceVisitor"}),
+		manager.Ptr(&tfscheme.VisitorStep[GroupByTraceSourceVisitor]{}),
+		&manager.List[tfscheme.RegisteredStep]{},
 	)
 }
 
@@ -38,6 +39,8 @@ const pseudoSpanNestLevel = "groupByTraceSource"
 type GroupByTraceSourceVisitor struct {
 	ShouldBeGrouped StringFilter `json:"shouldBeGrouped"`
 }
+
+func (GroupByTraceSourceVisitor) Kind() string { return "GroupByTraceSourceVisitor" }
 
 func (visitor GroupByTraceSourceVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	nestLevel, hasNestLevel := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel)

@@ -33,7 +33,6 @@ func init() {
 	manager.Global.ProvideMuxImpl("jaeger-transform-config/file", manager.Ptr(&FileProvider{
 		configs:        make(map[tfconfig.Id]*tfconfig.Config),
 		nameToConfigId: make(map[string]tfconfig.Id),
-		readyCh:        make(chan struct{}),
 	}), tfconfig.Provider.DefaultId)
 }
 
@@ -56,9 +55,6 @@ type FileProvider struct {
 	configs        map[tfconfig.Id]*tfconfig.Config
 	nameToConfigId map[string]tfconfig.Id
 	defaultConfig  tfconfig.Id
-
-	readyCh   chan struct{}
-	jsonBytes []byte
 }
 
 var (
@@ -87,17 +83,14 @@ func (p *FileProvider) Init() error {
 		return fmt.Errorf("parse tfconfig YAML error: %w", err)
 	}
 
-	p.jsonBytes = jsonBytes
+	if err := p.loadJsonBytes(jsonBytes); err != nil {
+		return err
+	}
 
 	return nil
 }
 
-func (p *FileProvider) Register(config *tfconfig.Config) {
-	p.configs[config.Id] = config
-	p.nameToConfigId[config.Name] = config.Id
-}
-
-func (p *FileProvider) Start(ctx context.Context) error {
+func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 	type Batch struct {
 		Name  string          `json:"name"`
 		Steps json.RawMessage `json:"steps"`
@@ -112,7 +105,7 @@ func (p *FileProvider) Start(ctx context.Context) error {
 			Steps      json.RawMessage `json:"steps"`
 		}
 	}
-	if err := json.Unmarshal(p.jsonBytes, &file); err != nil {
+	if err := json.Unmarshal(jsonBytes, &file); err != nil {
 		return fmt.Errorf("parse tfconfig error: %w", err)
 	}
 
@@ -142,16 +135,18 @@ func (p *FileProvider) Start(ctx context.Context) error {
 		p.Register(config)
 	}
 
-	close(p.readyCh)
-
 	return nil
 }
 
+func (p *FileProvider) Register(config *tfconfig.Config) {
+	p.configs[config.Id] = config
+	p.nameToConfigId[config.Name] = config.Id
+}
+
+func (p *FileProvider) Start(ctx context.Context) error { return nil }
 func (p *FileProvider) Close(ctx context.Context) error { return nil }
 
 func (p *FileProvider) Names() []string {
-	<-p.readyCh
-
 	names := make([]string, 0, len(p.nameToConfigId))
 	for name := range p.nameToConfigId {
 		names = append(names, name)
@@ -159,21 +154,11 @@ func (p *FileProvider) Names() []string {
 	return names
 }
 
-func (p *FileProvider) DefaultName() string {
-	<-p.readyCh
+func (p *FileProvider) DefaultName() string { return p.configs[p.defaultConfig].Name }
 
-	return p.configs[p.defaultConfig].Name
-}
-
-func (p *FileProvider) DefaultId() tfconfig.Id {
-	<-p.readyCh
-
-	return p.defaultConfig
-}
+func (p *FileProvider) DefaultId() tfconfig.Id { return p.defaultConfig }
 
 func (p *FileProvider) GetByName(name string) *tfconfig.Config {
-	<-p.readyCh
-
 	id, exists := p.nameToConfigId[name]
 	if !exists {
 		return nil
@@ -181,8 +166,4 @@ func (p *FileProvider) GetByName(name string) *tfconfig.Config {
 	return p.configs[id]
 }
 
-func (p *FileProvider) GetById(id tfconfig.Id) *tfconfig.Config {
-	<-p.readyCh
-
-	return p.configs[id]
-}
+func (p *FileProvider) GetById(id tfconfig.Id) *tfconfig.Config { return p.configs[id] }

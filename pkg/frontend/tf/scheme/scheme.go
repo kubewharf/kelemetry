@@ -19,9 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/spf13/pflag"
-	"k8s.io/utils/pointer"
-
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
 
@@ -30,39 +27,33 @@ func init() {
 }
 
 type Scheme interface {
-	Register(stepDef *StepDef)
-
 	Unmarshal(batches map[string][]Step, buf []byte) (Step, error)
 }
 
 type StepDef struct {
-	kind          string
 	unmarshalJson func(buf []byte) (Step, error)
 }
 
-func NewStepDef[T Step](kind string) *StepDef {
-	return &StepDef{
-		kind: kind,
-		unmarshalJson: func(buf []byte) (Step, error) {
-			var step T
-			if err := json.Unmarshal(buf, &step); err != nil {
-				return nil, fmt.Errorf("cannot parse JSON object as %s: %w", kind, err)
-			}
-
-			return step, nil
-		},
-	}
-}
-
 type scheme struct {
-	manager.BaseComponent
+	Steps *manager.List[RegisteredStep]
 
 	kindMap map[string]*StepDef
 }
 
-func (scheme *scheme) Register(stepDef *StepDef) {
-	scheme.kindMap[stepDef.kind] = stepDef
+func (scheme *scheme) Options() manager.Options { return &manager.NoOptions{} }
+
+func (scheme *scheme) Init() error {
+	for _, step := range scheme.Steps.Impls {
+		scheme.kindMap[step.Kind()] = &StepDef{
+			unmarshalJson: step.UnmarshalNewJSON,
+		}
+	}
+
+	return nil
 }
+
+func (scheme *scheme) Start(ctx context.Context) error { return nil }
+func (scheme *scheme) Close(ctx context.Context) error { return nil }
 
 func (scheme *scheme) Unmarshal(batches map[string][]Step, buf []byte) (Step, error) {
 	var hasKind struct {
@@ -95,23 +86,3 @@ func (scheme *scheme) Unmarshal(batches map[string][]Step, buf []byte) (Step, er
 
 	return def.unmarshalJson(buf)
 }
-
-type RegisterStep[T Step] struct {
-	Scheme Scheme
-	Kind   string
-}
-
-func (s *RegisterStep[T]) Options() manager.Options { return s }
-
-func (s *RegisterStep[T]) Setup(fs *pflag.FlagSet) {}
-
-func (s *RegisterStep[T]) EnableFlag() *bool { return pointer.Bool(true) }
-
-func (s *RegisterStep[T]) Init() error {
-	s.Scheme.Register(NewStepDef[T](s.Kind))
-	return nil
-}
-
-func (*RegisterStep[T]) Start(context.Context) error { return nil }
-
-func (*RegisterStep[T]) Close(context.Context) error { return nil }

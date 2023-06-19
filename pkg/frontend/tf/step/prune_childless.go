@@ -24,13 +24,16 @@ import (
 )
 
 func init() {
-	manager.Global.Provide(
+	manager.Global.ProvideListImpl(
 		"tf-step/prune-childless-visitor",
-		manager.Ptr(&tfscheme.RegisterStep[*tfscheme.VisitorStep[PruneChildlessVisitor]]{Kind: "PruneChildlessVisitor"}),
+		manager.Ptr(&tfscheme.VisitorStep[PruneChildlessVisitor]{}),
+		&manager.List[tfscheme.RegisteredStep]{},
 	)
 }
 
 type PruneChildlessVisitor struct{}
+
+func (PruneChildlessVisitor) Kind() string { return "PruneChildlessVisitor" }
 
 func (visitor PruneChildlessVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	return visitor

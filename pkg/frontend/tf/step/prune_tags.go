@@ -27,17 +27,21 @@ import (
 )
 
 func init() {
-	manager.Global.Provide(
+	manager.Global.ProvideListImpl(
 		"tf-step/replace-name-visitor",
-		manager.Ptr(&tfscheme.RegisterStep[*tfscheme.VisitorStep[ReplaceNameVisitor]]{Kind: "ReplaceNameVisitor"}),
+		manager.Ptr(&tfscheme.VisitorStep[ReplaceNameVisitor]{}),
+		&manager.List[tfscheme.RegisteredStep]{},
 	)
-	manager.Global.Provide(
+	manager.Global.ProvideListImpl(
 		"tf-step/prune-tags-visitor",
-		manager.Ptr(&tfscheme.RegisterStep[*tfscheme.VisitorStep[PruneTagsVisitor]]{Kind: "PruneTagsVisitor"}),
+		manager.Ptr(&tfscheme.VisitorStep[PruneTagsVisitor]{}),
+		&manager.List[tfscheme.RegisteredStep]{},
 	)
 }
 
 type ReplaceNameVisitor struct{}
+
+func (ReplaceNameVisitor) Kind() string { return "ReplaceNameVisitor" }
 
 func (visitor ReplaceNameVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	for _, tag := range span.Tags {
@@ -53,6 +57,8 @@ func (visitor ReplaceNameVisitor) Enter(tree *tftree.SpanTree, span *model.Span)
 func (visitor ReplaceNameVisitor) Exit(tree *tftree.SpanTree, span *model.Span) {}
 
 type PruneTagsVisitor struct{}
+
+func (PruneTagsVisitor) Kind() string { return "PruneTagsVisitor" }
 
 func (visitor PruneTagsVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	span.Tags = removeZconstantKeys(span.Tags)

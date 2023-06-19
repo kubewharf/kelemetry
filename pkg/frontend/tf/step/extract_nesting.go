@@ -24,9 +24,10 @@ import (
 )
 
 func init() {
-	manager.Global.Provide(
+	manager.Global.ProvideListImpl(
 		"tf-step/extract-nesting-visitor",
-		manager.Ptr(&tfscheme.RegisterStep[*tfscheme.VisitorStep[ExtractNestingVisitor]]{Kind: "ExtractNestingVisitor"}),
+		manager.Ptr(&tfscheme.VisitorStep[ExtractNestingVisitor]{}),
+		&manager.List[tfscheme.RegisteredStep]{},
 	)
 }
 
@@ -36,6 +37,8 @@ type ExtractNestingVisitor struct {
 	// It is only called on spans with the tag zconstants.Nesting
 	MatchesNestLevel StringFilter `json:"matchesNestLevel"`
 }
+
+func (ExtractNestingVisitor) Kind() string { return "ExtractNestingVisitor" }
 
 func (visitor ExtractNestingVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
 	if len(span.References) == 0 {
