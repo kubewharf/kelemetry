@@ -22,7 +22,7 @@ require (
 	go.uber.org/zap v1.24.0
 	google.golang.org/grpc v1.56.0
 	k8s.io/api v0.27.2
-	k8s.io/apimachinery v0.27.2
+	k8s.io/apimachinery v0.27.3
 	k8s.io/apiserver v0.27.2
 	k8s.io/client-go v0.27.2
 	k8s.io/klog/v2 v2.100.1
