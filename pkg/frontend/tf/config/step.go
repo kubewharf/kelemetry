@@ -28,6 +28,7 @@ type Step interface {
 
 type RegisteredStep interface {
 	Step
+	manager.IndexedListImpl
 
 	Kind() string
 
@@ -56,7 +57,8 @@ func (step *VisitorStep[V]) Run(tree *tftree.SpanTree) {
 	tree.Visit(step.Visitor)
 }
 
-func (step *VisitorStep[V]) Kind() string { return step.Visitor.Kind() }
+func (step *VisitorStep[V]) ListIndex() string { return step.Visitor.Kind() }
+func (step *VisitorStep[V]) Kind() string      { return step.Visitor.Kind() }
 
 func (*VisitorStep[V]) UnmarshalNewJSON(buf []byte) (Step, error) {
 	step := &VisitorStep[V]{}
@@ -76,7 +78,7 @@ func (step *BatchStep) Run(tree *tftree.SpanTree) {
 	}
 }
 
-func ParseSteps(buf []byte, batches map[string][]Step, registeredSteps []RegisteredStep) ([]Step, error) {
+func ParseSteps(buf []byte, batches map[string][]Step, registeredSteps map[string]RegisteredStep) ([]Step, error) {
 	raw := []json.RawMessage{}
 
 	if err := json.Unmarshal(buf, &raw); err != nil {
@@ -96,7 +98,7 @@ func ParseSteps(buf []byte, batches map[string][]Step, registeredSteps []Registe
 	return steps, nil
 }
 
-func UnmarshalStep(batches map[string][]Step, buf []byte, registeredSteps []RegisteredStep) (Step, error) {
+func UnmarshalStep(batches map[string][]Step, buf []byte, registeredSteps map[string]RegisteredStep) (Step, error) {
 	var hasKind struct {
 		Kind string `json:"kind"`
 	}
@@ -120,10 +122,8 @@ func UnmarshalStep(batches map[string][]Step, buf []byte, registeredSteps []Regi
 		return &BatchStep{Steps: batch}, nil
 	}
 
-	for _, step := range registeredSteps {
-		if step.Kind() == hasKind.Kind {
-			return step.UnmarshalNewJSON(buf)
-		}
+	if step, hasStep := registeredSteps[hasKind.Kind]; hasStep {
+		return step.UnmarshalNewJSON(buf)
 	}
 
 	return nil, fmt.Errorf("unknown kind %q", hasKind.Kind)

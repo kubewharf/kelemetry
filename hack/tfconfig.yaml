@@ -64,6 +64,10 @@ modifiers:
         grpc-storage.server: 127.0.0.1:17272
       service: apiserver
       operation: KubernetesAPI
+      tagTemplates:
+        http.target: "{{.objectApiPath}}"
+      numTracesLimit: 5
+      forObject: true
 
 batches:
   - name: initial

@@ -250,7 +250,7 @@ func (backend *Backend) List(
 
 		for _, span := range trace.Spans {
 			if deduplicator(span) {
-				tree := tftree.NewSpanTree(trace)
+				tree := tftree.NewSpanTree(trace.Spans)
 				if err := tree.SetRoot(span.SpanID); err != nil {
 					return nil, fmt.Errorf("unexpected SetRoot error for span ID from trace: %w", err)
 				}
@@ -294,7 +294,7 @@ func (backend *Backend) Get(
 		return nil, fmt.Errorf("jaeger storage backend returned empty trace")
 	}
 
-	tree := tftree.NewSpanTree(trace)
+	tree := tftree.NewSpanTree(trace.Spans)
 	if err := tree.SetRoot(ident.SpanId); err != nil {
 		if errors.Is(err, tftree.ErrRootDoesNotExist) {
 			return nil, fmt.Errorf("cached span does not exist in refreshed trace result: %w", err)

@@ -387,7 +387,12 @@ func (manager *Manager) initListComponent(list ListInterface) {
 
 type List[T any] struct {
 	BaseComponent
-	Impls []T
+	Impls   []T
+	Indexed map[string]T
+}
+
+type IndexedListImpl interface {
+	ListIndex() string
 }
 
 type ListInterface interface {
@@ -405,11 +410,13 @@ func (*List[T]) listFactory(manager *Manager) ComponentFactory {
 func (list *List[T]) listRemoveImpl(obj Component) {
 	newList := []T{}
 	for _, impl := range list.Impls {
-		if any(impl) == obj {
+		if list.Indexed != nil && any(impl) == obj {
+			delete(list.Indexed, any(impl).(IndexedListImpl).ListIndex())
 			continue
 		}
 		newList = append(newList, impl)
 	}
+
 	list.Impls = newList
 }
 
@@ -423,8 +430,17 @@ func (f *listComponentFactory[T]) Call(args []reflect.Value) []reflect.Value {
 		impls = append(impls, arg.Interface().(T))
 	}
 
+	var indexed map[string]T
+	if reflectutil.TypeOf[T]().Implements(reflectutil.TypeOf[IndexedListImpl]()) {
+		indexed = make(map[string]T, len(impls))
+		for _, impl := range impls {
+			indexed[any(impl).(IndexedListImpl).ListIndex()] = impl
+		}
+	}
+
 	return []reflect.Value{reflect.ValueOf(&List[T]{
-		Impls: impls,
+		Impls:   impls,
+		Indexed: indexed,
 	})}
 }
 

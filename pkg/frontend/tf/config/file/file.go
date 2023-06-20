@@ -120,34 +120,29 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 	modifiers := make([]func(*tfconfig.Config), 0, len(file.Modifiers))
 	for bitmask, modifierConfig := range file.Modifiers {
 		bitmask := bitmask
+		modifierConfig := modifierConfig
+		displayName := modifierConfig.DisplayName
 
-		var matched tfconfig.Modifier
-		for _, factory := range p.RegisteredModifiers.Impls {
-			if modifierConfig.ModifierName == factory.ModifierName() {
-				var err error
-				matched, err = factory.Build([]byte(modifierConfig.Args))
-				if err != nil {
-					return fmt.Errorf("parse tfconfig modifier error: invalid modifier args: %w", err)
-				}
-
-				break
-			}
+		factory, hasFactory := p.RegisteredModifiers.Indexed[modifierConfig.ModifierName]
+		if !hasFactory {
+			return fmt.Errorf("parse tfconfig modifier error: unknown modifier name %q", modifierConfig.ModifierName)
 		}
 
-		if matched == nil {
-			return fmt.Errorf("parse tfconfig modifier error: unknown modifier name %q", modifierConfig.ModifierName)
+		modifier, err := factory.Build([]byte(modifierConfig.Args))
+		if err != nil {
+			return fmt.Errorf("parse tfconfig modifier error: invalid modifier args: %w", err)
 		}
 
 		modifiers = append(modifiers, func(config *tfconfig.Config) {
 			config.Id |= bitmask
-			config.Name += fmt.Sprintf(" [%s]", modifierConfig.ModifierName)
-			matched.Modify(config)
+			config.Name += fmt.Sprintf(" [%s]", displayName)
+			modifier.Modify(config)
 		})
 	}
 
 	batches := map[string][]tfconfig.Step{}
 	for _, batch := range file.Batches {
-		steps, err := tfconfig.ParseSteps(batch.Steps, batches, p.RegisteredSteps.Impls)
+		steps, err := tfconfig.ParseSteps(batch.Steps, batches, p.RegisteredSteps.Indexed)
 		if err != nil {
 			return fmt.Errorf("parse tfconfig batch error: %w", err)
 		}
@@ -156,7 +151,7 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 	}
 
 	for _, raw := range file.Configs {
-		steps, err := tfconfig.ParseSteps(raw.Steps, batches, p.RegisteredSteps.Impls)
+		steps, err := tfconfig.ParseSteps(raw.Steps, batches, p.RegisteredSteps.Indexed)
 		if err != nil {
 			return fmt.Errorf("parse tfconfig step error: %w", err)
 		}

@@ -56,6 +56,7 @@ func (m *ExtensionModifierFactory) Init() error                     { return nil
 func (m *ExtensionModifierFactory) Start(ctx context.Context) error { return nil }
 func (m *ExtensionModifierFactory) Close(ctx context.Context) error { return nil }
 
+func (*ExtensionModifierFactory) ListIndex() string    { return "extension" }
 func (*ExtensionModifierFactory) ModifierName() string { return "extension" }
 
 func (m *ExtensionModifierFactory) Build(jsonBuf []byte) (tfconfig.Modifier, error) {
@@ -67,14 +68,8 @@ func (m *ExtensionModifierFactory) Build(jsonBuf []byte) (tfconfig.Modifier, err
 		return nil, fmt.Errorf("no extension kind specified: %w", err)
 	}
 
-	var matchedFactory extension.ProviderFactory
-	for _, providerFactory := range m.ProviderList.Impls {
-		if providerFactory.Kind() == hasKind.Kind {
-			matchedFactory = providerFactory
-			break
-		}
-	}
-	if matchedFactory == nil {
+	matchedFactory, hasMatchedFactory := m.ProviderList.Indexed[hasKind.Kind]
+	if !hasMatchedFactory {
 		return nil, fmt.Errorf("no extension provider with kind %q", hasKind.Kind)
 	}
 

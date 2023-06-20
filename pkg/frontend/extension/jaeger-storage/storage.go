@@ -15,15 +15,19 @@
 package extensionjaeger
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"text/template"
 	"time"
 
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/pkg/metrics"
 	jaegerstorage "github.com/jaegertracing/jaeger/plugin/storage"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -40,9 +44,11 @@ func init() {
 
 type Storage struct {
 	manager.BaseComponent
+	Logger logrus.FieldLogger
 }
 
-func (*Storage) Kind() string { return "JaegerStorage" }
+func (*Storage) ListIndex() string { return "JaegerStorage" }
+func (*Storage) Kind() string      { return "JaegerStorage" }
 
 func getViper() (*viper.Viper, error) {
 	factoryConfig := jaegerstorage.FactoryConfig{
@@ -68,8 +74,10 @@ func getViper() (*viper.Viper, error) {
 	return viper, nil
 }
 
-func (*Storage) Configure(jsonBuf []byte) (extension.Provider, error) {
-	providerArgs := &ProviderArgs{}
+const DefaultNumTracesLimit = 5
+
+func (s *Storage) Configure(jsonBuf []byte) (extension.Provider, error) {
+	providerArgs := &ProviderArgs{NumTracesLimit: DefaultNumTracesLimit}
 	if err := json.Unmarshal(jsonBuf, providerArgs); err != nil {
 		return nil, fmt.Errorf("cannot parse jaeger-storage config: %w", err)
 	}
@@ -111,39 +119,210 @@ func (*Storage) Configure(jsonBuf []byte) (extension.Provider, error) {
 		return nil, fmt.Errorf("cannot create span reader for extension storage: %w", err)
 	}
 
-	return &Provider{
-		Reader: reader,
+	tagTemplates := map[string]*template.Template{}
+	for tagKey, templateString := range providerArgs.TagTemplates {
+		t, err := template.New(tagKey).Parse(templateString)
+		if err != nil {
+			return nil, fmt.Errorf("invalid tag template %q: %w", tagKey, err)
+		}
+		tagTemplates[tagKey] = t
+	}
 
-		Service:     providerArgs.Service,
-		Operation:   providerArgs.Operation,
-		TagTemplate: providerArgs.TagTemplate,
+	return &Provider{
+		reader: reader,
+		logger: s.Logger,
+
+		service:      providerArgs.Service,
+		operation:    providerArgs.Operation,
+		tagTemplates: tagTemplates,
+		numTraces:    providerArgs.NumTracesLimit,
+
+		forObject:     providerArgs.ForObject,
+		forAuditEvent: providerArgs.ForAuditEvent,
+
+		rawConfig: jsonBuf,
 	}, nil
 }
 
 type ProviderArgs struct {
 	StorageArgs map[string]string `json:"storageArgs"`
 
-	Service     string            `json:"service"`
-	Operation   string            `json:"operation"`
-	TagTemplate map[string]string `json:"tagTemplate"`
+	Service        string            `json:"service"`
+	Operation      string            `json:"operation"`
+	TagTemplates   map[string]string `json:"tagTemplates"`
+	NumTracesLimit int               `json:"numTracesLimit"`
+
+	ForObject     bool `json:"forObject"`
+	ForAuditEvent bool `json:"forAuditEvent"`
 }
 
 type Provider struct {
-	Reader spanstore.Reader
+	reader spanstore.Reader
+	logger logrus.FieldLogger
 
-	Service     string
-	Operation   string
-	TagTemplate map[string]string
+	service      string
+	operation    string
+	tagTemplates map[string]*template.Template
+	numTraces    int
+
+	forObject, forAuditEvent bool
+
+	rawConfig []byte
 }
 
-func (provider *Provider) Fetch(
+func (provider *Provider) Kind() string { return "JaegerStorage" }
+
+func (provider *Provider) RawConfig() []byte { return provider.rawConfig }
+
+func (provider *Provider) FetchForObject(
+	ctx context.Context,
 	object util.ObjectRef,
-	tags model.KeyValues,
-	start, end time.Duration,
-) (extension.FetchResult, error) {
-	panic("todo")
+	mainTags model.KeyValues,
+	start, end time.Time,
+) (*extension.FetchResult, error) {
+	if !provider.forObject {
+		return nil, nil
+	}
+
+	return provider.fetch(
+		ctx, mainTags, start, end,
+		objectTemplateArgs(object),
+	)
 }
 
-func (provider *Provider) LoadCache(identifier any) (extension.FetchResult, error) {
-	panic("todo")
+func (provider *Provider) FetchForVersion(
+	ctx context.Context,
+	object util.ObjectRef,
+	resourceVersion string,
+	mainTags model.KeyValues,
+	start, end time.Time,
+) (*extension.FetchResult, error) {
+	if !provider.forAuditEvent {
+		return nil, nil
+	}
+
+	templateArgs := objectTemplateArgs(object)
+	templateArgs["resourceVersion"] = resourceVersion
+
+	return provider.fetch(
+		ctx, mainTags, start, end,
+		templateArgs,
+	)
+}
+
+func objectTemplateArgs(object util.ObjectRef) map[string]any {
+	var objectApiPath string
+	if object.Group == "" {
+		objectApiPath = fmt.Sprintf("/api/%s", object.Version)
+	} else {
+		objectApiPath = fmt.Sprintf("/apis/%s/%s", object.Group, object.Version)
+	}
+
+	if object.Namespace != "" && object.Resource != "namespaces" {
+		objectApiPath += fmt.Sprintf("/namespaces/%s", object.Namespace)
+	}
+
+	objectApiPath += fmt.Sprintf("/%s/%s", object.Resource, object.Name)
+
+	return map[string]any{
+		"cluster":       object.Cluster,
+		"group":         object.Group,
+		"version":       object.Version,
+		"resource":      object.Resource,
+		"groupVersion":  object.GroupVersionResource.GroupVersion().String(),
+		"groupResource": object.GroupVersionResource.GroupResource().String(),
+		"namespace":     object.Namespace,
+		"name":          object.Name,
+		"objectApiPath": objectApiPath,
+	}
+}
+
+func (provider *Provider) fetch(
+	ctx context.Context,
+	mainTags model.KeyValues,
+	start, end time.Time,
+	templateArgs map[string]any,
+) (*extension.FetchResult, error) {
+	queryTags := map[string]string{}
+
+	for _, mainTag := range mainTags {
+		templateArgs[mainTag.Key] = mainTag.Value()
+	}
+
+	for tagKey, tagTemplate := range provider.tagTemplates {
+		buf := new(bytes.Buffer)
+		err := tagTemplate.Execute(buf, templateArgs)
+		if err != nil {
+			return nil, fmt.Errorf("cannot execute tag template: %w", err)
+		}
+
+		queryTags[tagKey] = buf.String()
+	}
+
+	provider.logger.
+		WithField("service", provider.service).
+		WithField("operation", provider.operation).
+		WithField("tags", queryTags).
+		WithField("startTime", start).
+		WithField("endTime", end).
+		Info("search extension traces")
+
+	traces, err := provider.reader.FindTraces(ctx, &spanstore.TraceQueryParameters{
+		ServiceName:   provider.service,
+		OperationName: provider.operation,
+		Tags:          queryTags,
+		StartTimeMin:  start,
+		StartTimeMax:  end,
+		NumTraces:     provider.numTraces,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cannot find traces: %w", err)
+	}
+
+	traceIds := []model.TraceID{}
+	spans := []*model.Span{}
+
+	for _, trace := range traces {
+		if len(trace.Spans) == 0 {
+			continue
+		}
+
+		traceIds = append(traceIds, trace.Spans[0].TraceID)
+		spans = append(spans, trace.Spans...)
+	}
+
+	return &extension.FetchResult{
+		Identifier: identifier{
+			TraceIds: traceIds,
+			Start:    start,
+			End:      end,
+		},
+		Spans: spans,
+	}, nil
+}
+
+type identifier struct {
+	TraceIds []model.TraceID `json:"traceIds"`
+	Start    time.Time       `json:"start"`
+	End      time.Time       `json:"end"`
+}
+
+func (provider *Provider) LoadCache(ctx context.Context, jsonBuf []byte) ([]*model.Span, error) {
+	var ident identifier
+	if err := json.Unmarshal(jsonBuf, &ident); err != nil {
+		return nil, fmt.Errorf("cannot unmarshal cached identifier: %w", err)
+	}
+
+	spans := []*model.Span{}
+
+	for _, traceId := range ident.TraceIds {
+		trace, err := provider.reader.GetTrace(ctx, traceId)
+		if err != nil {
+			return nil, fmt.Errorf("ccannot get trace from extension storage: %w", err)
+		}
+
+		spans = append(spans, trace.Spans...)
+	}
+
+	return spans, nil
 }

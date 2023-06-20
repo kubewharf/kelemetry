@@ -15,10 +15,12 @@
 package extension
 
 import (
+	"context"
 	"time"
 
 	"github.com/jaegertracing/jaeger/model"
 
+	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util"
 )
 
@@ -26,6 +28,8 @@ import (
 //
 // This interface is used for manager.List.
 type ProviderFactory interface {
+	manager.IndexedListImpl
+
 	Kind() string
 
 	Configure(jsonBuf []byte) (Provider, error)
@@ -34,21 +38,46 @@ type ProviderFactory interface {
 // An instance of extension provider as specified in the config.
 // Loads spans from a specific source, typically from one specific component.
 type Provider interface {
-	// Searches for spans associated with the parameters.
+	// Kind of this extension provider, same as the one from `ProviderFactory.Kind()`
+	Kind() string
+
+	// The raw JSON config buffer used to configure this provider.
+	RawConfig() []byte
+
+	// Searches for spans associated with an object.
 	//
 	// This method is invoked during the first time a main trace is loaded.
 	// Subsequent invocations will call `LoadCache` instead.
 	//
+	// Returned traces are attached as subtrees under the object pseudospan.
+	//
 	// `tags` contains the tags in the object pseudospan in the main trace.
-	Fetch(
+	FetchForObject(
+		ctx context.Context,
 		object util.ObjectRef,
 		tags model.KeyValues,
-		start, end time.Duration,
-	) (FetchResult, error)
+		start, end time.Time,
+	) (*FetchResult, error)
+
+	// Searches for spans associated with an object version.
+	//
+	// This method is invoked during the first time a main trace is loaded.
+	// Subsequent invocations will call `LoadCache` instead.
+	//
+	// Returned traces are attached as subtrees under the audit span.
+	//
+	// `tags` contains the tags in the object pseudospan in the main trace.
+	FetchForVersion(
+		ctx context.Context,
+		object util.ObjectRef,
+		resourceVersion string,
+		tags model.KeyValues,
+		start, end time.Time,
+	) (*FetchResult, error)
 
 	// Restores the FetchResult from the identifier
 	// persisted from the result of a previous call to `Fetch`.
-	LoadCache(identifier any) (FetchResult, error)
+	LoadCache(ctx context.Context, identifier []byte) ([]*model.Span, error)
 }
 
 type FetchResult struct {
@@ -56,6 +85,7 @@ type FetchResult struct {
 	// such as the extension trace ID.
 	Identifier any
 	// The spans in the extension trace.
-	// Root spans are relocated as direct descendents of the object pseudospan.
-	Spans []model.Span
+	//
+	// Orphan spans (with no or invalid parent reference) are treated as root spans.
+	Spans []*model.Span
 }

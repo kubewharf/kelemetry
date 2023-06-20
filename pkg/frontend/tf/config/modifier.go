@@ -14,7 +14,11 @@
 
 package tfconfig
 
+import "github.com/kubewharf/kelemetry/pkg/manager"
+
 type ModifierFactory interface {
+	manager.IndexedListImpl
+
 	ModifierName() string
 
 	Build(jsonBuf []byte) (Modifier, error)
