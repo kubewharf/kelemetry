@@ -12,7 +12,7 @@ configs:
       - kind: Batch
         batchName: initial
       - kind: ExtractNestingVisitor
-        batchName:
+        matchesNestLevel:
           oneOf: []
           negate: true
       - kind: Batch
@@ -63,11 +63,12 @@ modifiers:
         span-storage.type: grpc-plugin
         grpc-storage.server: 127.0.0.1:17272
       service: apiserver
-      operation: KubernetesAPI
+      operation: Update
       tagTemplates:
-        http.target: "{{.objectApiPath}}"
+        audit-id: "{{.auditId}}"
+
       numTracesLimit: 5
-      forObject: true
+      forAuditEvent: true
 
 batches:
   - name: initial

@@ -51,8 +51,8 @@ type EntryValue struct {
 }
 
 type ExtensionCache struct {
-	ParentTrace      model.TraceID
-	ParentSpan       model.SpanID
+	ParentTrace      model.TraceID   `json:"parentTrace"`
+	ParentSpan       model.SpanID    `json:"parentSpan"`
 	ProviderKind     string          `json:"providerKind"`
 	ProviderConfig   json.RawMessage `json:"providerConfig"`
 	CachedIdentifier json.RawMessage `json:"cachedIdentifier"`

@@ -53,17 +53,27 @@ func (x *FetchExtensionsAndStoreCache) ProcessExtensions(
 ) ([]*model.Span, error) {
 	newSpans := []*model.Span{}
 
-	addNewSpans := func(extension extension.Provider, result *extension.FetchResult) error {
+	addNewSpans := func(extension extension.Provider, result *extension.FetchResult, under *model.Span) error {
+		if len(result.Spans) == 0 {
+			return nil
+		}
+
 		identifierJson, err := json.Marshal(result.Identifier)
 		if err != nil {
 			return fmt.Errorf("encode extension trace cache identifier: %w", err)
 		}
 
 		x.Cache = append(x.Cache, tracecache.ExtensionCache{
+			ParentTrace:      under.TraceID,
+			ParentSpan:       under.SpanID,
 			ProviderKind:     extension.Kind(),
 			ProviderConfig:   json.RawMessage(extension.RawConfig()),
 			CachedIdentifier: json.RawMessage(identifierJson),
 		})
+
+		setRootParent(result.Spans, under.TraceID, under.SpanID)
+		setTraceId(result.Spans, under.TraceID)
+
 		newSpans = append(newSpans, result.Spans...)
 
 		return nil
@@ -84,7 +94,7 @@ func (x *FetchExtensionsAndStoreCache) ProcessExtensions(
 				}
 
 				if result != nil {
-					addNewSpans(extension, result)
+					addNewSpans(extension, result, span)
 				}
 			}
 		} else if tag, exists := tags.FindByKey(zconstants.TraceSource); exists && tag.VStr == zconstants.TraceSourceAudit {
@@ -105,7 +115,7 @@ func (x *FetchExtensionsAndStoreCache) ProcessExtensions(
 				}
 
 				if result != nil {
-					addNewSpans(extension, result)
+					addNewSpans(extension, result, span)
 				}
 			}
 		}
@@ -168,6 +178,7 @@ func (x *LoadExtensionCache) ProcessExtensions(
 		}
 
 		if resultSpans != nil {
+			setTraceId(resultSpans, spans[0].TraceID)
 			setRootParent(resultSpans, cache.ParentTrace, cache.ParentSpan)
 
 			newSpans = append(newSpans, resultSpans...)
@@ -175,6 +186,16 @@ func (x *LoadExtensionCache) ProcessExtensions(
 	}
 
 	return newSpans, nil
+}
+
+func setTraceId(spans []*model.Span, traceId model.TraceID) {
+	for _, span := range spans {
+		span.TraceID = traceId
+
+		for i := range span.References {
+			span.References[i].TraceID = traceId
+		}
+	}
 }
 
 func setRootParent(spans []*model.Span, parentTrace model.TraceID, parentSpan model.SpanID) {
