@@ -30,8 +30,6 @@ import (
 type ProviderFactory interface {
 	manager.IndexedListImpl
 
-	Kind() string
-
 	Configure(jsonBuf []byte) (Provider, error)
 }
 
@@ -43,6 +41,9 @@ type Provider interface {
 
 	// The raw JSON config buffer used to configure this provider.
 	RawConfig() []byte
+
+	// Maximum number of fetch calls to invoke
+	MaxAttempts() int
 
 	// Searches for spans associated with an object.
 	//
@@ -81,7 +82,7 @@ type Provider interface {
 }
 
 type FetchResult struct {
-	// A JSON-serializable object used to presist the parameters of this fetch,
+	// A JSON-serializable object used to persist the parameters of this fetch,
 	// such as the extension trace ID.
 	Identifier any
 	// The spans in the extension trace.

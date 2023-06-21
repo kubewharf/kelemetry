@@ -18,6 +18,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jaegertracing/jaeger/model"
@@ -51,10 +53,12 @@ func (x *FetchExtensionsAndStoreCache) ProcessExtensions(
 	spans []*model.Span,
 	start, end time.Time,
 ) ([]*model.Span, error) {
+	var mutex sync.Mutex
+
 	newSpans := []*model.Span{}
 
 	addNewSpans := func(extension extension.Provider, result *extension.FetchResult, under *model.Span) error {
-		if len(result.Spans) == 0 {
+		if result == nil || len(result.Spans) == 0 {
 			return nil
 		}
 
@@ -62,6 +66,9 @@ func (x *FetchExtensionsAndStoreCache) ProcessExtensions(
 		if err != nil {
 			return fmt.Errorf("encode extension trace cache identifier: %w", err)
 		}
+
+		mutex.Lock()
+		defer mutex.Unlock()
 
 		x.Cache = append(x.Cache, tracecache.ExtensionCache{
 			ParentTrace:      under.TraceID,
@@ -79,26 +86,53 @@ func (x *FetchExtensionsAndStoreCache) ProcessExtensions(
 		return nil
 	}
 
+	extensionQueryLimiter := make([]int, len(extensions))
+	for extId, extension := range extensions {
+		extensionQueryLimiter[extId] = extension.MaxAttempts()
+	}
+
+	var errValue atomic.Value
+	var wg sync.WaitGroup
+
 	for _, span := range spans {
 		tags := model.KeyValues(span.Tags)
 		if tag, exists := tags.FindByKey(zconstants.NestLevel); exists && tag.VStr == zconstants.NestLevelObject {
-			for _, extension := range extensions {
+			for extId, ext := range extensions {
+				if extensionQueryLimiter[extId] <= 0 {
+					continue
+				}
+
+				extensionQueryLimiter[extId] -= 1
+
 				objectRef, ok := objectRefFromTags(tags)
 				if !ok {
 					return nil, fmt.Errorf("expected object tags in nestingLevel=object spans")
 				}
 
-				result, err := extension.FetchForObject(ctx, objectRef, tags, start, end)
-				if err != nil {
-					return nil, fmt.Errorf("fetch extension trace for object: %w", err)
-				}
+				wg.Add(1)
+				go func(span *model.Span, ext extension.Provider) {
+					defer wg.Done()
 
-				if result != nil {
-					addNewSpans(extension, result, span)
-				}
+					result, err := ext.FetchForObject(ctx, objectRef, tags, start, end)
+					if err != nil {
+						errValue.CompareAndSwap(nil, fmt.Errorf("fetch extension trace for object: %w", err))
+						return
+					}
+
+					if err := addNewSpans(ext, result, span); err != nil {
+						errValue.CompareAndSwap(nil, err)
+						return
+					}
+				}(span, ext)
 			}
 		} else if tag, exists := tags.FindByKey(zconstants.TraceSource); exists && tag.VStr == zconstants.TraceSourceAudit {
-			for _, extension := range extensions {
+			for extId, ext := range extensions {
+				if extensionQueryLimiter[extId] <= 0 {
+					continue
+				}
+
+				extensionQueryLimiter[extId] -= 1
+
 				objectRef, ok := objectRefFromTags(tags)
 				if !ok {
 					return nil, fmt.Errorf("expected object tags in traceSource=audit spans")
@@ -109,16 +143,28 @@ func (x *FetchExtensionsAndStoreCache) ProcessExtensions(
 					return nil, fmt.Errorf("expected resourceVersion tag in traceSource=audit spans")
 				}
 
-				result, err := extension.FetchForVersion(ctx, objectRef, resourceVersion.VStr, tags, start, end)
-				if err != nil {
-					return nil, fmt.Errorf("fetch extension trace for object: %w", err)
-				}
+				wg.Add(1)
+				go func(span *model.Span, ext extension.Provider) {
+					defer wg.Done()
 
-				if result != nil {
-					addNewSpans(extension, result, span)
-				}
+					result, err := ext.FetchForVersion(ctx, objectRef, resourceVersion.VStr, tags, start, end)
+					if err != nil {
+						errValue.CompareAndSwap(nil, fmt.Errorf("fetch extension trace for object: %w", err))
+						return
+					}
+
+					if err := addNewSpans(ext, result, span); err != nil {
+						errValue.CompareAndSwap(nil, err)
+						return
+					}
+				}(span, ext)
 			}
 		}
+	}
+
+	wg.Wait()
+	if err := errValue.Load(); err != nil {
+		return nil, err.(error)
 	}
 
 	return newSpans, nil

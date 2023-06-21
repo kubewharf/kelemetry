@@ -66,9 +66,12 @@ modifiers:
       operation: Update
       tagTemplates:
         audit-id: "{{.auditId}}"
-
       numTracesLimit: 5
+
       forAuditEvent: true
+
+      # Restrict number of extension queries to avoid slow response
+      maxAttempts: 16
 
 batches:
   - name: initial

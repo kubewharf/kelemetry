@@ -42,13 +42,14 @@ func init() {
 	manager.Global.ProvideListImpl("frontend-extension/jaeger-storage", manager.Ptr(&Storage{}), &manager.List[extension.ProviderFactory]{})
 }
 
+const jaegerStorageKind = "JaegerStorage"
+
 type Storage struct {
 	manager.BaseComponent
 	Logger logrus.FieldLogger
 }
 
-func (*Storage) ListIndex() string { return "JaegerStorage" }
-func (*Storage) Kind() string      { return "JaegerStorage" }
+func (*Storage) ListIndex() string { return jaegerStorageKind }
 
 func getViper() (*viper.Viper, error) {
 	factoryConfig := jaegerstorage.FactoryConfig{
@@ -58,7 +59,7 @@ func getViper() (*viper.Viper, error) {
 	}
 	storageFactory, err := jaegerstorage.NewFactory(factoryConfig)
 	if err != nil {
-		return nil, fmt.Errorf("Cannot initialize storage factory: %v", err)
+		return nil, fmt.Errorf("Cannot initialize storage factory: %w", err)
 	}
 
 	viper := viper.New()
@@ -140,6 +141,8 @@ func (s *Storage) Configure(jsonBuf []byte) (extension.Provider, error) {
 		forObject:     providerArgs.ForObject,
 		forAuditEvent: providerArgs.ForAuditEvent,
 
+		maxAttempts: providerArgs.MaxAttempts,
+
 		rawConfig: jsonBuf,
 	}, nil
 }
@@ -154,6 +157,8 @@ type ProviderArgs struct {
 
 	ForObject     bool `json:"forObject"`
 	ForAuditEvent bool `json:"forAuditEvent"`
+
+	MaxAttempts int `json:"maxAttempts"`
 }
 
 type Provider struct {
@@ -165,14 +170,19 @@ type Provider struct {
 	tagTemplates map[string]*template.Template
 	numTraces    int
 
-	forObject, forAuditEvent bool
+	forObject     bool
+	forAuditEvent bool
+
+	maxAttempts int
 
 	rawConfig []byte
 }
 
-func (provider *Provider) Kind() string { return "JaegerStorage" }
+func (provider *Provider) Kind() string { return jaegerStorageKind }
 
 func (provider *Provider) RawConfig() []byte { return provider.rawConfig }
+
+func (provider *Provider) MaxAttempts() int { return provider.maxAttempts }
 
 func (provider *Provider) FetchForObject(
 	ctx context.Context,
