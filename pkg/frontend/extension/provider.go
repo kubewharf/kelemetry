@@ -42,8 +42,11 @@ type Provider interface {
 	// The raw JSON config buffer used to configure this provider.
 	RawConfig() []byte
 
-	// Maximum number of fetch calls to invoke
-	MaxAttempts() int
+	// Maximum wall time to execute all fetch calls.
+	// Only successuful queries before this timestamp will be included in the output.
+	TotalTimeout() time.Duration
+	// Maximum concurrent fetch calls to execute for the same trace.
+	MaxConcurrency() int
 
 	// Searches for spans associated with an object.
 	//

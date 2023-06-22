@@ -70,8 +70,10 @@ modifiers:
 
       forAuditEvent: true
 
-      # Restrict number of extension queries to avoid slow response
-      maxAttempts: 16
+      # Restrict the total wall time duration for performing queries for this extension on each trace
+      totalTimeout: 15s
+      # Restrict the number of concurrent queries
+      maxConcurrency: 4
 
 batches:
   - name: initial

@@ -17,9 +17,9 @@ package transform
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/jaegertracing/jaeger/model"
@@ -27,6 +27,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/frontend/extension"
 	"github.com/kubewharf/kelemetry/pkg/frontend/tracecache"
 	"github.com/kubewharf/kelemetry/pkg/util"
+	"github.com/kubewharf/kelemetry/pkg/util/semaphore"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
@@ -86,52 +87,36 @@ func (x *FetchExtensionsAndStoreCache) ProcessExtensions(
 		return nil
 	}
 
-	extensionQueryLimiter := make([]int, len(extensions))
+	extensionSemaphores := make([]*semaphore.Semaphore, len(extensions))
 	for extId, extension := range extensions {
-		extensionQueryLimiter[extId] = extension.MaxAttempts()
+		extensionSemaphores[extId] = semaphore.New(extension.MaxConcurrency())
 	}
 
-	var errValue atomic.Value
-	var wg sync.WaitGroup
-
 	for _, span := range spans {
+		span := span
+
 		tags := model.KeyValues(span.Tags)
 		if tag, exists := tags.FindByKey(zconstants.NestLevel); exists && tag.VStr == zconstants.NestLevelObject {
 			for extId, ext := range extensions {
-				if extensionQueryLimiter[extId] <= 0 {
-					continue
-				}
-
-				extensionQueryLimiter[extId] -= 1
+				ext := ext
 
 				objectRef, ok := objectRefFromTags(tags)
 				if !ok {
 					return nil, fmt.Errorf("expected object tags in nestingLevel=object spans")
 				}
 
-				wg.Add(1)
-				go func(span *model.Span, ext extension.Provider) {
-					defer wg.Done()
-
+				extensionSemaphores[extId].Schedule(func(ctx context.Context) (semaphore.Publish, error) {
 					result, err := ext.FetchForObject(ctx, objectRef, tags, start, end)
 					if err != nil {
-						errValue.CompareAndSwap(nil, fmt.Errorf("fetch extension trace for object: %w", err))
-						return
+						return nil, fmt.Errorf("fetch extension trace for object: %w", err)
 					}
 
-					if err := addNewSpans(ext, result, span); err != nil {
-						errValue.CompareAndSwap(nil, err)
-						return
-					}
-				}(span, ext)
+					return func() error { return addNewSpans(ext, result, span) }, nil
+				})
 			}
 		} else if tag, exists := tags.FindByKey(zconstants.TraceSource); exists && tag.VStr == zconstants.TraceSourceAudit {
 			for extId, ext := range extensions {
-				if extensionQueryLimiter[extId] <= 0 {
-					continue
-				}
-
-				extensionQueryLimiter[extId] -= 1
+				ext := ext
 
 				objectRef, ok := objectRefFromTags(tags)
 				if !ok {
@@ -143,28 +128,43 @@ func (x *FetchExtensionsAndStoreCache) ProcessExtensions(
 					return nil, fmt.Errorf("expected resourceVersion tag in traceSource=audit spans")
 				}
 
-				wg.Add(1)
-				go func(span *model.Span, ext extension.Provider) {
-					defer wg.Done()
-
+				extensionSemaphores[extId].Schedule(func(ctx context.Context) (semaphore.Publish, error) {
 					result, err := ext.FetchForVersion(ctx, objectRef, resourceVersion.VStr, tags, start, end)
 					if err != nil {
-						errValue.CompareAndSwap(nil, fmt.Errorf("fetch extension trace for object: %w", err))
-						return
+						return nil, fmt.Errorf("fetch extension trace for object: %w", err)
 					}
 
-					if err := addNewSpans(ext, result, span); err != nil {
-						errValue.CompareAndSwap(nil, err)
-						return
-					}
-				}(span, ext)
+					return func() error { return addNewSpans(ext, result, span) }, nil
+				})
 			}
 		}
 	}
 
-	wg.Wait()
-	if err := errValue.Load(); err != nil {
-		return nil, err.(error)
+	fullSem := semaphore.NewUnbounded()
+	for extId := range extensionSemaphores {
+		extId := extId
+
+		fullSem.Schedule(func(ctx context.Context) (semaphore.Publish, error) {
+			semRunCtx, cancelFunc := context.WithTimeout(ctx, extensions[extId].TotalTimeout())
+			defer cancelFunc()
+
+			err := extensionSemaphores[extId].Run(semRunCtx)
+			if err != nil {
+				if errors.Is(err, semRunCtx.Err()) {
+					transformer.Logger.WithField("extension", extensions[extId].Kind()).
+						Debug("context timed out, dropping error silently to carry results obtained before timeout")
+				} else {
+					return nil, err
+				}
+			}
+
+			return nil, nil
+		})
+	}
+
+	err := fullSem.Run(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	return newSpans, nil

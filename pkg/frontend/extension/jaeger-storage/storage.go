@@ -129,6 +129,11 @@ func (s *Storage) Configure(jsonBuf []byte) (extension.Provider, error) {
 		tagTemplates[tagKey] = t
 	}
 
+	totalTimeout, err := time.ParseDuration(providerArgs.TotalTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("parse totalTimeout error: %w", err)
+	}
+
 	return &Provider{
 		reader: reader,
 		logger: s.Logger,
@@ -141,7 +146,8 @@ func (s *Storage) Configure(jsonBuf []byte) (extension.Provider, error) {
 		forObject:     providerArgs.ForObject,
 		forAuditEvent: providerArgs.ForAuditEvent,
 
-		maxAttempts: providerArgs.MaxAttempts,
+		totalTimeout:   totalTimeout,
+		maxConcurrency: providerArgs.MaxConcurrency,
 
 		rawConfig: jsonBuf,
 	}, nil
@@ -158,7 +164,8 @@ type ProviderArgs struct {
 	ForObject     bool `json:"forObject"`
 	ForAuditEvent bool `json:"forAuditEvent"`
 
-	MaxAttempts int `json:"maxAttempts"`
+	TotalTimeout   string `json:"totalTimeout"`
+	MaxConcurrency int    `json:"maxConcurrency"`
 }
 
 type Provider struct {
@@ -173,7 +180,8 @@ type Provider struct {
 	forObject     bool
 	forAuditEvent bool
 
-	maxAttempts int
+	totalTimeout   time.Duration
+	maxConcurrency int
 
 	rawConfig []byte
 }
@@ -182,7 +190,8 @@ func (provider *Provider) Kind() string { return jaegerStorageKind }
 
 func (provider *Provider) RawConfig() []byte { return provider.rawConfig }
 
-func (provider *Provider) MaxAttempts() int { return provider.maxAttempts }
+func (provider *Provider) TotalTimeout() time.Duration { return provider.totalTimeout }
+func (provider *Provider) MaxConcurrency() int         { return provider.maxConcurrency }
 
 func (provider *Provider) FetchForObject(
 	ctx context.Context,
