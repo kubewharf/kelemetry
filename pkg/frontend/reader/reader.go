@@ -45,9 +45,17 @@ type Interface interface {
 	spanstore.Reader
 }
 
-type options struct{}
+type options struct {
+	cacheExtensions bool
+}
 
 func (options *options) Setup(fs *pflag.FlagSet) {
+	fs.BoolVar(
+		&options.cacheExtensions,
+		"jaeger-extension-cache",
+		false,
+		"cache extension trace search result, otherwise trace is searched again every time result is reloaded",
+	)
 }
 
 func (options *options) EnableFlag() *bool { return nil }
@@ -179,16 +187,19 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 			identifiers[i] = json.RawMessage(idJson)
 		}
 
-		cacheEntries = append(cacheEntries, tracecache.Entry{
+		cacheEntry := tracecache.Entry{
 			LowId: cacheId.Low,
 			Value: tracecache.EntryValue{
 				Identifiers: identifiers,
 				StartTime:   query.StartTimeMin,
 				EndTime:     query.StartTimeMax,
 				RootObject:  rootKey,
-				Extensions:  extensions.Cache,
 			},
-		})
+		}
+		if reader.options.cacheExtensions {
+			cacheEntry.Value.Extensions = extensions.Cache
+		}
+		cacheEntries = append(cacheEntries, cacheEntry)
 	}
 
 	if len(cacheEntries) > 0 {
@@ -228,10 +239,15 @@ func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (
 		aggTrace.Spans = append(aggTrace.Spans, clipped...)
 	}
 
+	var extensions transform.ExtensionProcessor = &transform.FetchExtensionsAndStoreCache{}
+	if reader.options.cacheExtensions && len(entry.Extensions) > 0 {
+		extensions = &transform.LoadExtensionCache{Cache: entry.Extensions}
+	}
+
 	displayMode := extractDisplayMode(cacheId)
 	if err := reader.Transformer.Transform(
 		ctx, aggTrace, entry.RootObject, displayMode,
-		&transform.LoadExtensionCache{Cache: entry.Extensions},
+		extensions,
 		entry.StartTime, entry.EndTime,
 	); err != nil {
 		return nil, fmt.Errorf("trace transformation failed: %w", err)
