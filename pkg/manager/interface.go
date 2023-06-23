@@ -85,6 +85,7 @@ type componentInfo struct {
 	component    Component
 	dependents   uint
 	dependencies map[reflect.Type]*componentInfo
+	isListImpl   bool
 }
 
 type utilFactory struct {
@@ -154,7 +155,7 @@ func (manager *Manager) ProvideUtil(factory any) {
 // and return either `T` or `(T, error)`, where `T` is the type of component.
 // The parameter type must be identical to the return type explicitly declared in the factory (not subtypes/supertypes).
 func (manager *Manager) Provide(name string, factory ComponentFactory) {
-	manager.provideComponent(name, factory)
+	manager.provideComponent(name, factory, false)
 }
 
 type ComponentFactory interface {
@@ -264,7 +265,7 @@ type ComponentConstruct interface {
 	ComponentConstruct()
 }
 
-func (manager *Manager) provideComponent(name string, factory ComponentFactory) reflect.Type {
+func (manager *Manager) provideComponent(name string, factory ComponentFactory, isListImpl bool) reflect.Type {
 	compTy := factory.ComponentType()
 	params := factory.Params()
 
@@ -342,6 +343,7 @@ func (manager *Manager) provideComponent(name string, factory ComponentFactory) 
 			component:    comp,
 			dependents:   0,
 			dependencies: deps,
+			isListImpl:   isListImpl,
 		}
 		return info, nil
 	}
@@ -355,7 +357,7 @@ func (manager *Manager) provideComponent(name string, factory ComponentFactory) 
 // It is similar to Manager.Provide(), but with an additional parameter interfaceFunc,
 // where the argument is in the form `Interface.AnyFunc`.
 func (manager *Manager) ProvideMuxImpl(name string, factory ComponentFactory, interfaceFunc any) {
-	compTy := manager.provideComponent(name, factory)
+	compTy := manager.provideComponent(name, factory, false)
 	itfTy := reflect.TypeOf(interfaceFunc).In(0)
 
 	manager.preBuildTasks = append(manager.preBuildTasks, func() {
@@ -365,7 +367,7 @@ func (manager *Manager) ProvideMuxImpl(name string, factory ComponentFactory, in
 }
 
 func (manager *Manager) ProvideListImpl(name string, factory ComponentFactory, list ListInterface) {
-	compTy := manager.provideComponent(name, factory)
+	compTy := manager.provideComponent(name, factory, true)
 
 	listTy := reflect.TypeOf(list)
 	interfaceTy := list.listInterfaceTy()
@@ -382,7 +384,7 @@ func (manager *Manager) ProvideListImpl(name string, factory ComponentFactory, l
 
 func (manager *Manager) initListComponent(list ListInterface) {
 	itfTy := list.listInterfaceTy()
-	manager.provideComponent(itfTy.String()+"-list", list.listFactory(manager))
+	manager.provideComponent(itfTy.String()+"-list", list.listFactory(manager), false)
 }
 
 type List[T any] struct {
@@ -662,11 +664,21 @@ func (manager *Manager) SetupFlags(fs *pflag.FlagSet) {
 
 func (manager *Manager) TrimDisabled(logger logrus.FieldLogger) {
 	for _, comp := range manager.components {
-		enableFlag := comp.component.Options().EnableFlag()
-		if enableFlag != nil && !*enableFlag {
+		if comp.isListImpl {
+			enableFlag := comp.component.Options().EnableFlag()
+
 			dependents := manager.lateDependentsOf[comp.ty]
-			for _, dependent := range dependents {
-				delete(manager.components[dependent].dependencies, comp.ty)
+			if len(dependents) != 1 {
+				panic(fmt.Sprintf("expect exactly 1 dependent for list components, got %v", dependents))
+			}
+
+			listCompTy := dependents[0]
+
+			// For list implementations:
+			// &false = always remove this dependency
+			// &true, nil = enable this dependency if the list is enabled
+			if enableFlag != nil && !(*enableFlag) {
+				delete(manager.components[listCompTy].dependencies, comp.ty)
 				if list, isList := comp.component.(ListInterface); isList {
 					list.listRemoveImpl(comp.component)
 				}
@@ -708,7 +720,7 @@ func (manager *Manager) TrimDisabled(logger logrus.FieldLogger) {
 
 				silentDisable = true
 			} else {
-				if enableFlag != nil {
+				if enableFlag != nil && !comp.isListImpl {
 					shouldDisable = !*enableFlag
 				} else {
 					shouldDisable = comp.dependents == 0
@@ -725,7 +737,7 @@ func (manager *Manager) TrimDisabled(logger logrus.FieldLogger) {
 				disabled[ty] = comp
 
 				if !silentDisable {
-					logger.WithField("mod", comp.name).Warn("Component disabled")
+					logger.WithField("mod", comp.name).Info("Component disabled")
 				}
 			}
 		}

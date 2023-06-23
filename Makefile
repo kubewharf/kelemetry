@@ -175,4 +175,5 @@ fmt:
 	git add -A
 	gofumpt -l -w .
 	golines -m140 --base-formatter=gofumpt -w .
+	goimports -l -w .
 	gci write -s standard -s default -s 'prefix(github.com/kubewharf/kelemetry)' .
