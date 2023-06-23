@@ -75,6 +75,7 @@ type Clients interface {
 
 type Client interface {
 	ClusterName() string
+	RestConfig() *rest.Config
 	DynamicClient() dynamic.Interface
 	KubernetesClient() kubernetes.Interface
 	InformerFactory() informers.SharedInformerFactory
@@ -108,7 +109,7 @@ func (clients *clusterClients) Options() manager.Options {
 }
 
 func (clients *clusterClients) Init() error {
-	klog.SetLogger(logWrapper(clients.Logger))
+	klog.SetLogger(logWrapper(clients.Logger.WithField("source", "klog")))
 
 	var err error
 	clients.targetClient, err = clients.Cluster(clients.Config.TargetName())
@@ -216,6 +217,10 @@ func (clients *clusterClients) TargetCluster() Client {
 
 func (client *client) ClusterName() string {
 	return client.name
+}
+
+func (client *client) RestConfig() *rest.Config {
+	return client.restConfig
 }
 
 func (client *client) DynamicClient() dynamic.Interface {

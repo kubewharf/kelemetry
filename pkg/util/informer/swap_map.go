@@ -87,6 +87,7 @@ func (m *SwapMap[K, V]) lockedSwapIf(
 	}
 }
 
+// Replaces all items in a SwapMap with an input of a different type and a function to map the inputs without additional allocation.
 func SwapMapReplace[K comparable, V any, U any](m *SwapMap[K, V], values map[K]U, transformValue func(U) V) map[K]SwapResult[V] {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()

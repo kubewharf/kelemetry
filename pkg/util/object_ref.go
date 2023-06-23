@@ -33,8 +33,10 @@ type ObjectRef struct {
 	Namespace string
 	Name      string
 
+	// .metadata.uid of the object. May be absent or not required in some cases.
 	Uid types.UID
 
+	// A cached copy of the object, if any.
 	Raw *unstructured.Unstructured `json:"-"`
 }
 

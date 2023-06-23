@@ -17,6 +17,7 @@ package annotationlinker
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
@@ -59,25 +60,20 @@ func (ctrl *controller) Init() error                     { return nil }
 func (ctrl *controller) Start(ctx context.Context) error { return nil }
 func (ctrl *controller) Close(ctx context.Context) error { return nil }
 
-func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) *util.ObjectRef {
-	raw := object.Raw
-
+func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) (*util.ObjectRef, error) {
 	logger := ctrl.Logger.WithFields(object.AsFields("object"))
 
+	raw := object.Raw
 	if raw == nil {
 		logger.Debug("Fetching dynamic object")
 
 		var err error
 		raw, err = ctrl.ObjectCache.Get(ctx, object)
-
 		if err != nil {
-			logger.WithError(err).Error("cannot fetch object value")
-			return nil
+			return nil, fmt.Errorf("cannot fetch object value: %w", err)
 		}
-
 		if raw == nil {
-			logger.Debug("object no longer exists")
-			return nil
+			return nil, fmt.Errorf("object does not exist")
 		}
 	}
 
@@ -85,8 +81,7 @@ func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) *util
 		ref := &ParentLink{}
 		err := json.Unmarshal([]byte(ann), ref)
 		if err != nil {
-			logger.WithError(err).Error("cannot parse ParentLink annotation")
-			return nil
+			return nil, fmt.Errorf("cannot parse ParentLink annotation: %w", err)
 		}
 
 		if ref.Cluster == "" {
@@ -106,8 +101,8 @@ func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) *util
 		}
 		logger.WithField("parent", objectRef).Debug("Resolved parent")
 
-		return objectRef
+		return objectRef, nil
 	}
 
-	return nil
+	return nil, nil
 }

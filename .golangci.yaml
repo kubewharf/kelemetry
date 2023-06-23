@@ -114,3 +114,6 @@ linters-settings:
     rules:
       - name: var-naming
         disabled: true
+
+run:
+  go: 1.20

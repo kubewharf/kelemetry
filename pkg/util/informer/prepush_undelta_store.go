@@ -24,7 +24,13 @@ type ObjectKey struct {
 	Name      string
 }
 
-func ObjectKeyOf[V metav1.Object](object V) ObjectKey {
+type HasObjectKey interface {
+	GetNamespace() string
+	GetName() string
+	GetResourceVersion() string
+}
+
+func ObjectKeyOf[V HasObjectKey](object V) ObjectKey {
 	return ObjectKey{
 		Namespace: object.GetNamespace(),
 		Name:      object.GetName(),

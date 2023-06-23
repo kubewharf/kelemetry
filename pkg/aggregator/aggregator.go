@@ -390,8 +390,14 @@ func (aggregator *aggregator) ensureObjectSpan(
 		var parent *util.ObjectRef
 
 		for _, linker := range aggregator.Linkers.Impls {
-			parent = linker.Lookup(ctx, object)
-			if parent != nil {
+			thisParent, err := linker.Lookup(ctx, object)
+			if err != nil {
+				aggregator.Logger.WithField("linker", fmt.Sprintf("%T", linker)).WithError(err).Error("linker error")
+				continue
+			}
+
+			if thisParent != nil {
+				parent = thisParent
 				break
 			}
 		}

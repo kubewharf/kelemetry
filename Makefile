@@ -34,7 +34,7 @@ else
 	LOG_FILE_ARG ?=
 endif
 
-CONTROLLERS ?= audit-consumer,audit-producer,audit-webhook,event-informer,annotation-linker,owner-linker,resource-object-tag,resource-event-tag,diff-decorator,diff-controller,diff-api,pprof,jaeger-storage-plugin,jaeger-redirect-server,kelemetrix
+CONTROLLERS ?= audit-consumer,audit-producer,audit-webhook,event-informer,annotation-linker,owner-linker,rule-linker,resource-object-tag,resource-event-tag,diff-decorator,diff-controller,diff-api,pprof,jaeger-storage-plugin,jaeger-redirect-server,kelemetrix
 ifeq ($(CONTROLLERS),)
 	ENABLE_ARGS ?=
 else
@@ -173,3 +173,27 @@ fmt:
 	gofumpt -l -w .
 	golines -m140 --base-formatter=gofumpt -w .
 	gci write -s standard -s default -s 'prefix(github.com/kubewharf/kelemetry)' .
+
+CONTROLLER_GEN_VERSION := v0.12.0
+CODE_GENERATOR_VERSION := v0.27.3
+
+generate:
+	go run sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION) \
+		crd \
+		paths=./pkg/crds/apis/... \
+		output:crd:dir=./crds/config
+	go run k8s.io/code-generator/cmd/deepcopy-gen@$(CODE_GENERATOR_VERSION) \
+		-o /tmp/kelemetry-gen \
+		--input-dirs=./pkg/crds/apis/v1alpha1 \
+		--output-file-base=zz_generated.deepcopy \
+		-h ./hack/boilerplate.txt
+	go run k8s.io/code-generator/cmd/client-gen@$(CODE_GENERATOR_VERSION) \
+		-o /tmp/kelemetry-gen \
+		--input=github.com/kubewharf/kelemetry/pkg/crds/apis/v1alpha1 \
+		--input-base= \
+		--output-package=github.com/kubewharf/kelemetry/pkg/crds/client/clientset \
+		--clientset-name=versioned \
+		-h ./hack/boilerplate.txt
+	cp -r /tmp/kelemetry-gen/github.com/kubewharf/kelemetry/pkg/crds -T pkg/crds
+	rm -r /tmp/kelemetry-gen
+	$(MAKE) fmt

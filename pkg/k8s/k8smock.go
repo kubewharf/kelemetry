@@ -26,6 +26,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 )
@@ -67,6 +68,8 @@ func (client *MockClient) BindKlog(verbosity int32) {
 }
 
 func (client *MockClient) ClusterName() string { return client.Name }
+
+func (client *MockClient) RestConfig() *rest.Config { return nil }
 
 func (client *MockClient) acquireSingleFake() {
 	if client.singleFakeGuard {
