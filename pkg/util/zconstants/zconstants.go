@@ -29,11 +29,7 @@ const SpanName = Prefix + "kelemetryName"
 const NestLevel = Prefix + "nestingLevel"
 
 const (
-	NestLevelObject   = "object"
-	NestLevelChildren = "children"
-	NestLevelSpec     = "spec"
-	NestLevelStatus   = "status"
-	NestLevelDeletion = "deletion"
+	NestLevelObject = "object"
 )
 
 // Identifies that the span represents an actual event (rather than as a pseudospan).

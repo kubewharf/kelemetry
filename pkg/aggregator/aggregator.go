@@ -156,7 +156,6 @@ func (*sinceEventMetric) MetricName() string { return "aggregator_send_since_eve
 
 type lazySpanMetric struct {
 	Cluster string
-	Field   string
 	Result  string
 }
 
@@ -299,9 +298,9 @@ func (aggregator *aggregator) Send(
 
 	if parentSpan == nil {
 		// there is no primary span to fallback to, so we are the primary
-		parentSpan, err = aggregator.ensureFieldSpan(ctx, object, event.Field, event.Time)
+		parentSpan, err = aggregator.ensureObjectSpan(ctx, object, event.Time)
 		if err != nil {
-			sendMetric.Error = metrics.LabelError(err, "EnsureFieldSpan")
+			sendMetric.Error = metrics.LabelError(err, "EnsureObjectSpan")
 			return fmt.Errorf("%w during fetching field span for primary span", err)
 		}
 	}
@@ -369,23 +368,12 @@ func (aggregator *aggregator) Send(
 	return nil
 }
 
-func (aggregator *aggregator) ensureFieldSpan(
-	ctx context.Context,
-	object util.ObjectRef,
-	field string,
-	eventTime time.Time,
-) (tracer.SpanContext, error) {
-	return aggregator.getOrCreateSpan(ctx, object, field, eventTime, func() (tracer.SpanContext, error) {
-		return aggregator.ensureObjectSpan(ctx, object, eventTime)
-	})
-}
-
 func (aggregator *aggregator) ensureObjectSpan(
 	ctx context.Context,
 	object util.ObjectRef,
 	eventTime time.Time,
 ) (tracer.SpanContext, error) {
-	return aggregator.getOrCreateSpan(ctx, object, zconstants.NestLevelObject, eventTime, func() (_ tracer.SpanContext, err error) {
+	return aggregator.getOrCreateSpan(ctx, object, eventTime, func() (_ tracer.SpanContext, err error) {
 		// try to associate a parent object
 		var parent *util.ObjectRef
 
@@ -401,40 +389,27 @@ func (aggregator *aggregator) ensureObjectSpan(
 		}
 
 		// ensure parent object has a span
-		return aggregator.ensureChildrenSpan(ctx, *parent, eventTime)
-	})
-}
-
-func (aggregator *aggregator) ensureChildrenSpan(
-	ctx context.Context,
-	object util.ObjectRef,
-	eventTime time.Time,
-) (tracer.SpanContext, error) {
-	return aggregator.getOrCreateSpan(ctx, object, zconstants.NestLevelChildren, eventTime, func() (tracer.SpanContext, error) {
-		return aggregator.ensureObjectSpan(ctx, object, eventTime)
+		return aggregator.ensureObjectSpan(ctx, *parent, eventTime)
 	})
 }
 
 func (aggregator *aggregator) getOrCreateSpan(
 	ctx context.Context,
 	object util.ObjectRef,
-	field string,
 	eventTime time.Time,
 	parentGetter func() (tracer.SpanContext, error),
 ) (tracer.SpanContext, error) {
 	lazySpanMetric := &lazySpanMetric{
 		Cluster: object.Cluster,
-		Field:   field,
 		Result:  "error",
 	}
 	defer aggregator.LazySpanMetric.DeferCount(aggregator.Clock.Now(), lazySpanMetric)
 
-	cacheKey := aggregator.expiringSpanCacheKey(object, field, eventTime)
+	cacheKey := aggregator.expiringSpanCacheKey(object, eventTime)
 
 	logger := aggregator.Logger.
 		WithField("step", "getOrCreateSpan").
-		WithFields(object.AsFields("object")).
-		WithField("field", field)
+		WithFields(object.AsFields("object"))
 
 	var reserveUid spancache.Uid
 	var returnSpan tracer.SpanContext
@@ -471,7 +446,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 
 		// check if this new span is a follower of the previous one
 		followsTime := eventTime.Add(-aggregator.options.spanFollowTtl)
-		followsKey := aggregator.expiringSpanCacheKey(object, field, followsTime)
+		followsKey := aggregator.expiringSpanCacheKey(object, followsTime)
 
 		if followsKey == cacheKey {
 			// previous span expired
@@ -526,7 +501,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 		return nil, fmt.Errorf("cannot fetch parent object: %w", err)
 	}
 
-	span, err := aggregator.createSpan(ctx, object, field, eventTime, parent, followsFrom)
+	span, err := aggregator.createSpan(ctx, object, zconstants.NestLevelObject, eventTime, parent, followsFrom)
 	if err != nil {
 		return nil, metrics.LabelError(fmt.Errorf("cannot create span: %w", err), "CreateSpan")
 	}
@@ -599,16 +574,15 @@ func (aggregator *aggregator) createSpan(
 
 	aggregator.Logger.
 		WithFields(object.AsFields("object")).
-		WithField("field", nestLevel).
 		WithField("parent", parent).
 		Debug("CreateSpan")
 
 	return spanContext, nil
 }
 
-func (aggregator *aggregator) expiringSpanCacheKey(object util.ObjectRef, field string, timestamp time.Time) string {
+func (aggregator *aggregator) expiringSpanCacheKey(object util.ObjectRef, timestamp time.Time) string {
 	expiringWindow := timestamp.Unix() / int64(aggregator.options.spanTtl.Seconds())
-	return aggregator.spanCacheKey(object, fmt.Sprintf("field=%s,window=%d", field, expiringWindow))
+	return aggregator.spanCacheKey(object, fmt.Sprintf("field=object,window=%d", expiringWindow))
 }
 
 func (aggregator *aggregator) spanCacheKey(object util.ObjectRef, subObjectId string) string {
