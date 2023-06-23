@@ -23,7 +23,11 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("kelemetrix-quantity-request-count", manager.Ptr(&kelemetrix.BaseQuantityComp[RequestCount]{}))
+	manager.Global.ProvideListImpl(
+		"kelemetrix-quantity-request-count",
+		manager.Ptr(&kelemetrix.BaseQuantifier[RequestCount]{}),
+		&manager.List[kelemetrix.Quantifier]{},
+	)
 }
 
 type RequestCount struct{}
