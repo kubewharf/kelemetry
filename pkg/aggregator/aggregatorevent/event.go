@@ -22,7 +22,6 @@ import (
 )
 
 type Event struct {
-	Field       string
 	Title       string
 	Time        time.Time
 	EndTime     *time.Time
@@ -31,9 +30,8 @@ type Event struct {
 	Logs        []tracer.Log
 }
 
-func NewEvent(field string, title string, when time.Time, traceSource string) *Event {
+func NewEvent(title string, when time.Time, traceSource string) *Event {
 	return &Event{
-		Field:       field,
 		Title:       title,
 		Time:        when,
 		TraceSource: traceSource,
