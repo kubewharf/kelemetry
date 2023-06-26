@@ -663,9 +663,7 @@ func (manager *Manager) TrimDisabled(logger logrus.FieldLogger) {
 			// &true, nil = enable this dependency if the list is enabled
 			if enableFlag != nil && !(*enableFlag) {
 				delete(manager.components[listCompTy].dependencies, comp.ty)
-				if list, isList := comp.component.(ListInterface); isList {
-					list.listRemoveImpl(comp.component)
-				}
+				manager.components[listCompTy].component.(ListInterface).listRemoveImpl(comp.component)
 				comp.dependents -= 1
 			}
 		}
