@@ -104,11 +104,7 @@ func TestListTimeout(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.DebugLevel)
 
-	tagProviders := []kelemetrix.TagProvider{}
-	defaulttags.Register(
-		logger,
-		func(tp kelemetrix.TagProvider) { tagProviders = append(tagProviders, tp) },
-	)
+	tagProviders := defaulttags.GetTagProviders(logger)
 
 	clock := clocktesting.NewFakeClock(time.Time{})
 
@@ -248,14 +244,7 @@ func doTestWith(
 		},
 	}
 
-	registry := kelemetrix.NewRegistry()
-
-	for _, tagProvider := range tagProviders {
-		registry.AddTagProvider(tagProvider)
-	}
-	for _, quantifier := range quantifiers {
-		registry.AddQuantifier(quantifier)
-	}
+	registry := kelemetrix.NewMockRegistry(tagProviders, quantifiers)
 
 	consumer := &kelemetrixconsumer.Consumer{
 		Metrics:  metrics,
