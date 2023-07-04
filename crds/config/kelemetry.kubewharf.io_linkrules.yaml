@@ -109,7 +109,8 @@ spec:
               clusterTemplate:
                 description: "ClusterTemplate is a Go text template string to compute
                   the cluster name of the parent object. \n The context of the template
-                  is the child object that matched the rule."
+                  is the child object that matched the rule. \n If empty or unspecified,
+                  uses the cluster of the child object."
                 type: string
               group:
                 type: string
@@ -129,7 +130,6 @@ spec:
               version:
                 type: string
             required:
-            - clusterTemplate
             - group
             - nameTemplate
             - resource
