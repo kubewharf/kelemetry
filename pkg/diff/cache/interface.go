@@ -24,6 +24,7 @@ import (
 	"k8s.io/utils/clock"
 
 	diffcmp "github.com/kubewharf/kelemetry/pkg/diff/cmp"
+	k8sconfig "github.com/kubewharf/kelemetry/pkg/k8s/config"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
 	"github.com/kubewharf/kelemetry/pkg/util"
@@ -48,20 +49,9 @@ type Snapshot struct {
 }
 
 type CommonOptions struct {
-	PatchTtl              time.Duration
-	SnapshotTtl           time.Duration
-	EnableCacheWrapper    bool
-	UseOldResourceVersion bool
-}
-
-func (options *CommonOptions) ChooseResourceVersion(oldRv string, newRv *string) (string, error) {
-	if options.UseOldResourceVersion {
-		return oldRv, nil
-	} else if newRv != nil {
-		return *newRv, nil
-	} else {
-		return "", metrics.MakeLabeledError("NoNewRv")
-	}
+	PatchTtl           time.Duration
+	SnapshotTtl        time.Duration
+	EnableCacheWrapper bool
 }
 
 func (options *CommonOptions) Setup(fs *pflag.FlagSet) {
@@ -73,13 +63,6 @@ func (options *CommonOptions) Setup(fs *pflag.FlagSet) {
 		"duration for which snapshot cache remains (0 to disable TTL)",
 	)
 	fs.BoolVar(&options.EnableCacheWrapper, "diff-cache-wrapper-enable", false, "enable an intermediate layer of cache in memory")
-	fs.BoolVar(
-		&options.UseOldResourceVersion,
-		"diff-cache-use-old-rv",
-		false,
-		"index diff entries with the resource version before update "+
-			"(inaccurate, but works with Metadata-level audit policy)",
-	)
 }
 
 type Cache interface {
@@ -97,9 +80,10 @@ type Cache interface {
 type mux struct {
 	options *CommonOptions
 	*manager.Mux
-	Metrics metrics.Client
-	Logger  logrus.FieldLogger
-	Clock   clock.Clock
+	Metrics        metrics.Client
+	Logger         logrus.FieldLogger
+	Clock          clock.Clock
+	ClusterConfigs k8sconfig.Config
 
 	impl Cache
 
@@ -108,6 +92,7 @@ type mux struct {
 	StoreSnapshotMetric *metrics.Metric[*storeSnapshotMetric]
 	FetchSnapshotMetric *metrics.Metric[*fetchSnapshotMetric]
 	ListMetric          *metrics.Metric[*listMetric]
+	PenetrateMetric     *metrics.Metric[*penetrateMetric]
 }
 
 func newCache() Cache {
@@ -155,7 +140,7 @@ func (mux *mux) Init() error {
 
 	mux.impl = mux.Impl().(Cache)
 	if mux.options.EnableCacheWrapper {
-		wrapper := newCacheWrapper(mux.options, mux.impl, mux.Clock)
+		wrapper := newCacheWrapper(mux.options, mux.impl, mux.Clock, mux.ClusterConfigs, mux.PenetrateMetric)
 		wrapper.initMetricsLoop(mux.Metrics)
 		mux.impl = wrapper
 	}

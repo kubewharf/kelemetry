@@ -229,6 +229,10 @@ func (decorator *decorator) tryDecorate(
 			return cacheHitTypeSameRv, nil
 		}
 
+		if newRv != nil {
+			event.SetTag("newResourceVersion", *newRv)
+		}
+
 		logger = logger.WithField("oldRv", oldRv).WithField("newRv", newRv)
 
 		tryOnce = func(ctx context.Context) (bool, error) {
@@ -294,7 +298,7 @@ func (decorator *decorator) tryDecorate(
 }
 
 func decoratesResource(message *audit.Message) bool {
-	return message.Verb != audit.VerbPatch
+	return true
 }
 
 func (decorator *decorator) tryUpdateOnce(
@@ -333,7 +337,7 @@ func (decorator *decorator) tryUpdateOnce(
 		},
 		Resource: message.ObjectRef.Resource,
 	}).Histogram(float64(informerLatency.Nanoseconds()))
-	event.WithTag("informer latency", informerLatency)
+	event.SetTag("informer latency", informerLatency)
 
 	return true, nil
 }

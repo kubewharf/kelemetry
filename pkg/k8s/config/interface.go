@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	"github.com/kubewharf/kelemetry/pkg/metrics"
 )
 
 func init() {
@@ -43,6 +44,24 @@ type Config interface {
 type Cluster struct {
 	Config                *rest.Config
 	DefaultRequestTimeout time.Duration
+	UseOldResourceVersion bool
+}
+
+func (cluster *Cluster) ChooseResourceVersion(oldRv string, newRv *string) (string, error) {
+	useOld := false
+	if cluster != nil {
+		useOld = cluster.UseOldResourceVersion
+	}
+
+	if useOld {
+		return oldRv, nil
+	}
+
+	if newRv != nil {
+		return *newRv, nil
+	}
+
+	return "", metrics.MakeLabeledError("NoNewRv")
 }
 
 type mux struct {
