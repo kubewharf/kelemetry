@@ -31,4 +31,4 @@ deployment.apps/hello image updated
 
 Search `resource=deployments name=hello` in Jaeger UI:
 
-![](./images/trace-view.png)
+![](../images/trace-view.png)
