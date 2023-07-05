@@ -306,3 +306,9 @@ graph LR
   - `config`: Configuration database for the different display modes.
   - `step`: Implements the transformation steps, used in the config implementations.
 - `tracecache`: Implements the mapping from Cache ID to Trace ID.
+
+### Kelemetrix
+
+Kelemetrix is a separate component that consumes audit logs into metric points.
+Tag providers provide string tags to use in kelemetrix.toml,
+and quantifiers provide scalar quantities.

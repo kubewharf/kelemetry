@@ -45,7 +45,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/metrics"
 	"github.com/kubewharf/kelemetry/pkg/util"
 	"github.com/kubewharf/kelemetry/pkg/util/channel"
-	"github.com/kubewharf/kelemetry/pkg/util/informer"
+	informerutil "github.com/kubewharf/kelemetry/pkg/util/informer"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
 )
 

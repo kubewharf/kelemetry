@@ -25,7 +25,11 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("kelemetrix-quantity-mq-latency", manager.Ptr(&kelemetrix.BaseQuantityComp[MqLatency]{}))
+	manager.Global.ProvideListImpl(
+		"kelemetrix-quantity-mq-latency",
+		manager.Ptr(&kelemetrix.BaseQuantifier[MqLatency]{}),
+		&manager.List[kelemetrix.Quantifier]{},
+	)
 }
 
 type MqLatency struct{}

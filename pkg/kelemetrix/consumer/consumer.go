@@ -249,7 +249,7 @@ func indexQuantifiers(requiredQuantifiers sets.Set[string], registry *kelemetrix
 		}
 
 		quantifierIndex := len(quantifiers)
-		quantifiers = append(quantifiers, registry.Quantifiers[registryIndex])
+		quantifiers = append(quantifiers, registry.Quantifiers.Impls[registryIndex])
 		quantifierNameToIndex[quantifier] = quantifierIndex
 	}
 

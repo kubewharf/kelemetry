@@ -35,6 +35,7 @@ to reconstruct the causal hierarchy of the actual events.
 - [x] Connect objects with custom rules with multi-cluster support (Plugin API)
 - [x] Navigate trace with Jaeger UI and API
 - [x] Scalable for multiple large clusters
+- [x] Construct tailormade metrics based on audit logs
 
 ```mermaid
 graph TB

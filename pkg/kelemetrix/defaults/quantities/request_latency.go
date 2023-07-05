@@ -28,8 +28,16 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("kelemetrix-quantity-request-latency", manager.Ptr(&kelemetrix.BaseQuantityComp[RequestLatency]{}))
-	manager.Global.Provide("kelemetrix-quantity-request-latency-ratio", manager.Ptr(&kelemetrix.BaseQuantityComp[RequestLatencyRatio]{}))
+	manager.Global.ProvideListImpl(
+		"kelemetrix-quantity-request-latency",
+		manager.Ptr(&kelemetrix.BaseQuantifier[RequestLatency]{}),
+		&manager.List[kelemetrix.Quantifier]{},
+	)
+	manager.Global.ProvideListImpl(
+		"kelemetrix-quantity-request-latency-ratio",
+		manager.Ptr(&kelemetrix.BaseQuantifier[RequestLatencyRatio]{}),
+		&manager.List[kelemetrix.Quantifier]{},
+	)
 }
 
 type RequestLatency struct{}

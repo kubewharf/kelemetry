@@ -23,7 +23,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/utils/pointer"
 
 	"github.com/kubewharf/kelemetry/pkg/audit"
 	"github.com/kubewharf/kelemetry/pkg/kelemetrix"
@@ -31,7 +30,11 @@ import (
 )
 
 func init() {
-	manager.Global.Provide("kelemetrix-default-tags", manager.Ptr(&DefaultTagProviderComp{}))
+	manager.Global.ProvideListImpl(
+		"kelemetrix-default-tags",
+		manager.Ptr(&DefaultTagProviderComp{}),
+		&manager.List[kelemetrix.TagProviderFactory]{},
+	)
 }
 
 type DefaultTag struct {
@@ -159,26 +162,30 @@ type Options struct{}
 
 func (options *Options) Setup(fs *pflag.FlagSet) {}
 
-func (options *Options) EnableFlag() *bool { return pointer.Bool(true) }
+func (options *Options) EnableFlag() *bool { return nil }
 
 type DefaultTagProviderComp struct {
-	options  Options
-	Logger   logrus.FieldLogger
-	Registry *kelemetrix.Registry
+	options Options
+	Logger  logrus.FieldLogger
 }
 
 func (tp *DefaultTagProviderComp) Options() manager.Options { return &tp.options }
 
 func (tp *DefaultTagProviderComp) Init() error {
-	Register(tp.Logger, tp.Registry.AddTagProvider)
-
 	return nil
 }
 
-func Register(logger logrus.FieldLogger, registry func(kelemetrix.TagProvider)) {
+func (tp *DefaultTagProviderComp) GetTagProviders() []kelemetrix.TagProvider {
+	return GetTagProviders(tp.Logger)
+}
+
+func GetTagProviders(logger logrus.FieldLogger) []kelemetrix.TagProvider {
+	providers := make([]kelemetrix.TagProvider, 0, len(DefaultTags))
 	for _, tag := range DefaultTags {
-		registry(&Provider{tag: tag, logger: logger.WithField("tagProvider", tag.Name)})
+		provider := &Provider{tag: tag, logger: logger.WithField("tagProvider", tag.Name)}
+		providers = append(providers, provider)
 	}
+	return providers
 }
 
 func (tp *DefaultTagProviderComp) Start(ctx context.Context) error { return nil }
