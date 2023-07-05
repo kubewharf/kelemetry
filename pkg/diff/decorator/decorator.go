@@ -253,20 +253,27 @@ func (decorator *decorator) tryDecorate(
 	totalCtx, totalCancelFunc := context.WithTimeout(ctx, decorator.options.fetchTotalTimeout)
 	defer totalCancelFunc()
 
-	// this context only interrupts PollImmediateUntilWithContext
-	retryCtx, retryCancelFunc := context.WithDeadline(totalCtx, message.StageTimestamp.Time.Add(decorator.options.fetchEventTimeout))
-	defer retryCancelFunc()
-
 	var retryCount int64
 	var cacheHit bool
 	var err error
 
-	// the implementation never returns error
-	_ = wait.PollUntilContextCancel(retryCtx, decorator.options.fetchBackoff, true, func(context.Context) (done bool, _ error) {
-		retryCount += 1
-		cacheHit, err = tryOnce(totalCtx)
-		return cacheHit, nil
-	})
+	// try once first, neglecting fetchEventTimeout
+	retryCount += 1
+	cacheHit, err = tryOnce(totalCtx)
+
+	if !cacheHit {
+		// this context only interrupts PollImmediateUntilWithContext
+		retryDeadline := message.StageTimestamp.Time.Add(decorator.options.fetchEventTimeout)
+		retryCtx, retryCancelFunc := context.WithDeadline(totalCtx, retryDeadline)
+		defer retryCancelFunc()
+
+		// the implementation never returns error
+		_ = wait.PollUntilContextCancel(retryCtx, decorator.options.fetchBackoff, true, func(context.Context) (done bool, _ error) {
+			retryCount += 1
+			cacheHit, err = tryOnce(totalCtx)
+			return cacheHit, nil
+		})
+	}
 
 	decorator.RetryCountMetric.With(&retryCountMetric{
 		Cluster: message.Cluster,
