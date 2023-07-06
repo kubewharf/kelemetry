@@ -61,7 +61,7 @@ This setup is bundled into a Helm chart.
 
 ## Steps
 
-1. Download [`values.yaml`](charts/kelemetry/values.yaml) and configure the settings.
+1. Download [`values.yaml`](/charts/kelemetry/values.yaml) and configure the settings.
 2. Install the chart: `helm install kelemetry kelemetry oci://ghcr.io/kubewharf/kelemetry-chart --values values.yaml`
 
 The default configuration is designed for single-cluster deployment.
