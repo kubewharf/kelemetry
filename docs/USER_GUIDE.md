@@ -40,12 +40,10 @@ Currently, the following tags are supported:
 
 ### Time
 
-Currently, all traces are **rounded down** to the **newest half-hour before the event**.
-That is, if you want to look for an event that happened at 12:34,
-you should search for the trace at 12:30 instead.
-Searching between 12:33 and 12:35 will yield **no search results**.
-
-Each trace lasts for exactly 30 minutes, so the max/min duration fields are unsupported.
+Kelemetry merges and truncates traces based on the time range given in the user input.
+Only spans and events within this range are displayed.
+Some display modes further truncate the time range to the duration from the earliest to the latest event,
+so refer to the "Trace start" timestamp indicated in the trace view page.
 
 ## Trace view
 
@@ -54,7 +52,7 @@ If the current half-hour is still in progress, reload the page to load the new d
 
 For the recommended `tracing` display mode,
 
-- The timestamps are relative to the trace start, which is either `:00` or `:30` of an hour.
+- The timestamps are relative to the trace start.
 - Click on the arrow button on the left to collapse/expand a span.
 - Click on the empty space on a span row to reveal details of the span.
 - Hover cursor over a black vertical line on the span to reveal the events.
