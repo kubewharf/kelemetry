@@ -55,4 +55,5 @@ import (
 	_ "github.com/kubewharf/kelemetry/pkg/metrics/noop"
 	_ "github.com/kubewharf/kelemetry/pkg/metrics/prometheus"
 	_ "github.com/kubewharf/kelemetry/pkg/ownerlinker"
+	_ "github.com/kubewharf/kelemetry/pkg/rulelinker"
 )
