@@ -1,5 +1,11 @@
 # Deploying Kelemetry for Production Clusters
 
+> Note: Due to the variety of cloud providers and cluster management solutions,
+> deploying Kelemetry for production might be tricky.
+> If you just want to try out the features of Kelemetry,
+> follow the [quick start guide](QUICK_START.md) instead,
+> which sets up a basic stack locally using Docker.
+
 To minimize data loss and latency and ensure high availability,
 we recommend deploying Kelemetry in 3 separate components:
 consumers, informers and storage plugin.
@@ -61,8 +67,11 @@ This setup is bundled into a Helm chart.
 
 ## Steps
 
-1. Download [`values.yaml`](charts/kelemetry/values.yaml) and configure the settings.
-2. Install the chart: `helm install kelemetry kelemetry oci://ghcr.io/kubewharf/kelemetry-chart --values values.yaml`
+1. Download [`values.yaml`](/charts/kelemetry/values.yaml) and configure the settings.
+2. Install the chart: `helm install kelemetry oci://ghcr.io/kubewharf/kelemetry-chart --values values.yaml`
+3. If you use an audit webhook directly, remember to
+   [configure the apiserver](https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/#webhook-backend)
+   to send audit logs to the webhook:
 
 The default configuration is designed for single-cluster deployment.
 For multi-cluster deployment, configure the `sharedEtcd` and `storageBackend` to use a common database.
