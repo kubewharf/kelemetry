@@ -24,6 +24,7 @@ import (
 	"k8s.io/utils/clock"
 
 	diffcache "github.com/kubewharf/kelemetry/pkg/diff/cache"
+	k8sconfig "github.com/kubewharf/kelemetry/pkg/k8s/config"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/util"
 	"github.com/kubewharf/kelemetry/pkg/util/cache"
@@ -39,8 +40,9 @@ func init() {
 type localCache struct {
 	manager.MuxImplBase
 
-	Logger logrus.FieldLogger
-	Clock  clock.Clock
+	Logger         logrus.FieldLogger
+	Clock          clock.Clock
+	ClusterConfigs k8sconfig.Config
 
 	data     map[string]*history
 	dataLock sync.RWMutex
@@ -120,7 +122,7 @@ func (cache *localCache) Store(ctx context.Context, object util.ObjectRef, patch
 	patches := cache.data[object.String()]
 	patches.lastModify = cache.Clock.Now()
 
-	keyRv, _ := cache.GetCommonOptions().ChooseResourceVersion(patch.OldResourceVersion, &patch.NewResourceVersion)
+	keyRv, _ := cache.ClusterConfigs.Provide(object.Cluster).ChooseResourceVersion(patch.OldResourceVersion, &patch.NewResourceVersion)
 	patches.patches[keyRv] = patch
 }
 
@@ -133,7 +135,7 @@ func (cache *localCache) Fetch(
 	cache.dataLock.RLock()
 	defer cache.dataLock.RUnlock()
 
-	keyRv, err := cache.GetCommonOptions().ChooseResourceVersion(oldResourceVersion, newResourceVersion)
+	keyRv, err := cache.ClusterConfigs.Provide(object.Cluster).ChooseResourceVersion(oldResourceVersion, newResourceVersion)
 	if err != nil {
 		return nil, err
 	}

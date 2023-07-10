@@ -20,6 +20,7 @@ import (
 
 	"k8s.io/utils/clock"
 
+	k8sconfig "github.com/kubewharf/kelemetry/pkg/k8s/config"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
 	"github.com/kubewharf/kelemetry/pkg/util"
 	"github.com/kubewharf/kelemetry/pkg/util/cache"
@@ -28,7 +29,8 @@ import (
 type CacheWrapper struct {
 	delegate        Cache
 	patchCache      *cache.TtlOnce
-	PenetrateMetric *metrics.Metric[*penetrateMetric]
+	penetrateMetric *metrics.Metric[*penetrateMetric]
+	clusterConfigs  k8sconfig.Config
 	snapshotCache   *cache.TtlOnce
 	options         *CommonOptions
 	clock           clock.Clock
@@ -38,13 +40,17 @@ func newCacheWrapper(
 	options *CommonOptions,
 	delegate Cache,
 	clock clock.Clock,
+	clusterConfigs k8sconfig.Config,
+	penetrateMetric *metrics.Metric[*penetrateMetric],
 ) *CacheWrapper {
 	return &CacheWrapper{
-		delegate:      delegate,
-		patchCache:    cache.NewTtlOnce(options.PatchTtl, clock),
-		snapshotCache: cache.NewTtlOnce(options.SnapshotTtl, clock),
-		options:       options,
-		clock:         clock,
+		delegate:        delegate,
+		patchCache:      cache.NewTtlOnce(options.PatchTtl, clock),
+		penetrateMetric: penetrateMetric,
+		clusterConfigs:  clusterConfigs,
+		snapshotCache:   cache.NewTtlOnce(options.SnapshotTtl, clock),
+		options:         options,
+		clock:           clock,
 	}
 }
 
@@ -84,9 +90,9 @@ func (wrapper *CacheWrapper) Fetch(
 	newResourceVersion *string,
 ) (*Patch, error) {
 	penetrateMetric := &penetrateMetric{Type: "diff"}
-	defer wrapper.PenetrateMetric.DeferCount(wrapper.clock.Now(), penetrateMetric)
+	defer wrapper.penetrateMetric.DeferCount(wrapper.clock.Now(), penetrateMetric)
 
-	keyRv, err := wrapper.options.ChooseResourceVersion(oldResourceVersion, newResourceVersion)
+	keyRv, err := wrapper.clusterConfigs.Provide(object.Cluster).ChooseResourceVersion(oldResourceVersion, newResourceVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +127,7 @@ func (wrapper *CacheWrapper) FetchSnapshot(
 	snapshotName string,
 ) (*Snapshot, error) {
 	penetrateMetric := &penetrateMetric{Type: fmt.Sprintf("snapshot/%s", snapshotName)}
-	defer wrapper.PenetrateMetric.DeferCount(wrapper.clock.Now(), penetrateMetric)
+	defer wrapper.penetrateMetric.DeferCount(wrapper.clock.Now(), penetrateMetric)
 
 	if value, ok := wrapper.patchCache.Get(cacheWrapperKey(object, snapshotName)); ok {
 		return value.(*Snapshot), nil

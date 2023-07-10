@@ -48,16 +48,16 @@ func (event *Event) GetEndTime() time.Time {
 	return event.Time.Add(zconstants.DummyDuration)
 }
 
-func (event *Event) WithEndTime(when time.Time) *Event {
+func (event *Event) SetEndTime(when time.Time) *Event {
 	event.EndTime = &when
 	return event
 }
 
-func (event *Event) WithDuration(duration time.Duration) *Event {
-	return event.WithEndTime(event.Time.Add(duration))
+func (event *Event) SetDuration(duration time.Duration) *Event {
+	return event.SetEndTime(event.Time.Add(duration))
 }
 
-func (event *Event) WithTag(key string, value any) *Event {
+func (event *Event) SetTag(key string, value any) *Event {
 	event.Tags[key] = value
 	return event
 }
