@@ -39,15 +39,15 @@ type stackEntry struct {
 	unprocessedChildren []model.SpanID
 }
 
-func NewSpanTree(trace *model.Trace) *SpanTree {
+func NewSpanTree(spans []*model.Span) *SpanTree {
 	tree := &SpanTree{
-		spanMap:      make(map[model.SpanID]*model.Span, len(trace.Spans)),
-		childrenMap:  make(map[model.SpanID]map[model.SpanID]struct{}, len(trace.Spans)),
+		spanMap:      make(map[model.SpanID]*model.Span, len(spans)),
+		childrenMap:  make(map[model.SpanID]map[model.SpanID]struct{}, len(spans)),
 		visitorStack: make(map[model.SpanID]*stackEntry),
-		exited:       make(map[model.SpanID]struct{}, len(trace.Spans)),
+		exited:       make(map[model.SpanID]struct{}, len(spans)),
 	}
 
-	for _, span := range trace.Spans {
+	for _, span := range spans {
 		tree.spanMap[span.SpanID] = span
 		if len(span.References) == 0 {
 			tree.Root = span

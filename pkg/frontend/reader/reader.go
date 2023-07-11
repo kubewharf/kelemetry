@@ -45,9 +45,17 @@ type Interface interface {
 	spanstore.Reader
 }
 
-type options struct{}
+type options struct {
+	cacheExtensions bool
+}
 
 func (options *options) Setup(fs *pflag.FlagSet) {
+	fs.BoolVar(
+		&options.cacheExtensions,
+		"jaeger-extension-cache",
+		false,
+		"cache extension trace search result, otherwise trace is searched again every time result is reloaded",
+	)
 }
 
 func (options *options) EnableFlag() *bool { return nil }
@@ -139,26 +147,6 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 	for _, entry := range mergedEntries {
 		cacheId := generateCacheId(config.Id)
 
-		identifiers := make([]json.RawMessage, len(entry.identifiers))
-		for i, identifier := range entry.identifiers {
-			idJson, err := json.Marshal(identifier)
-			if err != nil {
-				return nil, fmt.Errorf("thumbnail identifier marshal: %w", err)
-			}
-
-			identifiers[i] = json.RawMessage(idJson)
-		}
-
-		cacheEntries = append(cacheEntries, tracecache.Entry{
-			LowId: cacheId.Low,
-			Value: tracecache.EntryValue{
-				Identifiers: identifiers,
-				StartTime:   query.StartTimeMin,
-				EndTime:     query.StartTimeMax,
-				RootObject:  rootKey,
-			},
-		})
-
 		for _, span := range entry.spans {
 			span.TraceID = cacheId
 			for i := range span.References {
@@ -178,10 +166,40 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 
 		displayMode := extractDisplayMode(cacheId)
 
-		if err := reader.Transformer.Transform(trace, rootKey, displayMode); err != nil {
+		extensions := &transform.FetchExtensionsAndStoreCache{}
+
+		if err := reader.Transformer.Transform(
+			ctx, trace, rootKey, displayMode,
+			extensions,
+			query.StartTimeMin, query.StartTimeMax,
+		); err != nil {
 			return nil, fmt.Errorf("trace transformation failed: %w", err)
 		}
 		traces = append(traces, trace)
+
+		identifiers := make([]json.RawMessage, len(entry.identifiers))
+		for i, identifier := range entry.identifiers {
+			idJson, err := json.Marshal(identifier)
+			if err != nil {
+				return nil, fmt.Errorf("thumbnail identifier marshal: %w", err)
+			}
+
+			identifiers[i] = json.RawMessage(idJson)
+		}
+
+		cacheEntry := tracecache.Entry{
+			LowId: cacheId.Low,
+			Value: tracecache.EntryValue{
+				Identifiers: identifiers,
+				StartTime:   query.StartTimeMin,
+				EndTime:     query.StartTimeMax,
+				RootObject:  rootKey,
+			},
+		}
+		if reader.options.cacheExtensions {
+			cacheEntry.Value.Extensions = extensions.Cache
+		}
+		cacheEntries = append(cacheEntries, cacheEntry)
 	}
 
 	if len(cacheEntries) > 0 {
@@ -221,8 +239,17 @@ func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (
 		aggTrace.Spans = append(aggTrace.Spans, clipped...)
 	}
 
+	var extensions transform.ExtensionProcessor = &transform.FetchExtensionsAndStoreCache{}
+	if reader.options.cacheExtensions && len(entry.Extensions) > 0 {
+		extensions = &transform.LoadExtensionCache{Cache: entry.Extensions}
+	}
+
 	displayMode := extractDisplayMode(cacheId)
-	if err := reader.Transformer.Transform(aggTrace, entry.RootObject, displayMode); err != nil {
+	if err := reader.Transformer.Transform(
+		ctx, aggTrace, entry.RootObject, displayMode,
+		extensions,
+		entry.StartTime, entry.EndTime,
+	); err != nil {
 		return nil, fmt.Errorf("trace transformation failed: %w", err)
 	}
 

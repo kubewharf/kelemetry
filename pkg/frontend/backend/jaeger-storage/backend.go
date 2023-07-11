@@ -36,6 +36,7 @@ import (
 	jaegerbackend "github.com/kubewharf/kelemetry/pkg/frontend/backend"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	utiljaeger "github.com/kubewharf/kelemetry/pkg/util/jaeger"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
@@ -43,14 +44,6 @@ func init() {
 	manager.Global.ProvideMuxImpl("jaeger-backend/jaeger-storage", manager.Ptr(&Backend{
 		viper: viper.New(),
 	}), jaegerbackend.Backend.List)
-}
-
-var spanStorageTypesToAddFlag = []string{
-	"cassandra",
-	"elasticsearch",
-	"kafka",
-	"grpc-plugin",
-	"badger",
 }
 
 type Backend struct {
@@ -72,7 +65,7 @@ var _ jaegerbackend.Backend = &Backend{}
 func (backend *Backend) Setup(fs *pflag.FlagSet) {
 	// SpanWriterTypes here is used to add flags only, the actual storageFactory is initialized in Backend.Init function
 	factoryConfig := jaegerstorage.FactoryConfig{
-		SpanWriterTypes:         spanStorageTypesToAddFlag,
+		SpanWriterTypes:         utiljaeger.SpanStorageTypesToAddFlag,
 		SpanReaderType:          "elasticsearch",
 		DependenciesStorageType: "elasticsearch",
 	}
@@ -257,7 +250,7 @@ func (backend *Backend) List(
 
 		for _, span := range trace.Spans {
 			if deduplicator(span) {
-				tree := tftree.NewSpanTree(trace)
+				tree := tftree.NewSpanTree(trace.Spans)
 				if err := tree.SetRoot(span.SpanID); err != nil {
 					return nil, fmt.Errorf("unexpected SetRoot error for span ID from trace: %w", err)
 				}
@@ -301,7 +294,7 @@ func (backend *Backend) Get(
 		return nil, fmt.Errorf("jaeger storage backend returned empty trace")
 	}
 
-	tree := tftree.NewSpanTree(trace)
+	tree := tftree.NewSpanTree(trace.Spans)
 	if err := tree.SetRoot(ident.SpanId); err != nil {
 		if errors.Is(err, tftree.ErrRootDoesNotExist) {
 			return nil, fmt.Errorf("cached span does not exist in refreshed trace result: %w", err)
