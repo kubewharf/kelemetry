@@ -26,6 +26,7 @@ import (
 	etcdv3 "go.etcd.io/etcd/client/v3"
 
 	diffcache "github.com/kubewharf/kelemetry/pkg/diff/cache"
+	k8sconfig "github.com/kubewharf/kelemetry/pkg/k8s/config"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
 	"github.com/kubewharf/kelemetry/pkg/util"
@@ -60,8 +61,9 @@ func (options *etcdOptions) EnableFlag() *bool { return nil }
 type Etcd struct {
 	manager.MuxImplBase
 
-	options etcdOptions
-	Logger  logrus.FieldLogger
+	options        etcdOptions
+	Logger         logrus.FieldLogger
+	ClusterConfigs k8sconfig.Config
 
 	client    *etcdv3.Client
 	deferList *shutdown.DeferList
@@ -121,7 +123,7 @@ func (cache *Etcd) Store(ctx context.Context, object util.ObjectRef, patch *diff
 		return
 	}
 
-	keyRv, _ := cache.GetCommonOptions().ChooseResourceVersion(patch.OldResourceVersion, &patch.NewResourceVersion)
+	keyRv, _ := cache.ClusterConfigs.Provide(object.Cluster).ChooseResourceVersion(patch.OldResourceVersion, &patch.NewResourceVersion)
 	_, err = cache.client.KV.Put(ctx, cache.cacheKey(object, keyRv), string(patchJson), etcdv3.WithLease(lease.ID))
 	if err != nil {
 		cache.Logger.WithError(err).Error("cannot write cache")
@@ -135,7 +137,7 @@ func (cache *Etcd) Fetch(
 	oldResourceVersion string,
 	newResourceVersion *string,
 ) (*diffcache.Patch, error) {
-	keyRv, err := cache.GetCommonOptions().ChooseResourceVersion(oldResourceVersion, newResourceVersion)
+	keyRv, err := cache.ClusterConfigs.Provide(object.Cluster).ChooseResourceVersion(oldResourceVersion, newResourceVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +238,7 @@ func (cache *Etcd) cacheKeyPrefix(object util.ObjectRef) string {
 
 func (cache *Etcd) cacheKey(object util.ObjectRef, keyRv string) string {
 	whichRv := "newRv"
-	if cache.GetCommonOptions().UseOldResourceVersion {
+	if cluster := cache.ClusterConfigs.Provide(object.Cluster); cluster != nil && cluster.UseOldResourceVersion {
 		whichRv = "oldRv"
 	}
 

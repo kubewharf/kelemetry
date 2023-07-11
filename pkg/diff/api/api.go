@@ -137,15 +137,7 @@ func (api *api) handleGet(ctx *gin.Context) error {
 		Resource: resource,
 	})
 
-	var oldRv string
-	var newRv *string
-	if api.DiffCache.GetCommonOptions().UseOldResourceVersion {
-		oldRv = rv
-	} else {
-		newRv = &rv
-	}
-
-	patch, err := api.DiffCache.Fetch(ctx, object, oldRv, newRv)
+	patch, err := api.DiffCache.Fetch(ctx, object, rv, &rv)
 	if err != nil || patch == nil {
 		return ctx.AbortWithError(404, fmt.Errorf("patch not found for rv: %w", err))
 	}

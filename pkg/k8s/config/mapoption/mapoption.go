@@ -38,6 +38,7 @@ type options struct {
 	master            map[string]string
 	kubeconfig        map[string]string
 	requestTimeout    map[string]string
+	useOldRvClusters  []string
 }
 
 func (options *options) Setup(fs *pflag.FlagSet) {
@@ -54,6 +55,12 @@ func (options *options) Setup(fs *pflag.FlagSet) {
 		"kube-request-timeout",
 		map[string]string{},
 		"map of server-side request timeout, used in metrics",
+	)
+	fs.StringSliceVar(
+		&options.useOldRvClusters,
+		"kube-use-old-resource-version-clusters",
+		[]string{},
+		"list of clusters that do not have new resource version in audit",
 	)
 }
 
@@ -98,10 +105,21 @@ func (provider *Provider) Init() error {
 			}
 		}
 
-		provider.configs[name] = &k8sconfig.Cluster{
+		useOldRv := false
+		for _, oldRvCluster := range provider.options.useOldRvClusters {
+			if oldRvCluster == name {
+				useOldRv = true
+				break
+			}
+		}
+
+		clusterConfig := &k8sconfig.Cluster{
 			Config:                config,
 			DefaultRequestTimeout: defaultRequestTimeout,
+			UseOldResourceVersion: useOldRv,
 		}
+
+		provider.configs[name] = clusterConfig
 	}
 
 	_, hasTarget := provider.configs[provider.options.targetClusterName]

@@ -257,20 +257,20 @@ func (recv *receiver) handleItem(
 	}
 
 	event := aggregatorevent.NewEvent(title, message.RequestReceivedTimestamp.Time, zconstants.TraceSourceAudit).
-		WithEndTime(message.StageTimestamp.Time).
-		WithTag("auditId", message.AuditID).
-		WithTag("username", username).
-		WithTag("userAgent", message.UserAgent).
-		WithTag("responseCode", message.ResponseStatus.Code).
-		WithTag("resourceVersion", message.ObjectRef.ResourceVersion).
-		WithTag("apiserver", message.ApiserverAddr).
-		WithTag("tag", message.Verb)
+		SetEndTime(message.StageTimestamp.Time).
+		SetTag("auditId", message.AuditID).
+		SetTag("username", username).
+		SetTag("userAgent", message.UserAgent).
+		SetTag("responseCode", message.ResponseStatus.Code).
+		SetTag("resourceVersion", message.ObjectRef.ResourceVersion).
+		SetTag("apiserver", message.ApiserverAddr).
+		SetTag("tag", message.Verb)
 
 	if len(message.SourceIPs) > 0 {
-		event = event.WithTag("sourceIP", message.SourceIPs[0])
+		event = event.SetTag("sourceIP", message.SourceIPs[0])
 
 		if len(message.SourceIPs) > 1 {
-			event = event.WithTag("proxy", message.SourceIPs[1:])
+			event = event.SetTag("proxy", message.SourceIPs[1:])
 		}
 	}
 
