@@ -18,12 +18,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/util/sets"
 
+	"github.com/kubewharf/kelemetry/pkg/frontend/extension"
 	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
@@ -41,9 +43,10 @@ func (options *TransformerOptions) Setup(fs *pflag.FlagSet) {
 func (options *TransformerOptions) EnableFlag() *bool { return nil }
 
 type Transformer struct {
-	options TransformerOptions
-	Logger  logrus.FieldLogger
-	Configs tfconfig.Provider
+	options          TransformerOptions
+	Logger           logrus.FieldLogger
+	Configs          tfconfig.Provider
+	ExtensionFactory *manager.List[extension.ProviderFactory]
 }
 
 func (transformer *Transformer) Options() manager.Options        { return &transformer.options }
@@ -51,7 +54,14 @@ func (transformer *Transformer) Init() error                     { return nil }
 func (transformer *Transformer) Start(ctx context.Context) error { return nil }
 func (transformer *Transformer) Close(ctx context.Context) error { return nil }
 
-func (transformer *Transformer) Transform(trace *model.Trace, rootObject *tftree.GroupingKey, configId tfconfig.Id) error {
+func (transformer *Transformer) Transform(
+	ctx context.Context,
+	trace *model.Trace,
+	rootObject *tftree.GroupingKey,
+	configId tfconfig.Id,
+	extensionProcessor ExtensionProcessor,
+	start, end time.Time,
+) error {
 	if len(trace.Spans) == 0 {
 		return fmt.Errorf("cannot transform empty trace")
 	}
@@ -61,7 +71,14 @@ func (transformer *Transformer) Transform(trace *model.Trace, rootObject *tftree
 		config = transformer.Configs.GetById(transformer.Configs.DefaultId())
 	}
 
-	tree := tftree.NewSpanTree(trace)
+	newSpans, err := extensionProcessor.ProcessExtensions(ctx, transformer, config.Extensions, trace.Spans, start, end)
+	if err != nil {
+		return fmt.Errorf("cannot prepare extension trace: %w", err)
+	}
+
+	newSpans = append(newSpans, trace.Spans...)
+
+	tree := tftree.NewSpanTree(newSpans)
 
 	transformer.groupDuplicates(tree)
 

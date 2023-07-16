@@ -17,6 +17,7 @@ package tfconfig
 import (
 	"strconv"
 
+	"github.com/kubewharf/kelemetry/pkg/frontend/extension"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
 
@@ -53,6 +54,8 @@ type Config struct {
 	// If true, only displays the spans below the matched span.
 	// If false, displays the whole trace including parent and sibling spans.
 	UseSubtree bool
+	// The extension traces for this config.
+	Extensions []extension.Provider
 	// The steps to transform the tree
 	Steps []Step
 }

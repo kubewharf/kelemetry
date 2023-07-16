@@ -49,7 +49,7 @@ type FileProvider struct {
 	manager.MuxImplBase
 
 	RegisteredSteps     *manager.List[tfconfig.RegisteredStep]
-	RegisteredModifiers *manager.List[tfconfig.Modifier]
+	RegisteredModifiers *manager.List[tfconfig.ModifierFactory]
 
 	options        options
 	names          []string
@@ -97,9 +97,15 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 		Steps json.RawMessage `json:"steps"`
 	}
 
+	type modifierConfig struct {
+		DisplayName  string          `json:"displayName"`
+		ModifierName string          `json:"modifierName"`
+		Args         json.RawMessage `json:"args"`
+	}
+
 	var file struct {
-		Modifiers map[string]tfconfig.Id `json:"modifiers"`
-		Batches   []Batch                `json:"batches"`
+		Modifiers map[tfconfig.Id]modifierConfig `json:"modifiers"`
+		Batches   []Batch                        `json:"batches"`
 		Configs   []struct {
 			Id         tfconfig.Id     `json:"id"`
 			Name       string          `json:"name"`
@@ -112,32 +118,31 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 	}
 
 	modifiers := make([]func(*tfconfig.Config), 0, len(file.Modifiers))
-	for modifierName, bitmask := range file.Modifiers {
-		modifierName := modifierName
+	for bitmask, modifierConfig := range file.Modifiers {
 		bitmask := bitmask
+		modifierConfig := modifierConfig
+		displayName := modifierConfig.DisplayName
 
-		var matched tfconfig.Modifier
-		for _, modifier := range p.RegisteredModifiers.Impls {
-			if modifierName == modifier.ModifierName() {
-				matched = modifier
-				break
-			}
+		factory, hasFactory := p.RegisteredModifiers.Indexed[modifierConfig.ModifierName]
+		if !hasFactory {
+			return fmt.Errorf("parse tfconfig modifier error: unknown modifier name %q", modifierConfig.ModifierName)
 		}
 
-		if matched == nil {
-			return fmt.Errorf("parse tfconfig modifier error: unknown modifier name %q", modifierName)
+		modifier, err := factory.Build([]byte(modifierConfig.Args))
+		if err != nil {
+			return fmt.Errorf("parse tfconfig modifier error: invalid modifier args: %w", err)
 		}
 
 		modifiers = append(modifiers, func(config *tfconfig.Config) {
 			config.Id |= bitmask
-			config.Name += fmt.Sprintf(" [%s]", modifierName)
-			matched.Modify(config)
+			config.Name += fmt.Sprintf(" [%s]", displayName)
+			modifier.Modify(config)
 		})
 	}
 
 	batches := map[string][]tfconfig.Step{}
 	for _, batch := range file.Batches {
-		steps, err := tfconfig.ParseSteps(batch.Steps, batches, p.RegisteredSteps.Impls)
+		steps, err := tfconfig.ParseSteps(batch.Steps, batches, p.RegisteredSteps.Indexed)
 		if err != nil {
 			return fmt.Errorf("parse tfconfig batch error: %w", err)
 		}
@@ -146,7 +151,7 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 	}
 
 	for _, raw := range file.Configs {
-		steps, err := tfconfig.ParseSteps(raw.Steps, batches, p.RegisteredSteps.Impls)
+		steps, err := tfconfig.ParseSteps(raw.Steps, batches, p.RegisteredSteps.Indexed)
 		if err != nil {
 			return fmt.Errorf("parse tfconfig step error: %w", err)
 		}
