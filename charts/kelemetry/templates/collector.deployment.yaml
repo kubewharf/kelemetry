@@ -24,6 +24,9 @@ spec:
           args: [
             {{- include "kelemetry.storage-options-raw" . | include "kelemetry.yaml-to-args" }}
           ]
+          env:
+            - name: COLLECTOR_OTLP_ENABLED
+              value: "true"
           image: {{ printf "%s:%s" .Values.jaegerImages.collector.repository .Values.jaegerImages.collector.tag | toJson }}
           imagePullPolicy: {{ toJson .Values.jaegerImages.pullPolicy }}
           livenessProbe:

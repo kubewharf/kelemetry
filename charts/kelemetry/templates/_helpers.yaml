@@ -177,13 +177,17 @@ kube-other-rest-burst: {{.otherClusterBurst}}
 {{- define "kelemetry.diff-cache-options-raw" }}
 diff-cache-wrapper-enable: {{.Values.diffCache.memoryWrapper}}
 
-{{- if .Values.diffCache.resourceVersionIndex | eq "Before" }}
-diff-cache-use-old-rv: true
-{{- else if .Values.diffCache.resourceVersionIndex | eq "After" }}
-diff-cache-use-old-rv: false
-{{- else }}
-{{ printf "Unsupported resource version index type %q" .Values.diffCache.resourceVersionIndex }}
-{{- end }}
+kube-use-old-resource-version-clusters: [
+  {{- range .Values.multiCluster.clusters }}
+  {{- if .resourceVersionIndex | eq "Before" }}
+  {{toJson .name}},
+  {{- else if .resourceVersionIndex | eq "After" }}
+  # not {{toJson .name}},
+  {{- else }}
+  {{ printf "Unsupported resource version index type %q" .resourceVersionIndex | fail }}
+  {{- end }}
+  {{- end }}
+]
 
 {{- if .Values.diffCache.type | eq "etcd" }}
 diff-cache: etcd
