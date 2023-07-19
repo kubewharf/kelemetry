@@ -168,6 +168,8 @@ consumer:
 
 # Jaeger collector collects otel tracing data and dispatches them to Jaeger storage.
 collector:
+  insecure: true
+
   replicaCount: 3
   resources: {}
     # limits:
@@ -322,14 +324,6 @@ objectCache:
 
 # Diff cache stores the object diff from informers so that audit consumer can use it.
 diffCache:
-  # Whether to index by the resourceVersion `Before` or `After` a diff.
-  # `After` is more accurate, but it requires audit logs to be sent at RequestResponse level,
-  # which may result in more expensive audit logging costs.
-  # Use `Before` if you cannot use RequestResponse-level audit logging,
-  # but it may suffer from accuracy bugs such as duplicate events.
-  # See <https://github.com/kubernetes/kubernetes/issues/115791>.
-  resourceVersionIndex: Before
-
   # Whether to persist a layer of read cache in memory to reduce etcd load.
   memoryWrapper: true
 
@@ -370,9 +364,17 @@ multiCluster:
       # This is the list of addresses that audit webhook requests from the apiserver may be sent from.
       peerAddresses: [127.0.0.1]
 
+      # Whether to index object diff in this cluster by the resourceVersion `Before` or `After` a diff.
+      # `After` is more accurate, but it requires audit logs to be sent at RequestResponse level,
+      # which may result in more expensive audit logging costs.
+      # Use `Before` if you cannot use RequestResponse-level audit logging,
+      # but it may suffer from accuracy bugs such as duplicate events.
+      # See <https://github.com/kubernetes/kubernetes/issues/115791>.
+      resourceVersionIndex: After
+
 kelemetryImage:
   repository: ghcr.io/kubewharf/kelemetry
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   pullSecrets: []
