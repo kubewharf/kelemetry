@@ -258,6 +258,7 @@ func (recv *receiver) handleItem(
 
 	event := aggregatorevent.NewEvent(title, message.RequestReceivedTimestamp.Time, zconstants.TraceSourceAudit).
 		SetEndTime(message.StageTimestamp.Time).
+		SetTag("auditId", message.AuditID).
 		SetTag("username", username).
 		SetTag("userAgent", message.UserAgent).
 		SetTag("responseCode", message.ResponseStatus.Code).

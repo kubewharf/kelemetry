@@ -12,7 +12,7 @@ configs:
       - kind: Batch
         batchName: initial
       - kind: ExtractNestingVisitor
-        matchesNestLevel:
+        batchName:
           oneOf: []
           negate: true
       - kind: Batch
@@ -51,29 +51,7 @@ configs:
         batchName: final
 
 modifiers:
-  "01000000":
-    displayName: exclusive
-    modifierName: exclusive
-  "00000001":
-    displayName: apiserver trace
-    modifierName: extension
-    args:
-      kind: JaegerStorage
-      storageArgs:
-        span-storage.type: grpc-plugin
-        grpc-storage.server: 127.0.0.1:17272
-      service: apiserver
-      operation: Update
-      tagTemplates:
-        audit-id: "{{.auditId}}"
-      numTracesLimit: 5
-
-      forAuditEvent: true
-
-      # Restrict the total wall time duration for performing queries for this extension on each trace
-      totalTimeout: 15s
-      # Restrict the number of concurrent queries
-      maxConcurrency: 4
+  exclusive: "01000000"
 
 batches:
   - name: initial

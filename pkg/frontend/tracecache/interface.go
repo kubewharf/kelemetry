@@ -19,6 +19,8 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/jaegertracing/jaeger/model"
+
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
@@ -44,6 +46,16 @@ type EntryValue struct {
 	StartTime   time.Time           `json:"startTime"`
 	EndTime     time.Time           `json:"endTime"`
 	RootObject  *tftree.GroupingKey `json:"rootObject"`
+
+	Extensions []ExtensionCache `json:"extensions"`
+}
+
+type ExtensionCache struct {
+	ParentTrace      model.TraceID   `json:"parentTrace"`
+	ParentSpan       model.SpanID    `json:"parentSpan"`
+	ProviderKind     string          `json:"providerKind"`
+	ProviderConfig   json.RawMessage `json:"providerConfig"`
+	CachedIdentifier json.RawMessage `json:"cachedIdentifier"`
 }
 
 type mux struct {

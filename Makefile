@@ -12,8 +12,8 @@ CLUSTER_NAME ?= tracetest
 KUBECONFIGS ?= $(CLUSTER_NAME)=$(KUBECONFIG)
 
 PORT ?= 8080
-LOG_LEVEL ?= debug
-KLOG_VERBOSITY ?= 5
+LOG_LEVEL ?= info
+KLOG_VERBOSITY ?= 3
 
 RACE_ARG := -race
 ifdef SKIP_DETECT_RACE
@@ -133,6 +133,9 @@ kind:
 	sed "s/host.docker.internal/$$( \
 		docker network inspect kind -f '{{(index .IPAM.Config 0).Gateway}}' \
 	)/g" hack/audit-kubeconfig.yaml >hack/audit-kubeconfig.local.yaml
+	sed "s/host.docker.internal/$$( \
+		docker network inspect kind -f '{{(index .IPAM.Config 0).Gateway}}' \
+	)/g" hack/tracing-config.yaml >hack/tracing-config.local.yaml
 	cd hack && kind create cluster --config kind-cluster.yaml
 
 COMPOSE_COMMAND ?= up --build -d --remove-orphans

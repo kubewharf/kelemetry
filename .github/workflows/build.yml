@@ -136,8 +136,8 @@ jobs:
           TRACE_ID=$(grep "Location: /trace/" curl-output.http | cut -d/ -f3 | tr -d '\r')
 
           mkdir -p output/api/traces
-          for mode in ff{0,1,2,3}{0,1}; do
-            mode_trace=${mode}${TRACE_ID:4}
+          for mode in ff{0,1,2,3}{0,1}00000{0,1}; do
+            mode_trace=${mode}${TRACE_ID:10}
             curl -o output/api/traces/$mode_trace http://localhost:16686/api/traces/$mode_trace
           done
 

@@ -24,7 +24,11 @@ import (
 )
 
 func init() {
-	manager.Global.ProvideListImpl("tf-modifier/exclusive", manager.Ptr(&ExclusiveModifier{}), &manager.List[tfconfig.Modifier]{})
+	manager.Global.ProvideListImpl(
+		"tf-modifier/exclusive",
+		manager.Ptr(&ExclusiveModifierFactory{}),
+		&manager.List[tfconfig.ModifierFactory]{},
+	)
 }
 
 type ExclusiveModifierOptions struct {
@@ -37,18 +41,25 @@ func (options *ExclusiveModifierOptions) Setup(fs *pflag.FlagSet) {
 
 func (options *ExclusiveModifierOptions) EnableFlag() *bool { return &options.enable }
 
-type ExclusiveModifier struct {
+type ExclusiveModifierFactory struct {
 	options ExclusiveModifierOptions
 }
 
-var _ manager.Component = &ExclusiveModifier{}
+var _ manager.Component = &ExclusiveModifierFactory{}
 
-func (m *ExclusiveModifier) Options() manager.Options        { return &m.options }
-func (m *ExclusiveModifier) Init() error                     { return nil }
-func (m *ExclusiveModifier) Start(ctx context.Context) error { return nil }
-func (m *ExclusiveModifier) Close(ctx context.Context) error { return nil }
+func (m *ExclusiveModifierFactory) Options() manager.Options        { return &m.options }
+func (m *ExclusiveModifierFactory) Init() error                     { return nil }
+func (m *ExclusiveModifierFactory) Start(ctx context.Context) error { return nil }
+func (m *ExclusiveModifierFactory) Close(ctx context.Context) error { return nil }
 
-func (*ExclusiveModifier) ModifierName() string { return "exclusive" }
+func (*ExclusiveModifierFactory) ListIndex() string    { return "exclusive" }
+func (*ExclusiveModifierFactory) ModifierName() string { return "exclusive" }
+
+func (*ExclusiveModifierFactory) Build(jsonBuf []byte) (tfconfig.Modifier, error) {
+	return &ExclusiveModifier{}, nil
+}
+
+type ExclusiveModifier struct{}
 
 func (*ExclusiveModifier) Modify(config *tfconfig.Config) {
 	config.UseSubtree = true
