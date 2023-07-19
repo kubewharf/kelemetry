@@ -116,6 +116,7 @@ owner-linker-enable: {{ .Values.linkers.ownerReference }}
 
 {{/* TRACER */}}
 tracer-otel-endpoint: {{.Release.Name}}-collector.{{.Release.Namespace}}.svc:4317
+tracer-otel-insecure: {{ .Values.collector.insecure }}
 {{- end }}
 
 {{- define "kelemetry.object-cache-options" }}

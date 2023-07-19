@@ -168,6 +168,8 @@ consumer:
 
 # Jaeger collector collects otel tracing data and dispatches them to Jaeger storage.
 collector:
+  insecure: true
+
   replicaCount: 3
   resources: {}
     # limits:
