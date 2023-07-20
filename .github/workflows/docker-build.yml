@@ -23,5 +23,5 @@ jobs:
         id: tag-name
         run: echo "IMAGE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      - run: helm package charts/kelemetry --app-version="${IMAGE_TAG}" --version="${{steps.tag-name.outputs.IMAGE_TAG}}" -d output
+      - run: helm package charts/kelemetry --app-version="${{steps.tag-name.outputs.IMAGE_TAG}}" --version="${{steps.tag-name.outputs.IMAGE_TAG}}" -d output
       - run: helm push output/kelemetry-chart-${{steps.tag-name.outputs.IMAGE_TAG}}.tgz oci://ghcr.io/kubewharf
