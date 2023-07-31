@@ -41,6 +41,7 @@ import (
 	_ "github.com/kubewharf/kelemetry/pkg/frontend"
 	_ "github.com/kubewharf/kelemetry/pkg/frontend/backend/jaeger-storage"
 	_ "github.com/kubewharf/kelemetry/pkg/frontend/clusterlist/options"
+	_ "github.com/kubewharf/kelemetry/pkg/frontend/extension/httptrace"
 	_ "github.com/kubewharf/kelemetry/pkg/frontend/extension/jaeger-storage"
 	_ "github.com/kubewharf/kelemetry/pkg/frontend/http/redirect"
 	_ "github.com/kubewharf/kelemetry/pkg/frontend/http/trace"
