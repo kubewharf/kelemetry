@@ -77,6 +77,27 @@ modifiers:
 #       # Restrict the number of concurrent queries
 #       maxConcurrency: 4
 
+# http trace extension demo
+#  "00000020":
+#    displayName: http trace extension
+#    modifierName: extension
+#    args:
+#      kind: HTTPTrace
+#      traceBackends:
+#      - tagFilters:
+#          resource: pods
+#          nodes: ".+"
+#        argsTemplates:
+#          node: "{{.nodes}}"
+#          pod: "{{.namespace}}/{{.name}}"
+#          start: "{{unixMicro .start}}"
+#          end: "{{unixMicro .end}}"
+#          limit: "100"
+#        urlTemplate: "http://test-domain/api/traces"
+#        forObject: true
+#      maxConcurrency: 100
+#      totalTimeout: 60s
+
 batches:
   - name: initial
     steps:
