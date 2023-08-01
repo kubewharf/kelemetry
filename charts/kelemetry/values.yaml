@@ -139,6 +139,24 @@ consumer:
         otherConfig: {}
           # clusterIP: xxx, externalIP: xxx, etc.
 
+  # Decorate audit logs with diff info from the diff cache.
+  diff:
+    enable: true
+    # The backoff duration between attempts to fetch diff from the diff cache.
+    backoff: 1s
+    # If this duration has elapsed since kube-apiserver sends the ResponseComplete audit stage
+    # but the diff cache still returns NotFound for the requested diff,
+    # consumer gives up retrying to fetch diff for this audit event.
+    # Consumer always tries to fetch at least once even if this duration has elapsed.
+    fetchEventTimeout: 15s
+    # The total duration that consumer takes to retry and fetch diff for each audit event.
+    # Comparing fetchEventTimeout vs fetchTotalTimeout:
+    # fetchEventTimeout is non-accumulative, e.g. if consumer is lagging behind for more than fetchEventTimeout,
+    # the consumer give up after the first attempt;
+    # meanwhile, fetchTotalTimeout is accumulative, e.g. in the worst case,
+    # the consumer takes fetchTotalTimeout to process each audit event before processing the next one.
+    fetchTotalTimeout: 10s
+
   # The audit consumer is primarily CPU-bound.
   resources: {}
     # limits:
@@ -272,8 +290,7 @@ storageBackend:
 aggregator:
   globalTags:
     # Tags applied to all object spans (i.e. not actual events, just the parent placeholder)
-    pseudoSpan:
-      cluster: foo # one recommended use is to write the cluster name here.
+    pseudoSpan: {}
     # Tags applied to all actual spans (e.g. events, audit logs)
     eventSpan: {}
 

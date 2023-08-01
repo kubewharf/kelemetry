@@ -233,7 +233,10 @@ func (decorator *decorator) tryDecorate(
 			event.SetTag("newResourceVersion", *newRv)
 		}
 
-		logger = logger.WithField("oldRv", oldRv).WithField("newRv", newRv)
+		logger = logger.WithField("oldRv", oldRv)
+		if newRv != nil {
+			logger = logger.WithField("newRv", *newRv)
+		}
 
 		tryOnce = func(ctx context.Context) (bool, error) {
 			return decorator.tryUpdateOnce(ctx, object, oldRv, newRv, event, message)

@@ -33,6 +33,10 @@ spec:
             {{ include "kelemetry.logging-options" .Values.consumer }}
             {{ include "kelemetry.kube-options" .Values.consumer }}
             {{ include "kelemetry.audit-options" . }}
+            {{- if .Values.informers.diff.enable }}
+            {{ include "kelemetry.diff-cache-options" . }}
+            {{ include "kelemetry.diff-decorator-options" . }}
+            {{- end }}
           ]
           ports: [
             {{- if .Values.consumer.pprof }}
