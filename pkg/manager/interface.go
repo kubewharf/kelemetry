@@ -412,10 +412,14 @@ func (*List[T]) listFactory(manager *Manager) ComponentFactory {
 func (list *List[T]) listRemoveImpl(obj Component) {
 	newList := []T{}
 	for _, impl := range list.Impls {
-		if list.Indexed != nil && any(impl) == obj {
-			delete(list.Indexed, any(impl).(IndexedListImpl).ListIndex())
+		if any(impl) == obj {
+			if list.Indexed != nil {
+				delete(list.Indexed, any(impl).(IndexedListImpl).ListIndex())
+			}
+
 			continue
 		}
+
 		newList = append(newList, impl)
 	}
 
