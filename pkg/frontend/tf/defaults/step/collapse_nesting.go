@@ -94,8 +94,10 @@ type AuditDiffClass struct {
 }
 
 func (classes *AuditDiffClassification) Get(prefix string) *AuditDiffClass {
-	if class, hasSpecific := classes.SpecificFields.fieldMap[prefix]; hasSpecific {
-		return class
+	for ptr := len(prefix); ptr > 0; ptr = strings.LastIndex(prefix[:ptr], ".") { // remove the last `.`-delimited substring if not found
+		if class, hasSpecific := classes.SpecificFields.fieldMap[prefix[:ptr]]; hasSpecific {
+			return class
+		}
 	}
 
 	return &classes.DefaultClass

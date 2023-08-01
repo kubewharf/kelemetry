@@ -126,6 +126,10 @@ batches:
               fields:
                 - "metadata.resourceVersion"
                 - "metadata.generation"
+            - class:
+                shouldDisplay: false
+              fields:
+                - "metadata.managedFields"
         logTypeMapping:
           event/message: "message"
           audit/objectSnapshot: "snapshot"
