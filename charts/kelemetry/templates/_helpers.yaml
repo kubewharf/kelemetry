@@ -247,6 +247,11 @@ audit-consumer-enable: true
 audit-consumer-filter-cluster-name: "" # TODO: review whether this option should be set
 audit-consumer-group-failures: false # TODO: add option to enable this when tf plugins support it
 
+diff-decorator-enable: {{ .Values.consumer.diff.enable | toJson }}
+diff-decorator-fetch-backoff: {{ .Values.consumer.diff.backoff | toJson }}
+diff-decorator-fetch-event-timeout: {{ .Values.consumer.diff.fetchEventTimeout | toJson }}
+diff-decorator-fetch-total-timeout: {{ .Values.consumer.diff.fetchTotalTimeout | toJson }}
+
 {{- if .Values.consumer.source.type | eq "webhook" }}
 audit-webhook-enable: true
 audit-producer-enable: true
