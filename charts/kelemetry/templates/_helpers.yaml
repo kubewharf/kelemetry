@@ -313,7 +313,7 @@ jaeger-trace-cache-etcd-prefix: {{ .Values.frontend.traceCache.etcd.prefix | toJ
 span-storage.type: grpc-plugin
 grpc-storage.server: {{.Release.Name}}-storage.{{.Release.Namespace}}.svc:17271
 {{- end }}
-{{- define "kelemetry.storage-options-stateless" }}
+{{- define "kelemetry.storage-options-raw-stateless" }}
 span-storage.type: {{toJson .Values.storageBackend.type}}
 {{- range $key, $value := .Values.storageBackend.options }}
 {{ toJson $key }}: {{ toJson $value }}
