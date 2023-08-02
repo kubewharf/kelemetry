@@ -14,6 +14,15 @@ jobs:
       - uses: actions/setup-go@v3
         with:
           go-version: '1.20'
+      - name: Ensure coverage is reported for every package
+        run: |
+          find pkg -type d -print0 | while IFS= read -r -d '' dir; do
+            go_file=$(ls -1 $dir | grep '\.go$' | grep -v '_test\.go$' | head -n1)
+            if [[ $go_file ]]; then
+              package_line=$(grep '^package' ${dir}/${go_file} | head -n1)
+              echo "${package_line}_test" >$dir/package_coverage_test.go
+            fi
+          done
       - name: Run unit tests
         run: make test
       - name: Upload coverage reports to Codecov
