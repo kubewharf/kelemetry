@@ -19,11 +19,13 @@ import "github.com/kubewharf/kelemetry/pkg/manager"
 type ModifierFactory interface {
 	manager.IndexedListImpl
 
-	ModifierName() string
-
 	Build(jsonBuf []byte) (Modifier, error)
 }
 
 type Modifier interface {
+	// Modifiers with the same class are incompatible with one another.
+	// Used to reduce cardinality of available display modes in frontend.
+	ModifierClass() string
+
 	Modify(config *Config)
 }

@@ -56,15 +56,15 @@ func (m *ExtensionModifierFactory) Init() error                     { return nil
 func (m *ExtensionModifierFactory) Start(ctx context.Context) error { return nil }
 func (m *ExtensionModifierFactory) Close(ctx context.Context) error { return nil }
 
-func (*ExtensionModifierFactory) ListIndex() string    { return "extension" }
-func (*ExtensionModifierFactory) ModifierName() string { return "extension" }
+func (*ExtensionModifierFactory) ListIndex() string { return "extension" }
 
 func (m *ExtensionModifierFactory) Build(jsonBuf []byte) (tfconfig.Modifier, error) {
 	var hasKind struct {
-		Kind string `json:"kind"`
+		Kind  string `json:"kind"`
+		Class string `json:"modifierClass"`
 	}
 
-	if err := json.Unmarshal(jsonBuf, &hasKind); err != nil {
+	if err := json.Unmarshal(jsonBuf, &hasKind); err != nil || hasKind.Kind == "" {
 		return nil, fmt.Errorf("no extension kind specified: %w", err)
 	}
 
@@ -78,13 +78,21 @@ func (m *ExtensionModifierFactory) Build(jsonBuf []byte) (tfconfig.Modifier, err
 		return nil, fmt.Errorf("parse extension provider config error: %w", err)
 	}
 
-	return &ExtensionModifier{provider: provider}, nil
+	return &ExtensionModifier{
+		provider: provider,
+		class:    hasKind.Class,
+	}, nil
 }
 
 type ExtensionModifier struct {
+	class    string
 	provider extension.Provider
 }
 
-func (m *ExtensionModifier) Modify(config *tfconfig.Config) {
-	config.Extensions = append(config.Extensions, m.provider)
+func (modifier *ExtensionModifier) ModifierClass() string {
+	return fmt.Sprintf("kelemetry.kubewharf.io/extension/%s", modifier.class)
+}
+
+func (modifier *ExtensionModifier) Modify(config *tfconfig.Config) {
+	config.Extensions = append(config.Extensions, modifier.provider)
 }
