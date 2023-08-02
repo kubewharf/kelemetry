@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -98,6 +99,7 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 	}
 
 	type modifierConfig struct {
+		Priority     int64           `json:"priority"`
 		DisplayName  string          `json:"displayName"`
 		ModifierName string          `json:"modifierName"`
 		Args         json.RawMessage `json:"args"`
@@ -117,10 +119,17 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 		return fmt.Errorf("parse tfconfig error: %w", err)
 	}
 
-	modifiers := make([]func(*tfconfig.Config), 0, len(file.Modifiers))
+	type knownModifier struct {
+		priority int64
+		fn       func(config *tfconfig.Config)
+	}
+
+	modifiers := make([]knownModifier, 0, len(file.Modifiers))
+
 	for bitmask, modifierConfig := range file.Modifiers {
 		bitmask := bitmask
 		modifierConfig := modifierConfig
+
 		displayName := modifierConfig.DisplayName
 
 		factory, hasFactory := p.RegisteredModifiers.Indexed[modifierConfig.ModifierName]
@@ -133,12 +142,18 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 			return fmt.Errorf("parse tfconfig modifier error: invalid modifier args: %w", err)
 		}
 
-		modifiers = append(modifiers, func(config *tfconfig.Config) {
-			config.Id |= bitmask
-			config.Name += fmt.Sprintf(" [%s]", displayName)
-			modifier.Modify(config)
+		modifiers = append(modifiers, knownModifier{
+			priority: modifierConfig.Priority,
+			fn: func(config *tfconfig.Config) {
+				config.Id |= bitmask
+				config.Name += fmt.Sprintf(" [%s]", displayName)
+				modifier.Modify(config)
+			},
 		})
 	}
+
+	// Sort modifiers by the ascending order of priorities
+	sort.Slice(modifiers, func(i, j int) bool { return modifiers[i].priority < modifiers[j].priority })
 
 	batches := map[string][]tfconfig.Step{}
 	for _, batch := range file.Batches {
@@ -171,7 +186,7 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 
 		for _, config := range p.configs {
 			newConfig := config.Clone()
-			modifier(newConfig)
+			modifier.fn(newConfig)
 			newEntries = append(newEntries, newConfig)
 		}
 

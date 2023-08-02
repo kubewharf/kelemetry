@@ -52,11 +52,14 @@ configs:
 
 modifiers:
   "01000000":
+    priority: 0
     displayName: exclusive
     modifierName: exclusive
 
 # Uncomment to enable extension trace from apiserver
 #   "00000001":
+#     # We want to run extension modifiers after exclusive modifier to avoid fetching unused traces
+#     priority: 10
 #     displayName: apiserver trace
 #     modifierName: extension
 #     args:
@@ -78,25 +81,26 @@ modifiers:
 #       maxConcurrency: 4
 
 # http trace extension demo
-#  "00000020":
-#    displayName: http trace extension
-#    modifierName: extension
-#    args:
-#      kind: HTTPTrace
-#      traceBackends:
-#      - tagFilters:
-#          resource: pods
-#          nodes: ".+"
-#        argsTemplates:
-#          node: "{{.nodes}}"
-#          pod: "{{.namespace}}/{{.name}}"
-#          start: "{{unixMicro .start}}"
-#          end: "{{unixMicro .end}}"
-#          limit: "100"
-#        urlTemplate: "http://test-domain/api/traces"
-#        forObject: true
-#      maxConcurrency: 100
-#      totalTimeout: 60s
+#   "00000002":
+#      priority: 20
+#     displayName: http trace extension
+#     modifierName: extension
+#     args:
+#       kind: HTTPTrace
+#       traceBackends:
+#       - tagFilters:
+#           resource: pods
+#           nodes: ".+"
+#         argsTemplates:
+#           node: "{{.nodes}}"
+#           pod: "{{.namespace}}/{{.name}}"
+#           start: "{{unixMicro .start}}"
+#           end: "{{unixMicro .end}}"
+#           limit: "100"
+#         urlTemplate: "http://test-domain/api/traces"
+#         forObject: true
+#       maxConcurrency: 100
+#       totalTimeout: 60s
 
 batches:
   - name: initial
