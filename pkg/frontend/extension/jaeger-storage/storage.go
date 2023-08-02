@@ -337,7 +337,7 @@ func (provider *Provider) LoadCache(ctx context.Context, jsonBuf []byte) ([]*mod
 	for _, traceId := range ident.TraceIds {
 		trace, err := provider.reader.GetTrace(ctx, traceId)
 		if err != nil {
-			return nil, fmt.Errorf("ccannot get trace from extension storage: %w", err)
+			return nil, fmt.Errorf("cannot get trace from extension storage: %w", err)
 		}
 
 		spans = append(spans, trace.Spans...)
