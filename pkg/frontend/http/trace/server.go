@@ -105,7 +105,11 @@ func (server *server) handleTrace(ctx *gin.Context, metric *requestMetric) (code
 		return 400, fmt.Errorf("invalid param %w", err)
 	}
 
-	trace, code, err := server.findTrace(metric, "tracing (exclusive)", query)
+	if query.DisplayMode == "" {
+		query.DisplayMode = "tracing [exclusive]"
+	}
+
+	trace, code, err := server.findTrace(metric, query.DisplayMode, query)
 	if err != nil {
 		return code, err
 	}
@@ -149,12 +153,14 @@ func pruneTrace(trace *model.Trace, spanType string) {
 }
 
 type traceQuery struct {
-	Cluster   string `form:"cluster"`
-	Resource  string `form:"resource"`
-	Namespace string `form:"namespace"`
-	Name      string `form:"name"`
-	Ts        string `form:"ts"`
-	SpanType  string `form:"span_type"`
+	Cluster     string `form:"cluster"`
+	Resource    string `form:"resource"`
+	Namespace   string `form:"namespace"`
+	Name        string `form:"name"`
+	Start       string `form:"start"`
+	End         string `form:"end"`
+	SpanType    string `form:"span_type"`
+	DisplayMode string `form:"displayMode"`
 }
 
 func (server *server) findTrace(metric *requestMetric, serviceName string, query traceQuery) (trace *model.Trace, code int, err error) {
@@ -179,10 +185,16 @@ func (server *server) findTrace(metric *requestMetric, serviceName string, query
 		return nil, 404, fmt.Errorf("cluster %s not supported now", cluster)
 	}
 
-	timestamp, err := time.Parse(time.RFC3339, query.Ts)
+	startTimestamp, err := time.Parse(time.RFC3339, query.Start)
 	if err != nil {
 		metric.Error = metrics.MakeLabeledError("InvalidTimestamp")
-		return nil, 400, fmt.Errorf("invalid timestamp for ts param %w", err)
+		return nil, 400, fmt.Errorf("invalid timestamp for start param %w", err)
+	}
+
+	endTimestamp, err := time.Parse(time.RFC3339, query.End)
+	if err != nil {
+		metric.Error = metrics.MakeLabeledError("InvalidTimestamp")
+		return nil, 400, fmt.Errorf("invalid timestamp for end param %w", err)
 	}
 
 	tags := map[string]string{
@@ -197,8 +209,9 @@ func (server *server) findTrace(metric *requestMetric, serviceName string, query
 		ServiceName:   serviceName,
 		OperationName: cluster,
 		Tags:          tags,
-		StartTimeMin:  timestamp.Truncate(time.Minute * 30),
-		StartTimeMax:  timestamp.Truncate(time.Minute * 30).Add(time.Minute * 30),
+		StartTimeMin:  startTimestamp,
+		StartTimeMax:  endTimestamp,
+		NumTraces:     20,
 	}
 	traces, err := server.SpanReader.FindTraces(context.Background(), parameters)
 	if err != nil {
