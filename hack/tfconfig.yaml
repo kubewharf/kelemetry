@@ -52,14 +52,12 @@ configs:
 
 modifiers:
   "01000000":
-    priority: 0
     displayName: exclusive
     modifierName: exclusive
 
 # Uncomment to enable extension trace from apiserver
 #   "00000001":
 #     # We want to run extension modifiers after exclusive modifier to avoid fetching unused traces
-#     priority: 10
 #     displayName: apiserver trace
 #     modifierName: extension
 #     args:
@@ -82,7 +80,6 @@ modifiers:
 
 # http trace extension demo
 #   "00000002":
-#      priority: 20
 #     displayName: http trace extension
 #     modifierName: extension
 #     args:
