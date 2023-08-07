@@ -27,7 +27,7 @@ spec:
           imagePullPolicy: {{ toJson .Values.jaegerImages.pullPolicy }}
           args: [
             # Don't include storage-options-raw directly here; otherwise the traffic would be infinite recursion.
-            {{- include "kelemetry.storage-options-stateless" . | include "kelemetry.yaml-to-args" }}
+            {{- include "kelemetry.storage-options-stateless-raw" . | include "kelemetry.yaml-to-args" }}
           ]
           livenessProbe:
             httpGet:
