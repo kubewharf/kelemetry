@@ -71,14 +71,7 @@ func (transformer *Transformer) Transform(
 		config = transformer.Configs.GetById(transformer.Configs.DefaultId())
 	}
 
-	newSpans, err := extensionProcessor.ProcessExtensions(ctx, transformer, config.Extensions, trace.Spans, start, end)
-	if err != nil {
-		return fmt.Errorf("cannot prepare extension trace: %w", err)
-	}
-
-	newSpans = append(newSpans, trace.Spans...)
-
-	tree := tftree.NewSpanTree(newSpans)
+	tree := tftree.NewSpanTree(trace.Spans)
 
 	transformer.groupDuplicates(tree)
 
@@ -111,6 +104,14 @@ func (transformer *Transformer) Transform(
 	for _, step := range config.Steps {
 		step.Run(tree)
 	}
+
+	newSpans, err := extensionProcessor.ProcessExtensions(ctx, transformer, config.Extensions, trace.Spans, start, end)
+	if err != nil {
+		return fmt.Errorf("cannot prepare extension trace: %w", err)
+	}
+
+	newSpans = append(newSpans, tree.GetSpans()...)
+	tree = tftree.NewSpanTree(newSpans)
 
 	trace.Spans = tree.GetSpans()
 
