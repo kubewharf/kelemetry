@@ -52,14 +52,15 @@ func (m *ExclusiveModifierFactory) Init() error                     { return nil
 func (m *ExclusiveModifierFactory) Start(ctx context.Context) error { return nil }
 func (m *ExclusiveModifierFactory) Close(ctx context.Context) error { return nil }
 
-func (*ExclusiveModifierFactory) ListIndex() string    { return "exclusive" }
-func (*ExclusiveModifierFactory) ModifierName() string { return "exclusive" }
+func (*ExclusiveModifierFactory) ListIndex() string { return "exclusive" }
 
 func (*ExclusiveModifierFactory) Build(jsonBuf []byte) (tfconfig.Modifier, error) {
 	return &ExclusiveModifier{}, nil
 }
 
 type ExclusiveModifier struct{}
+
+func (*ExclusiveModifier) ModifierClass() string { return "kelemetry.kubewharf.io/exclusive" }
 
 func (*ExclusiveModifier) Modify(config *tfconfig.Config) {
 	config.UseSubtree = true
