@@ -101,10 +101,6 @@ func (transformer *Transformer) Transform(
 		}
 	}
 
-	for _, step := range config.Steps {
-		step.Run(tree)
-	}
-
 	newSpans, err := extensionProcessor.ProcessExtensions(ctx, transformer, config.Extensions, trace.Spans, start, end)
 	if err != nil {
 		return fmt.Errorf("cannot prepare extension trace: %w", err)
@@ -112,6 +108,10 @@ func (transformer *Transformer) Transform(
 
 	newSpans = append(newSpans, tree.GetSpans()...)
 	tree = tftree.NewSpanTree(newSpans)
+
+	for _, step := range config.Steps {
+		step.Run(tree)
+	}
 
 	trace.Spans = tree.GetSpans()
 
