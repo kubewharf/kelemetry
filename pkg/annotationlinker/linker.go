@@ -17,6 +17,7 @@ package annotationlinker
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
@@ -27,7 +28,9 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/k8s/discovery"
 	"github.com/kubewharf/kelemetry/pkg/k8s/objectcache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	"github.com/kubewharf/kelemetry/pkg/metrics"
 	"github.com/kubewharf/kelemetry/pkg/util"
+	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
 func init() {
@@ -59,7 +62,7 @@ func (ctrl *controller) Init() error                     { return nil }
 func (ctrl *controller) Start(ctx context.Context) error { return nil }
 func (ctrl *controller) Close(ctx context.Context) error { return nil }
 
-func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) *util.ObjectRef {
+func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) ([]linker.LinkerResult, error) {
 	raw := object.Raw
 
 	logger := ctrl.Logger.WithFields(object.AsFields("object"))
@@ -71,13 +74,12 @@ func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) *util
 		raw, err = ctrl.ObjectCache.Get(ctx, object)
 
 		if err != nil {
-			logger.WithError(err).Error("cannot fetch object value")
-			return nil
+			return nil, metrics.LabelError(fmt.Errorf("cannot fetch object value: %w", err), "FetchCache")
 		}
 
 		if raw == nil {
 			logger.Debug("object no longer exists")
-			return nil
+			return nil, nil
 		}
 	}
 
@@ -85,15 +87,14 @@ func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) *util
 		ref := &ParentLink{}
 		err := json.Unmarshal([]byte(ann), ref)
 		if err != nil {
-			logger.WithError(err).Error("cannot parse ParentLink annotation")
-			return nil
+			return nil, metrics.LabelError(fmt.Errorf("cannot parse ParentLink annotation: %w", err), "ParseAnnotation")
 		}
 
 		if ref.Cluster == "" {
 			ref.Cluster = object.Cluster
 		}
 
-		objectRef := &util.ObjectRef{
+		objectRef := util.ObjectRef{
 			Cluster: ref.Cluster,
 			GroupVersionResource: schema.GroupVersionResource{
 				Group:    ref.GroupVersionResource.Group,
@@ -106,8 +107,11 @@ func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) *util
 		}
 		logger.WithField("parent", objectRef).Debug("Resolved parent")
 
-		return objectRef
+		return []linker.LinkerResult{{
+			Object: objectRef,
+			Role:   zconstants.LinkRoleParent,
+		}}, nil
 	}
 
-	return nil
+	return nil, nil
 }

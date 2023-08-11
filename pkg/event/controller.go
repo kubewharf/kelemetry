@@ -318,7 +318,7 @@ func (ctrl *controller) handleEvent(ctx context.Context, event *corev1.Event) {
 		Namespace:            event.InvolvedObject.Namespace,
 		Name:                 event.InvolvedObject.Name,
 		Uid:                  event.InvolvedObject.UID,
-	}, aggregatorEvent, nil); err != nil {
+	}, aggregatorEvent); err != nil {
 		logger.WithError(err).Error("Cannot send trace")
 		metric.Error = metrics.LabelError(err, "SendTrace")
 		return

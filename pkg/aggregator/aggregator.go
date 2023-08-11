@@ -26,7 +26,7 @@ import (
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator/aggregatorevent"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/eventdecorator"
-	"github.com/kubewharf/kelemetry/pkg/aggregator/linker"
+	linkjob "github.com/kubewharf/kelemetry/pkg/aggregator/linker/job"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/objectspandecorator"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/spancache"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/tracer"
@@ -84,27 +84,35 @@ type Aggregator interface {
 	manager.Component
 
 	// Send sends an event to the tracer backend.
-	// The sub-object ID is an optional identifier that associates the event with an object-scoped context (e.g. resource version).
-	// If an event is created with the same sub-object ID with Primary=false,
-	// it waits for the primary event to be created and takes it as the parent.
-	// If the primary event does not get created after options.subObjectPrimaryBackoff, this event is promoted as primary.
-	// If multiple primary events are sent, the slower one (by SpanCache-authoritative timing) is demoted.
-	Send(ctx context.Context, object util.ObjectRef, event *aggregatorevent.Event, subObjectId *SubObjectId) error
-}
+	Send(ctx context.Context, object util.ObjectRef, event *aggregatorevent.Event) error
 
-type SubObjectId struct {
-	Id      string
-	Primary bool
+	// EnsureObjectSpan creates a pseudospan for the object, and triggers any possible relevant linkers.
+	EnsureObjectSpan(
+		ctx context.Context,
+		object util.ObjectRef,
+		eventTime time.Time,
+	) (tracer.SpanContext, error)
+
+	// GetOrCreatePseudoSpan creates a span following the pseudospan standard with the required tags.
+	GetOrCreatePseudoSpan(
+		ctx context.Context,
+		object util.ObjectRef,
+		pseudoType zconstants.PseudoTypeValue,
+		eventTime time.Time,
+		parent tracer.SpanContext,
+		followsFrom tracer.SpanContext,
+		extraTags map[string]string,
+	) (span tracer.SpanContext, isNew bool, err error)
 }
 
 type aggregator struct {
-	options   options
-	Clock     clock.Clock
-	Linkers   *manager.List[linker.Linker]
-	Logger    logrus.FieldLogger
-	SpanCache spancache.Cache
-	Tracer    tracer.Tracer
-	Metrics   metrics.Client
+	options          options
+	Clock            clock.Clock
+	Logger           logrus.FieldLogger
+	SpanCache        spancache.Cache
+	Tracer           tracer.Tracer
+	Metrics          metrics.Client
+	LinkJobPublisher linkjob.Publisher
 
 	EventDecorators      *manager.List[eventdecorator.Decorator]
 	ObjectSpanDecorators *manager.List[objectspandecorator.Decorator]
@@ -116,13 +124,10 @@ type aggregator struct {
 }
 
 type sendMetric struct {
-	Cluster        string
-	TraceSource    string
-	HasSubObjectId bool
-	Primary        bool // whether the subObjectId is primary or not
-	PrimaryChanged bool // whether the primary got demoted or non-primary got promoted
-	Success        bool
-	Error          metrics.LabeledError
+	Cluster     string
+	TraceSource string
+	Success     bool
+	Error       metrics.LabeledError
 }
 
 func (*sendMetric) MetricName() string { return "aggregator_send" }
@@ -159,7 +164,6 @@ func (aggregator *aggregator) Send(
 	ctx context.Context,
 	object util.ObjectRef,
 	event *aggregatorevent.Event,
-	subObjectId *SubObjectId,
 ) (err error) {
 	sendMetric := &sendMetric{Cluster: object.Cluster, TraceSource: event.TraceSource}
 	defer aggregator.SendMetric.DeferCount(aggregator.Clock.Now(), sendMetric)
@@ -168,21 +172,10 @@ func (aggregator *aggregator) Send(
 		With(&sinceEventMetric{Cluster: object.Cluster, TraceSource: event.TraceSource}).
 		Summary(float64(aggregator.Clock.Since(event.Time).Nanoseconds()))
 
-	var parentSpan tracer.SpanContext
-
-	type primaryReservation struct {
-		cacheKey string
-		uid      spancache.Uid
-	}
-	var reservedPrimary *primaryReservation
-
-	if parentSpan == nil {
-		// there is no primary span to fallback to, so we are the primary
-		parentSpan, err = aggregator.ensureObjectSpan(ctx, object, event.Time)
-		if err != nil {
-			sendMetric.Error = metrics.LabelError(err, "EnsureObjectSpan")
-			return fmt.Errorf("%w during fetching field span for primary span", err)
-		}
+	parentSpan, err := aggregator.EnsureObjectSpan(ctx, object, event.Time)
+	if err != nil {
+		sendMetric.Error = metrics.LabelError(err, "EnsureObjectSpan")
+		return fmt.Errorf("%w during ensuring object span", err)
 	}
 
 	for _, decorator := range aggregator.EventDecorators.Impls {
@@ -213,29 +206,10 @@ func (aggregator *aggregator) Send(
 		span.Tags[tagKey] = tagValue
 	}
 
-	sentSpan, err := aggregator.Tracer.CreateSpan(span)
+	_, err = aggregator.Tracer.CreateSpan(span)
 	if err != nil {
 		sendMetric.Error = metrics.LabelError(err, "CreateSpan")
 		return fmt.Errorf("cannot create span: %w", err)
-	}
-
-	if reservedPrimary != nil {
-		sentSpanRaw, err := aggregator.Tracer.InjectCarrier(sentSpan)
-		if err != nil {
-			sendMetric.Error = metrics.LabelError(err, "InjectCarrier")
-			return fmt.Errorf("%w during serializing sent span ID", err)
-		}
-
-		if err := aggregator.SpanCache.SetReserved(
-			ctx,
-			reservedPrimary.cacheKey,
-			sentSpanRaw,
-			reservedPrimary.uid,
-			aggregator.options.spanTtl,
-		); err != nil {
-			sendMetric.Error = metrics.LabelError(err, "SetReserved")
-			return fmt.Errorf("%w during persisting primary span ID", err)
-		}
 	}
 
 	sendMetric.Success = true
@@ -248,25 +222,22 @@ func (aggregator *aggregator) Send(
 	return nil
 }
 
-func (agg *aggregator) ensureObjectSpan(
+func (agg *aggregator) EnsureObjectSpan(
 	ctx context.Context,
 	object util.ObjectRef,
 	eventTime time.Time,
 ) (tracer.SpanContext, error) {
-	span, isNew, err := agg.getOrCreateObjectSpan(ctx, object, eventTime)
+	span, isNew, err := agg.GetOrCreatePseudoSpan(ctx, object, zconstants.PseudoTypeObject, eventTime, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	if isNew {
-		// call linkers
-		for _, linker := range agg.Linkers.Impls {
-			_ = linker.Lookup(ctx, object)
-			if err != nil {
-				agg.Logger.WithError(err).WithField("linker", fmt.Sprintf("%T", linker)).Error("calling linker")
-				continue
-			}
-		}
+		agg.LinkJobPublisher.Publish(&linkjob.LinkJob{
+			Object:    object,
+			EventTime: eventTime,
+			Span:      span,
+		})
 	}
 
 	return span, nil
@@ -307,10 +278,14 @@ func (c *spanCreator) fetchOrReserve(
 	return nil
 }
 
-func (agg *aggregator) getOrCreateObjectSpan(
+func (agg *aggregator) GetOrCreatePseudoSpan(
 	ctx context.Context,
 	object util.ObjectRef,
+	pseudoType zconstants.PseudoTypeValue,
 	eventTime time.Time,
+	parent tracer.SpanContext,
+	followsFrom tracer.SpanContext,
+	extraTags map[string]string,
 ) (_span tracer.SpanContext, _isNew bool, _err error) {
 	lazySpanMetric := &lazySpanMetric{
 		Cluster: object.Cluster,
@@ -318,14 +293,14 @@ func (agg *aggregator) getOrCreateObjectSpan(
 	}
 	defer agg.LazySpanMetric.DeferCount(agg.Clock.Now(), lazySpanMetric)
 
-	cacheKey := agg.expiringSpanCacheKey(object, eventTime)
+	cacheKey := agg.expiringSpanCacheKey(object, eventTime, pseudoType)
 
 	logger := agg.Logger.
-		WithField("step", "getOrCreateObjectSpan").
+		WithField("step", "GetOrCreatePseudoSpan").
 		WithFields(object.AsFields("object"))
 
 	defer func() {
-		logger.WithField("cacheKey", cacheKey).WithField("result", lazySpanMetric.Result).Debug("getOrCreateObjectSpan")
+		logger.WithField("cacheKey", cacheKey).WithField("result", lazySpanMetric.Result).Debug("GetOrCreatePseudoSpan")
 	}()
 
 	creator := &spanCreator{cacheKey: cacheKey}
@@ -355,7 +330,7 @@ func (agg *aggregator) getOrCreateObjectSpan(
 	// we have a new reservation, need to initialize it now
 	startTime := agg.Clock.Now()
 
-	span, err := agg.createPseudoSpan(ctx, object, zconstants.TraceSourceObject, eventTime, nil, nil)
+	span, err := agg.CreatePseudoSpan(ctx, object, pseudoType, eventTime, parent, followsFrom, extraTags)
 	if err != nil {
 		return nil, false, metrics.LabelError(fmt.Errorf("cannot create span: %w", err), "CreateSpan")
 	}
@@ -378,13 +353,14 @@ func (agg *aggregator) getOrCreateObjectSpan(
 	return span, true, nil
 }
 
-func (agg *aggregator) createPseudoSpan(
+func (agg *aggregator) CreatePseudoSpan(
 	ctx context.Context,
 	object util.ObjectRef,
 	pseudoType zconstants.PseudoTypeValue,
 	eventTime time.Time,
 	parent tracer.SpanContext,
 	followsFrom tracer.SpanContext,
+	extraTags map[string]string,
 ) (tracer.SpanContext, error) {
 	remainderSeconds := eventTime.Unix() % int64(agg.options.spanTtl.Seconds())
 	startTime := eventTime.Add(-time.Duration(remainderSeconds) * time.Second)
@@ -410,6 +386,9 @@ func (agg *aggregator) createPseudoSpan(
 	for tagKey, tagValue := range agg.options.globalPseudoTags {
 		span.Tags[tagKey] = tagValue
 	}
+	for tagKey, tagValue := range extraTags {
+		span.Tags[tagKey] = tagValue
+	}
 
 	if pseudoType == zconstants.PseudoTypeObject {
 		for _, decorator := range agg.ObjectSpanDecorators.Impls {
@@ -430,11 +409,15 @@ func (agg *aggregator) createPseudoSpan(
 	return spanContext, nil
 }
 
-func (aggregator *aggregator) expiringSpanCacheKey(object util.ObjectRef, timestamp time.Time) string {
+func (aggregator *aggregator) expiringSpanCacheKey(
+	object util.ObjectRef,
+	timestamp time.Time,
+	pseudoType zconstants.PseudoTypeValue,
+) string {
 	expiringWindow := timestamp.Unix() / int64(aggregator.options.spanTtl.Seconds())
-	return aggregator.spanCacheKey(object, fmt.Sprintf("field=object,window=%d", expiringWindow))
+	return aggregator.spanCacheKey(object, fmt.Sprintf("field=%s,window=%d", pseudoType, expiringWindow))
 }
 
-func (aggregator *aggregator) spanCacheKey(object util.ObjectRef, subObjectId string) string {
-	return fmt.Sprintf("%s/%s", object.String(), subObjectId)
+func (aggregator *aggregator) spanCacheKey(object util.ObjectRef, window string) string {
+	return fmt.Sprintf("%s/%s", object.String(), window)
 }

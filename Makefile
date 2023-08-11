@@ -34,6 +34,8 @@ else
 	LOG_FILE_ARG ?=
 endif
 
+LINKER_WORKER_COUNT ?= 1
+
 CONTROLLERS ?= audit-consumer,audit-producer,audit-webhook,event-informer,annotation-linker,owner-linker,resource-object-tag,resource-event-tag,diff-decorator,diff-controller,diff-api,pprof,jaeger-storage-plugin,jaeger-redirect-server,kelemetrix
 ifeq ($(CONTROLLERS),)
 	ENABLE_ARGS ?=
@@ -85,6 +87,7 @@ run: output/kelemetry $(DUMP_ROTATE_DEP)
 		--log-file=$(LOG_FILE) \
 		--aggregator-pseudo-span-global-tags=runId=$(RUN_ID) \
 		--aggregator-event-span-global-tags=run=$(RUN_ID) \
+		--linker-worker-count=$(LINKER_WORKER_COUNT) \
 		--pprof-addr=:6030 \
 		--diff-cache=$(ETCD_OR_LOCAL) \
 		--diff-cache-etcd-endpoints=127.0.0.1:2379 \

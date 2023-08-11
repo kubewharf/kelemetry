@@ -284,15 +284,7 @@ func (recv *receiver) handleItem(
 		Resource: objectRef.Resource,
 	}).Summary(float64(e2eLatency.Nanoseconds()))
 
-	var subObjectId *aggregator.SubObjectId
-	if recv.options.enableSubObject && (message.Verb == audit.VerbUpdate || message.Verb == audit.VerbPatch) {
-		subObjectId = &aggregator.SubObjectId{
-			Id:      fmt.Sprintf("rv=%s", message.ObjectRef.ResourceVersion),
-			Primary: message.ResponseStatus.Code < 300,
-		}
-	}
-
-	err := recv.Aggregator.Send(ctx, objectRef, event, subObjectId)
+	err := recv.Aggregator.Send(ctx, objectRef, event)
 	if err != nil {
 		fieldLogger.WithError(err).Error()
 	} else {
