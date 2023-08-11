@@ -33,7 +33,7 @@ func init() {
 	)
 }
 
-const pseudoSpanNestLevel = "groupByTraceSource"
+const myPseudoType = "groupByTraceSource"
 
 // Splits span logs into pseudospans grouped by traceSource.
 type GroupByTraceSourceVisitor struct {
@@ -43,8 +43,8 @@ type GroupByTraceSourceVisitor struct {
 func (GroupByTraceSourceVisitor) Kind() string { return "GroupByTraceSourceVisitor" }
 
 func (visitor GroupByTraceSourceVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
-	nestLevel, hasNestLevel := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel)
-	if hasNestLevel && nestLevel.AsString() == pseudoSpanNestLevel {
+	pseudoType, hasPseudoType := model.KeyValues(span.Tags).FindByKey(zconstants.PseudoType)
+	if hasPseudoType && pseudoType.AsString() == myPseudoType {
 		// already grouped, don't recurse
 		return visitor
 	}
@@ -74,9 +74,9 @@ func (visitor GroupByTraceSourceVisitor) Enter(tree *tftree.SpanTree, span *mode
 			Duration:      span.Duration,
 			Tags: []model.KeyValue{
 				{
-					Key:   zconstants.NestLevel,
+					Key:   zconstants.PseudoType,
 					VType: model.StringType,
-					VStr:  pseudoSpanNestLevel,
+					VStr:  myPseudoType,
 				},
 			},
 			Logs: logs,

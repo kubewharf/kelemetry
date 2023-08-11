@@ -26,10 +26,12 @@ const SpanName = Prefix + "kelemetryName"
 
 // Indicates that the current span is a pseudospan that can be folded or flattened.
 // The value is the folding type.
-const NestLevel = Prefix + "nestingLevel"
+const PseudoType = Prefix + "pseudoType"
+
+type PseudoTypeValue string
 
 const (
-	NestLevelObject = "object"
+	PseudoTypeObject PseudoTypeValue = "object"
 )
 
 // Identifies that the span represents an actual event (rather than as a pseudospan).
@@ -37,14 +39,19 @@ const TraceSource = Prefix + "traceSource"
 
 const (
 	TraceSourceObject = "object"
-	TraceSourceAudit  = "audit"
-	TraceSourceEvent  = "event"
+	TraceSourceLink   = "link"
+
+	TraceSourceAudit = "audit"
+	TraceSourceEvent = "event"
 )
 
 func KnownTraceSources(withPseudo bool) []string {
+	numPseudoTraceSources := 2
+
 	traceSources := []string{
 		// pseudo
 		TraceSourceObject,
+		TraceSourceLink,
 
 		// real
 		TraceSourceAudit,
@@ -52,11 +59,36 @@ func KnownTraceSources(withPseudo bool) []string {
 	}
 
 	if !withPseudo {
-		traceSources = traceSources[1:]
+		traceSources = traceSources[numPseudoTraceSources:]
 	}
 
 	return traceSources
 }
+
+// Tags for TraceSourceLink spans that indicate the linked object.
+const (
+	LinkedObjectCluster   = "linkedCluster"
+	LinkedObjectGroup     = "linkedGroup"
+	LinkedObjectResource  = "linkedResource"
+	LinkedObjectNamespace = "linkedNamespace"
+	LinkedObjectName      = "linkedName"
+
+	// Indicates how the linked trace interacts with the current trace.
+	LinkRole = "linkRole"
+
+	// If this tag is nonempty, a virtual span is inserted between the linked objects with the tag value as the name.
+	LinkClass = "linkClass"
+)
+
+type LinkRoleValue string
+
+const (
+	// The current trace is a child trace under the linked trace
+	LinkRoleParent LinkRoleValue = "parent"
+
+	// The linked trace is a child trace under the current trace.
+	LinkRoleChild LinkRoleValue = "child"
+)
 
 // Classifies the type of a log line.
 // Logs without this attribute will not have special treatment.

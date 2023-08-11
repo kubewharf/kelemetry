@@ -203,8 +203,8 @@ func (backend *Backend) List(
 				return false // not a root
 			}
 
-			field, hasField := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel)
-			if !hasField || field.VStr != zconstants.NestLevelObject {
+			field, isPseudo := model.KeyValues(span.Tags).FindByKey(zconstants.PseudoType)
+			if !isPseudo || field.VStr != string(zconstants.PseudoTypeObject) {
 				return false // not an object root
 			}
 

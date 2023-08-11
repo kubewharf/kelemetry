@@ -12,9 +12,8 @@ configs:
       - kind: Batch
         batchName: initial
       - kind: ExtractNestingVisitor
-        matchesNestLevel:
-          oneOf: []
-          negate: true
+        matchesPseudoType:
+          oneOf: ["object"]
       - kind: Batch
         batchName: final
   - id: "20000000"
@@ -22,10 +21,6 @@ configs:
     steps:
       - kind: Batch
         batchName: initial
-      - kind: ExtractNestingVisitor
-        matchesNestLevel:
-          oneOf: ["object"]
-          negate: true
       - kind: Batch
         batchName: collapse
       - kind: CompactDurationVisitor
@@ -36,10 +31,6 @@ configs:
     steps:
       - kind: Batch
         batchName: initial
-      - kind: ExtractNestingVisitor
-        matchesNestLevel:
-          oneOf: ["object"]
-          negate: true
       - kind: Batch
         batchName: collapse
       - kind: GroupByTraceSourceVisitor

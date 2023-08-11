@@ -35,7 +35,7 @@ func init() {
 	)
 }
 
-// Deletes child spans with a traceSource and injects them as logs in the nesting span.
+// Deletes child spans with a non-pseudo trace source and injects them as logs in the nesting span.
 //
 // Multiple logs of the same span are aggregated into one log, flattening them into a field.
 //
@@ -104,7 +104,7 @@ func (classes *AuditDiffClassification) Get(prefix string) *AuditDiffClass {
 }
 
 func (visitor CollapseNestingVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
-	if _, hasTag := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel); !hasTag {
+	if _, hasTag := model.KeyValues(span.Tags).FindByKey(zconstants.PseudoType); !hasTag {
 		return visitor
 	}
 
@@ -119,9 +119,10 @@ func (visitor CollapseNestingVisitor) Exit(tree *tftree.SpanTree, span *model.Sp
 
 func (visitor CollapseNestingVisitor) processChild(tree *tftree.SpanTree, span *model.Span, childId model.SpanID) {
 	childSpan := tree.Span(childId)
-	if _, childHasTag := model.KeyValues(childSpan.Tags).FindByKey(zconstants.NestLevel); childHasTag {
+	if _, childIsPseudo := model.KeyValues(childSpan.Tags).FindByKey(zconstants.PseudoType); childIsPseudo {
 		return
 	}
+
 	traceSourceKv, hasTraceSource := model.KeyValues(childSpan.Tags).FindByKey(zconstants.TraceSource)
 	if !hasTraceSource {
 		return

@@ -27,7 +27,6 @@ type GroupingKey struct {
 	Resource  string `json:"resource"`
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
-	Field     string `json:"field"`
 }
 
 func GroupingKeyFromMap(tags map[string]string) (key GroupingKey, ok bool) {
@@ -42,12 +41,6 @@ func GroupingKeyFromMap(tags map[string]string) (key GroupingKey, ok bool) {
 		if !ok {
 			return key, false
 		}
-	}
-
-	if field, hasField := tags["field"]; hasField {
-		key.Field = field
-	} else {
-		key.Field = "object"
 	}
 
 	return key, true
@@ -65,14 +58,12 @@ func GroupingKeyFromSpan(span *model.Span) (GroupingKey, bool) {
 	resource, _ := tags.FindByKey("resource")
 	namespace, _ := tags.FindByKey("namespace")
 	name, _ := tags.FindByKey("name")
-	field, _ := tags.FindByKey(zconstants.NestLevel)
 	key := GroupingKey{
 		Cluster:   cluster.VStr,
 		Group:     group.VStr,
 		Resource:  resource.VStr,
 		Namespace: namespace.VStr,
 		Name:      name.VStr,
-		Field:     field.VStr,
 	}
 	return key, true
 }
