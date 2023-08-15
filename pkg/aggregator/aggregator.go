@@ -195,6 +195,7 @@ func (aggregator *aggregator) Send(
 			"group":                object.Group,
 			"version":              object.Version,
 			"resource":             object.Resource,
+			zconstants.NotPseudo:   zconstants.NotPseudo,
 			zconstants.TraceSource: event.TraceSource,
 		},
 		Logs: event.Logs,

@@ -31,7 +31,6 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
-	"k8s.io/apimachinery/pkg/util/sets"
 
 	jaegerbackend "github.com/kubewharf/kelemetry/pkg/frontend/backend"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
@@ -151,9 +150,10 @@ func (backend *Backend) Close(ctx context.Context) error { return nil }
 func (backend *Backend) List(
 	ctx context.Context,
 	params *spanstore.TraceQueryParameters,
-	exclusive bool,
 ) ([]*jaegerbackend.TraceThumbnail, error) {
-	filterTags := map[string]string{}
+	filterTags := map[string]string{
+		zconstants.NotPseudo: zconstants.NotPseudo,
+	}
 	for key, val := range params.Tags {
 		filterTags[key] = val
 	}
@@ -161,10 +161,9 @@ func (backend *Backend) List(
 		filterTags["cluster"] = params.OperationName
 	}
 
-	// TODO support additional user-defined trace sources
-	var traces []*model.Trace
+	traceThumbnails := []*jaegerbackend.TraceThumbnail{}
 	for _, traceSource := range zconstants.KnownTraceSources(false) {
-		if len(traces) >= params.NumTraces {
+		if len(traceThumbnails) >= params.NumTraces {
 			break
 		}
 
@@ -175,99 +174,33 @@ func (backend *Backend) List(
 			StartTimeMax: params.StartTimeMax,
 			DurationMin:  params.DurationMin,
 			DurationMax:  params.DurationMax,
-			NumTraces:    params.NumTraces - len(traces),
+			NumTraces:    params.NumTraces - len(traceThumbnails),
 		}
 
-		newTraces, err := backend.reader.FindTraces(ctx, newParams)
+		traces, err := backend.reader.FindTraces(ctx, newParams)
 		if err != nil {
 			return nil, fmt.Errorf("find traces from backend err: %w", err)
 		}
 
-		traces = append(traces, newTraces...)
-	}
-
-	var traceThumbnails []*jaegerbackend.TraceThumbnail
-
-	// a stateful function that determines only returns true for each valid resultant root span the first time
-	var deduplicator func(*model.Span) bool
-	if exclusive {
-		// exclusive mode, each object under trace should have a list entry
-		type objectInTrace struct {
-			traceId model.TraceID
-			key     tftree.GroupingKey
-		}
-		seenObjects := sets.New[objectInTrace]()
-		deduplicator = func(span *model.Span) bool {
-			key, hasKey := tftree.GroupingKeyFromSpan(span)
-			if !hasKey {
-				return false // not a root
+		for _, trace := range traces {
+			if len(trace.Spans) == 0 {
+				continue
 			}
 
-			field, isPseudo := model.KeyValues(span.Tags).FindByKey(zconstants.PseudoType)
-			if !isPseudo || field.VStr != string(zconstants.PseudoTypeObject) {
-				return false // not an object root
+			tree := tftree.NewSpanTree(trace.Spans)
+
+			thumbnail := &jaegerbackend.TraceThumbnail{
+				Identifier: identifier{
+					TraceId: tree.Root.TraceID,
+					SpanId:  tree.Root.SpanID,
+				},
+				Spans: tree,
 			}
 
-			fullKey := objectInTrace{
-				traceId: span.TraceID,
-				key:     key,
-			}
-
-			if seenObjects.Has(fullKey) {
-				return false // a known root
-			}
-
-			for reqKey, reqValue := range filterTags {
-				if value, exists := model.KeyValues(span.Tags).FindByKey(reqKey); !exists || value.VStr != reqValue {
-					return false // not a matched root
-				}
-			}
-
-			seenObjects.Insert(fullKey)
-			return true
-		}
-	} else {
-		// non exclusive mode, display full trace, so we want each full trace to display exactly once.
-		seenTraces := sets.New[model.TraceID]()
-		deduplicator = func(span *model.Span) bool {
-			if len(span.References) > 0 {
-				return false // we only want the root
-			}
-
-			if seenTraces.Has(span.TraceID) {
-				return false
-			}
-
-			seenTraces.Insert(span.TraceID)
-			return true
-		}
-	}
-
-	for _, trace := range traces {
-		if len(trace.Spans) == 0 {
-			continue
-		}
-
-		for _, span := range trace.Spans {
-			if deduplicator(span) {
-				tree := tftree.NewSpanTree(trace.Spans)
-				if err := tree.SetRoot(span.SpanID); err != nil {
-					return nil, fmt.Errorf("unexpected SetRoot error for span ID from trace: %w", err)
-				}
-
-				thumbnail := &jaegerbackend.TraceThumbnail{
-					Identifier: identifier{
-						TraceId: span.TraceID,
-						SpanId:  span.SpanID,
-					},
-					Spans: tree.GetSpans(),
-				}
-				traceThumbnails = append(traceThumbnails, thumbnail)
-
-				backend.Logger.WithField("ident", thumbnail.Identifier).
-					WithField("filteredSpans", len(thumbnail.Spans)).
-					Debug("matched trace")
-			}
+			traceThumbnails = append(traceThumbnails, thumbnail)
+			backend.Logger.WithField("ident", thumbnail.Identifier).
+				WithField("filteredSpans", len(thumbnail.Spans.GetSpans())).
+				Debug("matched trace")
 		}
 	}
 

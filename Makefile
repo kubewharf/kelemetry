@@ -98,6 +98,7 @@ run: output/kelemetry $(DUMP_ROTATE_DEP)
 		--span-cache-etcd-endpoints=127.0.0.1:2379 \
 		--tracer-otel-endpoint=$(OTEL_EXPORTER_OTLP_ENDPOINT) \
 		--tracer-otel-insecure \
+		--object-cache-size=16777216 \
 		--jaeger-cluster-names=$(CLUSTER_NAME) \
 		--jaeger-storage-plugin-address=0.0.0.0:17271 \
 		--jaeger-backend=jaeger-storage \

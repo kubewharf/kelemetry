@@ -23,6 +23,7 @@ import (
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"k8s.io/utils/clock"
 
+	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
 )
@@ -38,7 +39,6 @@ type Backend interface {
 	List(
 		ctx context.Context,
 		query *spanstore.TraceQueryParameters,
-		exclusive bool,
 	) ([]*TraceThumbnail, error)
 
 	// Gets the full tree of a trace based on the identifier returned from a prvious call to List.
@@ -59,8 +59,11 @@ type TraceThumbnail struct {
 	// Identifier is a serializable object that identifies the trace in GetTrace calls.
 	Identifier any
 
-	Spans []*model.Span
+	Spans *tftree.SpanTree
 }
+
+func (tt *TraceThumbnail) GetSpans() *tftree.SpanTree { return tt.Spans }
+func (tt *TraceThumbnail) GetMetadata() any           { return tt.Identifier }
 
 type mux struct {
 	*manager.Mux
@@ -81,10 +84,9 @@ func (*getMetric) MetricName() string  { return "jaeger_backend_get" }
 func (mux *mux) List(
 	ctx context.Context,
 	query *spanstore.TraceQueryParameters,
-	exclusive bool,
 ) ([]*TraceThumbnail, error) {
 	defer mux.ListMetric.DeferCount(mux.Clock.Now(), &listMetric{})
-	return mux.Impl().(Backend).List(ctx, query, exclusive)
+	return mux.Impl().(Backend).List(ctx, query)
 }
 
 func (mux *mux) Get(

@@ -16,7 +16,6 @@ package transform
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -74,32 +73,6 @@ func (transformer *Transformer) Transform(
 	tree := tftree.NewSpanTree(trace.Spans)
 
 	transformer.groupDuplicates(tree)
-
-	if config.UseSubtree && rootObject != nil {
-		var rootSpan model.SpanID
-		hasRootSpan := false
-
-		for _, span := range tree.GetSpans() {
-			if key, hasKey := tftree.GroupingKeyFromSpan(span); hasKey && key == *rootObject {
-				rootSpan = span.SpanID
-				hasRootSpan = true
-			}
-		}
-
-		if hasRootSpan {
-			if err := tree.SetRoot(rootSpan); err != nil {
-				if errors.Is(err, tftree.ErrRootDoesNotExist) {
-					return fmt.Errorf(
-						"trace data does not contain desired root span %v as indicated by the exclusive flag (%w)",
-						rootSpan,
-						err,
-					)
-				}
-
-				return fmt.Errorf("cannot set root: %w", err)
-			}
-		}
-	}
 
 	newSpans, err := extensionProcessor.ProcessExtensions(ctx, transformer, config.Extensions, trace.Spans, start, end)
 	if err != nil {

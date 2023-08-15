@@ -68,6 +68,28 @@ func GroupingKeyFromSpan(span *model.Span) (GroupingKey, bool) {
 	return key, true
 }
 
+func LinkGroupingKeyFromSpan(span *model.Span) (GroupingKey, bool) {
+	tags := model.KeyValues(span.Tags)
+	pseudoType, isPseudo := tags.FindByKey(zconstants.PseudoType)
+	if !isPseudo || pseudoType.VStr != string(zconstants.PseudoTypeLink) {
+		return GroupingKey{}, false
+	}
+
+	cluster, _ := tags.FindByKey(zconstants.LinkedObjectCluster)
+	group, _ := tags.FindByKey(zconstants.LinkedObjectGroup)
+	resource, _ := tags.FindByKey(zconstants.LinkedObjectResource)
+	namespace, _ := tags.FindByKey(zconstants.LinkedObjectNamespace)
+	name, _ := tags.FindByKey(zconstants.LinkedObjectName)
+	key := GroupingKey{
+		Cluster:   cluster.VStr,
+		Group:     group.VStr,
+		Resource:  resource.VStr,
+		Namespace: namespace.VStr,
+		Name:      name.VStr,
+	}
+	return key, true
+}
+
 func GroupingKeysFromSpans(spans []*model.Span) sets.Set[GroupingKey] {
 	keys := sets.New[GroupingKey]()
 
@@ -77,4 +99,14 @@ func GroupingKeysFromSpans(spans []*model.Span) sets.Set[GroupingKey] {
 		}
 	}
 	return keys
+}
+
+func (key GroupingKey) AsSpanTags() map[string]string {
+	return map[string]string{
+		"cluster":   key.Cluster,
+		"group":     key.Group,
+		"resource":  key.Resource,
+		"namespace": key.Namespace,
+		"name":      key.Name,
+	}
 }

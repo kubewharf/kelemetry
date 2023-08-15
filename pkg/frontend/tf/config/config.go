@@ -17,6 +17,8 @@ package tfconfig
 import (
 	"strconv"
 
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	"github.com/kubewharf/kelemetry/pkg/frontend/extension"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
@@ -51,9 +53,8 @@ type Config struct {
 	Id Id
 	// The config name, used in search page display.
 	Name string
-	// If true, only displays the spans below the matched span.
-	// If false, displays the whole trace including parent and sibling spans.
-	UseSubtree bool
+	// Only links with roles in this set are followed.
+	FollowLinks sets.Set[string]
 	// The extension traces for this config.
 	Extensions []extension.Provider
 	// The steps to transform the tree
@@ -64,11 +65,15 @@ func (config *Config) Clone() *Config {
 	steps := make([]Step, len(config.Steps))
 	copy(steps, config.Steps) // no need to deep clone each step
 
+	extensions := make([]extension.Provider, len(config.Extensions))
+	copy(extensions, config.Extensions)
+
 	return &Config{
-		Id:         config.Id,
-		Name:       config.Name,
-		UseSubtree: config.UseSubtree,
-		Steps:      steps,
+		Id:          config.Id,
+		Name:        config.Name,
+		FollowLinks: config.FollowLinks.Clone(),
+		Extensions:  extensions,
+		Steps:       steps,
 	}
 }
 

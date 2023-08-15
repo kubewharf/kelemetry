@@ -32,11 +32,21 @@ const SpanName = Prefix + "kelemetryName"
 // The value is the folding type.
 const PseudoType = Prefix + "pseudoType"
 
+// Indicates that the current span is not pseudo.
+// Used to optimize trace listing.
+//
+// This constant is used as both tag key and value.
+const NotPseudo = Prefix + "notPseudo"
+
 type PseudoTypeValue string
 
 const (
+	// Root span in an object trace.
 	PseudoTypeObject PseudoTypeValue = "object"
-	PseudoTypeLink   PseudoTypeValue = "link"
+	// Indicate that another trace shall be included.
+	PseudoTypeLink PseudoTypeValue = "link"
+	// A virtual span synthesized in the frontend when link class is nonempty.
+	PseudoTypeLinkClass PseudoTypeValue = "linkClass"
 )
 
 // Identifies that the span represents an actual event (rather than as a pseudospan).
@@ -44,7 +54,6 @@ const TraceSource = Prefix + "traceSource"
 
 const (
 	TraceSourceObject = "object"
-	TraceSourceLink   = "link"
 
 	TraceSourceAudit = "audit"
 	TraceSourceEvent = "event"
@@ -56,7 +65,6 @@ func KnownTraceSources(withPseudo bool) []string {
 	traceSources := []string{
 		// pseudo
 		TraceSourceObject,
-		TraceSourceLink,
 
 		// real
 		TraceSourceAudit,

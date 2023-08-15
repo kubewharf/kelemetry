@@ -26,14 +26,17 @@ import (
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	jaegerbackend "github.com/kubewharf/kelemetry/pkg/frontend/backend"
 	"github.com/kubewharf/kelemetry/pkg/frontend/clusterlist"
+	"github.com/kubewharf/kelemetry/pkg/frontend/reader/merge"
 	transform "github.com/kubewharf/kelemetry/pkg/frontend/tf"
 	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/frontend/tracecache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	"github.com/kubewharf/kelemetry/pkg/util/semaphore"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
@@ -46,7 +49,8 @@ type Interface interface {
 }
 
 type options struct {
-	cacheExtensions bool
+	cacheExtensions       bool
+	followLinkConcurrency int
 }
 
 func (options *options) Setup(fs *pflag.FlagSet) {
@@ -55,6 +59,12 @@ func (options *options) Setup(fs *pflag.FlagSet) {
 		"jaeger-extension-cache",
 		false,
 		"cache extension trace search result, otherwise trace is searched again every time result is reloaded",
+	)
+	fs.IntVar(
+		&options.followLinkConcurrency,
+		"frontend-follow-link-concurrency",
+		5,
+		"number of concurrent trace per request to follow links",
 	)
 }
 
@@ -127,12 +137,16 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 	}
 
 	reader.Logger.WithField("query", query).
-		WithField("exclusive", config.UseSubtree).
+		WithField("links", config.FollowLinks).
 		WithField("config", config.Name).
 		Debug("start trace list")
-	thumbnails, err := reader.Backend.List(ctx, query, config.UseSubtree)
+	thumbnails, err := reader.Backend.List(ctx, query)
 	if err != nil {
 		return nil, err
+	}
+
+	if err := reader.followLinks(ctx, &thumbnails, config.FollowLinks, query); err != nil {
+		return nil, fmt.Errorf("resolving linked objects: %w", err)
 	}
 
 	var rootKey *tftree.GroupingKey
@@ -140,65 +154,28 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 		rootKey = &rootKeyValue
 	}
 
-	mergedEntries := mergeSegments(thumbnails)
+	mergeTrees, err := merge.Merger[*jaegerbackend.TraceThumbnail, any]{}.MergeTraces(thumbnails)
+	if err != nil {
+		return nil, fmt.Errorf("merging split and linked traces: %w", err)
+	}
 
 	cacheEntries := []tracecache.Entry{}
 	traces := []*model.Trace{}
-	for _, entry := range mergedEntries {
+	for _, mergeTree := range mergeTrees {
 		cacheId := generateCacheId(config.Id)
 
-		for _, span := range entry.spans {
-			span.TraceID = cacheId
-			for i := range span.References {
-				span.References[i].TraceID = cacheId
-			}
+		trace, extensionCache, err := reader.prepareEntry(ctx, config, rootKey, query, mergeTree.Tree, cacheId)
+		if err != nil {
+			return nil, err
 		}
 
-		entry.spans = filterTimeRange(entry.spans, query.StartTimeMin, query.StartTimeMax)
-
-		trace := &model.Trace{
-			ProcessMap: []model.Trace_ProcessMapping{{
-				ProcessID: "0",
-				Process:   model.Process{},
-			}},
-			Spans: entry.spans,
-		}
-
-		displayMode := extractDisplayMode(cacheId)
-
-		extensions := &transform.FetchExtensionsAndStoreCache{}
-
-		if err := reader.Transformer.Transform(
-			ctx, trace, rootKey, displayMode,
-			extensions,
-			query.StartTimeMin, query.StartTimeMax,
-		); err != nil {
-			return nil, fmt.Errorf("trace transformation failed: %w", err)
-		}
 		traces = append(traces, trace)
 
-		identifiers := make([]json.RawMessage, len(entry.identifiers))
-		for i, identifier := range entry.identifiers {
-			idJson, err := json.Marshal(identifier)
-			if err != nil {
-				return nil, fmt.Errorf("thumbnail identifier marshal: %w", err)
-			}
-
-			identifiers[i] = json.RawMessage(idJson)
+		cacheEntry, err := reader.storeCache(ctx, rootKey, query, mergeTree.Metadata, cacheId, extensionCache)
+		if err != nil {
+			return nil, err
 		}
 
-		cacheEntry := tracecache.Entry{
-			LowId: cacheId.Low,
-			Value: tracecache.EntryValue{
-				Identifiers: identifiers,
-				StartTime:   query.StartTimeMin,
-				EndTime:     query.StartTimeMax,
-				RootObject:  rootKey,
-			},
-		}
-		if reader.options.cacheExtensions {
-			cacheEntry.Value.Extensions = extensions.Cache
-		}
 		cacheEntries = append(cacheEntries, cacheEntry)
 	}
 
@@ -211,6 +188,140 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 	reader.Logger.WithField("numTraces", len(traces)).Info("query trace list")
 
 	return traces, nil
+}
+
+func (reader *spanReader) followLinks(
+	ctx context.Context,
+	thumbnailsPtr *[]*jaegerbackend.TraceThumbnail,
+	followLinks sets.Set[string],
+	query *spanstore.TraceQueryParameters,
+) error {
+	knownKeys := sets.New[tftree.GroupingKey]()
+	for _, thumbnail := range *thumbnailsPtr {
+		key, _ := tftree.GroupingKeyFromSpan(thumbnail.Spans.Root)
+		knownKeys.Insert(key)
+	}
+
+	sem := semaphore.New(reader.options.followLinkConcurrency)
+
+	var scheduleFollow func(thumbnails []*jaegerbackend.TraceThumbnail)
+	scheduleFollow = func(thumbnails []*jaegerbackend.TraceThumbnail) {
+		for _, thumbnail := range thumbnails {
+			for _, span := range thumbnail.Spans.GetSpans() {
+				span := span
+				linkKey, hasLinkKey := tftree.LinkGroupingKeyFromSpan(span)
+				if hasLinkKey && !knownKeys.Has(linkKey) {
+					linkRole, hasLinkRole := model.KeyValues(span.Tags).FindByKey(zconstants.LinkRole)
+					if !hasLinkRole || !followLinks.Has(linkRole.VStr) {
+						continue
+					}
+
+					sem.Schedule(func(ctx context.Context) (semaphore.Publish, error) {
+						newThumbnails, err := reader.Backend.List(ctx, &spanstore.TraceQueryParameters{
+							ServiceName:  zconstants.TraceSourceObject,
+							Tags:         linkKey.AsSpanTags(),
+							StartTimeMin: query.StartTimeMin,
+							StartTimeMax: query.StartTimeMax,
+							NumTraces:    query.NumTraces,
+						})
+						if err != nil {
+							return nil, fmt.Errorf("fetching linked traces: %w", err)
+						}
+
+						scheduleFollow(newThumbnails)
+						return func() error {
+							*thumbnailsPtr = append(*thumbnailsPtr, newThumbnails...)
+							return nil
+						}, nil
+					})
+				}
+			}
+		}
+	}
+
+	scheduleFollow(*thumbnailsPtr)
+
+	if err := sem.Run(ctx); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (reader *spanReader) prepareEntry(
+	ctx context.Context,
+	config *tfconfig.Config,
+	rootKey *tftree.GroupingKey,
+	query *spanstore.TraceQueryParameters,
+	tree *tftree.SpanTree,
+	cacheId model.TraceID,
+) (*model.Trace, []tracecache.ExtensionCache, error) {
+	spans := tree.GetSpans()
+
+	for _, span := range spans {
+		span.TraceID = cacheId
+		for i := range span.References {
+			span.References[i].TraceID = cacheId
+		}
+	}
+
+	spans = filterTimeRange(spans, query.StartTimeMin, query.StartTimeMax)
+
+	trace := &model.Trace{
+		ProcessMap: []model.Trace_ProcessMapping{{
+			ProcessID: "0",
+			Process:   model.Process{},
+		}},
+		Spans: spans,
+	}
+
+	displayMode := extractDisplayMode(cacheId)
+
+	extensions := &transform.FetchExtensionsAndStoreCache{}
+
+	if err := reader.Transformer.Transform(
+		ctx, trace, rootKey, displayMode,
+		extensions,
+		query.StartTimeMin, query.StartTimeMax,
+	); err != nil {
+		return nil, nil, fmt.Errorf("trace transformation failed: %w", err)
+	}
+
+	return trace, extensions.Cache, nil
+}
+
+func (reader *spanReader) storeCache(
+	ctx context.Context,
+	rootKey *tftree.GroupingKey,
+	query *spanstore.TraceQueryParameters,
+	identifiers []any,
+	cacheId model.TraceID,
+	extensionCache []tracecache.ExtensionCache,
+) (tracecache.Entry, error) {
+	identifiersJson := make([]json.RawMessage, len(identifiers))
+	for i, identifier := range identifiers {
+		idJson, err := json.Marshal(identifier)
+		if err != nil {
+			return tracecache.Entry{}, fmt.Errorf("thumbnail identifier marshal: %w", err)
+		}
+
+		identifiersJson[i] = json.RawMessage(idJson)
+	}
+
+	cacheEntry := tracecache.Entry{
+		LowId: cacheId.Low,
+		Value: tracecache.EntryValue{
+			Identifiers: identifiersJson,
+			StartTime:   query.StartTimeMin,
+			EndTime:     query.StartTimeMax,
+			RootObject:  rootKey,
+		},
+	}
+	if reader.options.cacheExtensions {
+		cacheEntry.Value.Extensions = extensionCache
+	}
+
+	return cacheEntry, nil
 }
 
 func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (*model.Trace, error) {
