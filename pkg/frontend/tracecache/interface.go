@@ -21,8 +21,8 @@ import (
 
 	"github.com/jaegertracing/jaeger/model"
 
-	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 func init() {
@@ -42,10 +42,10 @@ type Entry struct {
 }
 
 type EntryValue struct {
-	Identifiers []json.RawMessage   `json:"identifiers"`
-	StartTime   time.Time           `json:"startTime"`
-	EndTime     time.Time           `json:"endTime"`
-	RootObject  *tftree.GroupingKey `json:"rootObject"`
+	Identifiers []json.RawMessage `json:"identifiers"`
+	StartTime   time.Time         `json:"startTime"`
+	EndTime     time.Time         `json:"endTime"`
+	RootObject  *utilobject.Key   `json:"rootObject"`
 
 	Extensions []ExtensionCache `json:"extensions"`
 }

@@ -26,7 +26,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/k8s/discovery"
 	"github.com/kubewharf/kelemetry/pkg/k8s/objectcache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 func init() {
@@ -58,7 +58,7 @@ func (ctrl *Controller) Init() error                     { return nil }
 func (ctrl *Controller) Start(ctx context.Context) error { return nil }
 func (ctrl *Controller) Close(ctx context.Context) error { return nil }
 
-func (ctrl *Controller) Lookup(ctx context.Context, object util.ObjectRef) *util.ObjectRef {
+func (ctrl *Controller) Lookup(ctx context.Context, object utilobject.Rich) *utilobject.Rich {
 	raw := object.Raw
 
 	logger := ctrl.Logger.WithFields(object.AsFields("object"))
@@ -67,7 +67,7 @@ func (ctrl *Controller) Lookup(ctx context.Context, object util.ObjectRef) *util
 		logger.Debug("Fetching dynamic object")
 
 		var err error
-		raw, err = ctrl.ObjectCache.Get(ctx, object)
+		raw, err = ctrl.ObjectCache.Get(ctx, object.VersionedKey)
 
 		if err != nil {
 			logger.WithError(err).Error("cannot fetch object value")
@@ -101,12 +101,18 @@ func (ctrl *Controller) Lookup(ctx context.Context, object util.ObjectRef) *util
 				continue
 			}
 
-			ret := &util.ObjectRef{
-				Cluster:              object.Cluster, // inherited from the same cluster
-				GroupVersionResource: gvr,
-				Namespace:            object.Namespace,
-				Name:                 owner.Name,
-				Uid:                  owner.UID,
+			ret := &utilobject.Rich{
+				VersionedKey: utilobject.VersionedKey{
+					Key: utilobject.Key{
+						Cluster:   object.Cluster,
+						Group:     gvr.Group,
+						Resource:  gvr.Group,
+						Namespace: object.Namespace,
+						Name:      owner.Name,
+					},
+					Version: gvr.Version,
+				},
+				Uid: owner.UID,
 			}
 			logger.WithField("owner", ret).Debug("Resolved owner")
 

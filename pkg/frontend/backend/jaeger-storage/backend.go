@@ -37,6 +37,7 @@ import (
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	utiljaeger "github.com/kubewharf/kelemetry/pkg/util/jaeger"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
@@ -194,11 +195,11 @@ func (backend *Backend) List(
 		// exclusive mode, each object under trace should have a list entry
 		type objectInTrace struct {
 			traceId model.TraceID
-			key     tftree.GroupingKey
+			key     utilobject.Key
 		}
 		seenObjects := sets.New[objectInTrace]()
 		deduplicator = func(span *model.Span) bool {
-			key, hasKey := tftree.GroupingKeyFromSpan(span)
+			key, hasKey := utilobject.FromSpan(span)
 			if !hasKey {
 				return false // not a root
 			}

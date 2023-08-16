@@ -17,7 +17,7 @@ package filter
 import (
 	"github.com/dlclark/regexp2"
 
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 type ObjectFilters struct {
@@ -44,7 +44,7 @@ func (regex *Regex) MatchString(s string) bool {
 	return match
 }
 
-func (f *ObjectFilters) Check(object util.ObjectRef) bool {
+func (f *ObjectFilters) Check(object utilobject.Rich) bool {
 	if f.Cluster.Pattern != nil && !f.Cluster.MatchString(object.Cluster) {
 		return false
 	}

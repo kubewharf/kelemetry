@@ -29,7 +29,7 @@ import (
 	k8sconfig "github.com/kubewharf/kelemetry/pkg/k8s/config"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
 )
 
@@ -110,7 +110,7 @@ func (cache *Etcd) GetCommonOptions() *diffcache.CommonOptions {
 	return cache.GetAdditionalOptions().(*diffcache.CommonOptions)
 }
 
-func (cache *Etcd) Store(ctx context.Context, object util.ObjectRef, patch *diffcache.Patch) {
+func (cache *Etcd) Store(ctx context.Context, object utilobject.Key, patch *diffcache.Patch) {
 	patchJson, err := json.Marshal(patch)
 	if err != nil {
 		cache.Logger.WithError(err).Error("cannot marshal patch")
@@ -133,7 +133,7 @@ func (cache *Etcd) Store(ctx context.Context, object util.ObjectRef, patch *diff
 
 func (cache *Etcd) Fetch(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Key,
 	oldResourceVersion string,
 	newResourceVersion *string,
 ) (*diffcache.Patch, error) {
@@ -164,7 +164,7 @@ func (cache *Etcd) Fetch(
 	return patch, nil
 }
 
-func (cache *Etcd) StoreSnapshot(ctx context.Context, object util.ObjectRef, snapshotName string, snapshot *diffcache.Snapshot) {
+func (cache *Etcd) StoreSnapshot(ctx context.Context, object utilobject.Key, snapshotName string, snapshot *diffcache.Snapshot) {
 	snapshotJson, err := json.Marshal(snapshot)
 	if err != nil {
 		cache.Logger.WithError(err).Error("cannot marshal snapshot")
@@ -185,7 +185,7 @@ func (cache *Etcd) StoreSnapshot(ctx context.Context, object util.ObjectRef, sna
 	}
 }
 
-func (cache *Etcd) FetchSnapshot(ctx context.Context, object util.ObjectRef, snapshotName string) (*diffcache.Snapshot, error) {
+func (cache *Etcd) FetchSnapshot(ctx context.Context, object utilobject.Key, snapshotName string) (*diffcache.Snapshot, error) {
 	key := cache.snapshotKey(object, snapshotName)
 	resp, err := cache.client.KV.Get(ctx, key)
 	if err != nil {
@@ -207,7 +207,7 @@ func (cache *Etcd) FetchSnapshot(ctx context.Context, object util.ObjectRef, sna
 	return snapshot, nil
 }
 
-func (cache *Etcd) List(ctx context.Context, object util.ObjectRef, limit int) ([]string, error) {
+func (cache *Etcd) List(ctx context.Context, object utilobject.Key, limit int) ([]string, error) {
 	resp, err := cache.client.KV.Get(
 		ctx,
 		cache.cacheKeyPrefix(object),
@@ -232,11 +232,11 @@ func (cache *Etcd) List(ctx context.Context, object util.ObjectRef, limit int) (
 	return keys, nil
 }
 
-func (cache *Etcd) cacheKeyPrefix(object util.ObjectRef) string {
+func (cache *Etcd) cacheKeyPrefix(object utilobject.Key) string {
 	return fmt.Sprintf("%s%s/", cache.options.prefix, object.String())
 }
 
-func (cache *Etcd) cacheKey(object util.ObjectRef, keyRv string) string {
+func (cache *Etcd) cacheKey(object utilobject.Key, keyRv string) string {
 	whichRv := "newRv"
 	if cluster := cache.ClusterConfigs.Provide(object.Cluster); cluster != nil && cluster.UseOldResourceVersion {
 		whichRv = "oldRv"
@@ -245,6 +245,6 @@ func (cache *Etcd) cacheKey(object util.ObjectRef, keyRv string) string {
 	return cache.cacheKeyPrefix(object) + fmt.Sprintf("%s/%s", whichRv, keyRv)
 }
 
-func (cache *Etcd) snapshotKey(object util.ObjectRef, snapshotName string) string {
+func (cache *Etcd) snapshotKey(object utilobject.Key, snapshotName string) string {
 	return cache.cacheKeyPrefix(object) + snapshotName
 }

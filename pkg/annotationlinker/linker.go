@@ -20,14 +20,13 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator/linker"
 	"github.com/kubewharf/kelemetry/pkg/k8s"
 	"github.com/kubewharf/kelemetry/pkg/k8s/discovery"
 	"github.com/kubewharf/kelemetry/pkg/k8s/objectcache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 func init() {
@@ -59,7 +58,7 @@ func (ctrl *controller) Init() error                     { return nil }
 func (ctrl *controller) Start(ctx context.Context) error { return nil }
 func (ctrl *controller) Close(ctx context.Context) error { return nil }
 
-func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) *util.ObjectRef {
+func (ctrl *controller) Lookup(ctx context.Context, object utilobject.Rich) *utilobject.Rich {
 	raw := object.Raw
 
 	logger := ctrl.Logger.WithFields(object.AsFields("object"))
@@ -68,7 +67,7 @@ func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) *util
 		logger.Debug("Fetching dynamic object")
 
 		var err error
-		raw, err = ctrl.ObjectCache.Get(ctx, object)
+		raw, err = ctrl.ObjectCache.Get(ctx, object.VersionedKey)
 
 		if err != nil {
 			logger.WithError(err).Error("cannot fetch object value")
@@ -93,20 +92,10 @@ func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) *util
 			ref.Cluster = object.Cluster
 		}
 
-		objectRef := &util.ObjectRef{
-			Cluster: ref.Cluster,
-			GroupVersionResource: schema.GroupVersionResource{
-				Group:    ref.GroupVersionResource.Group,
-				Version:  ref.GroupVersionResource.Version,
-				Resource: ref.GroupVersionResource.Resource,
-			},
-			Namespace: ref.Namespace,
-			Name:      ref.Name,
-			Uid:       ref.Uid,
-		}
+		objectRef := ref.ToRich()
 		logger.WithField("parent", objectRef).Debug("Resolved parent")
 
-		return objectRef
+		return &objectRef
 	}
 
 	return nil
