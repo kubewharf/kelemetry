@@ -18,10 +18,6 @@ package zconstants
 
 import (
 	"time"
-
-	"github.com/jaegertracing/jaeger/model"
-
-	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 // All tags with this prefix are not rendered.
@@ -62,7 +58,7 @@ const (
 )
 
 func KnownTraceSources(withPseudo bool) []string {
-	numPseudoTraceSources := 2
+	numPseudoTraceSources := 1
 
 	traceSources := []string{
 		// pseudo
@@ -78,123 +74,6 @@ func KnownTraceSources(withPseudo bool) []string {
 	}
 
 	return traceSources
-}
-
-// Tags for TraceSourceLink spans that indicate the linked object.
-const (
-	LinkedObjectCluster   = "linkedCluster"
-	LinkedObjectGroup     = "linkedGroup"
-	LinkedObjectResource  = "linkedResource"
-	LinkedObjectNamespace = "linkedNamespace"
-	LinkedObjectName      = "linkedName"
-
-	// Indicates how the linked trace interacts with the current trace.
-	LinkRole = "linkRole"
-
-	// If this tag is nonempty, a virtual span is inserted between the linked objects with the tag value as the name.
-	LinkClass = "linkClass"
-)
-
-func TagLinkedObject(tags map[string]string, object utilobject.Key, role LinkRoleValue, class string) {
-	tags[LinkedObjectCluster] = object.Cluster
-	tags[LinkedObjectGroup] = object.Group
-	tags[LinkedObjectResource] = object.Resource
-	tags[LinkedObjectNamespace] = object.Namespace
-	tags[LinkedObjectName] = object.Name
-	tags[LinkRole] = string(role)
-	tags[LinkClass] = class
-}
-
-func ObjectKeyFromSpan(span *model.Span) (utilobject.Key, bool) {
-	tags := model.KeyValues(span.Tags)
-	traceSource, hasTraceSource := tags.FindByKey(TraceSource)
-	if !hasTraceSource || traceSource.VStr != TraceSourceObject {
-		return utilobject.Key{}, false
-	}
-
-	cluster, _ := tags.FindByKey("cluster")
-	group, _ := tags.FindByKey("group")
-	resource, _ := tags.FindByKey("resource")
-	namespace, _ := tags.FindByKey("namespace")
-	name, _ := tags.FindByKey("name")
-	key := utilobject.Key{
-		Cluster:   cluster.VStr,
-		Group:     group.VStr,
-		Resource:  resource.VStr,
-		Namespace: namespace.VStr,
-		Name:      name.VStr,
-	}
-	return key, true
-}
-
-func LinkedKeyFromSpan(span *model.Span) (utilobject.Key, bool) {
-	tags := model.KeyValues(span.Tags)
-	pseudoType, isPseudo := tags.FindByKey(PseudoType)
-	if !isPseudo || pseudoType.VStr != string(PseudoTypeLink) {
-		return utilobject.Key{}, false
-	}
-
-	cluster, _ := tags.FindByKey(LinkedObjectCluster)
-	group, _ := tags.FindByKey(LinkedObjectGroup)
-	resource, _ := tags.FindByKey(LinkedObjectResource)
-	namespace, _ := tags.FindByKey(LinkedObjectNamespace)
-	name, _ := tags.FindByKey(LinkedObjectName)
-	key := utilobject.Key{
-		Cluster:   cluster.VStr,
-		Group:     group.VStr,
-		Resource:  resource.VStr,
-		Namespace: namespace.VStr,
-		Name:      name.VStr,
-	}
-	return key, true
-}
-
-func KeyToSpanTags(key utilobject.Key) map[string]string {
-	return map[string]string{
-		"cluster":   key.Cluster,
-		"group":     key.Group,
-		"resource":  key.Resource,
-		"namespace": key.Namespace,
-		"name":      key.Name,
-	}
-}
-
-func VersionedKeyToSpanTags(key utilobject.VersionedKey) map[string]string {
-	m := KeyToSpanTags(key.Key)
-	m["version"] = key.Version
-	return m
-}
-
-func KeyToSpanLinkedTags(key utilobject.Key) map[string]string {
-	return map[string]string{
-		LinkedObjectCluster:   key.Cluster,
-		LinkedObjectGroup:     key.Group,
-		LinkedObjectResource:  key.Resource,
-		LinkedObjectNamespace: key.Namespace,
-		LinkedObjectName:      key.Name,
-	}
-}
-
-type LinkRoleValue string
-
-const (
-	// The current trace is a child trace under the linked trace
-	LinkRoleParent LinkRoleValue = "parent"
-
-	// The linked trace is a child trace under the current trace.
-	LinkRoleChild LinkRoleValue = "child"
-)
-
-// Determines the role of the reverse link.
-func ReverseLinkRole(role LinkRoleValue) LinkRoleValue {
-	switch role {
-	case LinkRoleParent:
-		return LinkRoleChild
-	case LinkRoleChild:
-		return LinkRoleParent
-	default:
-		return role
-	}
 }
 
 // Classifies the type of a log line.

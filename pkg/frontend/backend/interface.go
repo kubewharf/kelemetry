@@ -62,8 +62,9 @@ type TraceThumbnail struct {
 	Spans *tftree.SpanTree
 }
 
-func (tt *TraceThumbnail) GetSpans() *tftree.SpanTree { return tt.Spans }
-func (tt *TraceThumbnail) GetMetadata() any           { return tt.Identifier }
+func (tt *TraceThumbnail) GetSpans() *tftree.SpanTree        { return tt.Spans }
+func (tt *TraceThumbnail) GetMetadata() any                  { return tt.Identifier }
+func (tt *TraceThumbnail) FromThumbnail(src *TraceThumbnail) { *tt = *src }
 
 type mux struct {
 	*manager.Mux

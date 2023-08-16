@@ -115,10 +115,9 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 		Modifiers map[tfconfig.Id]modifierConfig `json:"modifiers"`
 		Batches   []Batch                        `json:"batches"`
 		Configs   []struct {
-			Id          tfconfig.Id     `json:"id"`
-			Name        string          `json:"name"`
-			FollowLinks []string        `json:"followLinks"`
-			Steps       json.RawMessage `json:"steps"`
+			Id    tfconfig.Id     `json:"id"`
+			Name  string          `json:"name"`
+			Steps json.RawMessage `json:"steps"`
 		}
 	}
 	if err := json.Unmarshal(jsonBytes, &file); err != nil {
@@ -180,10 +179,10 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 		}
 
 		config := &tfconfig.Config{
-			Id:          raw.Id,
-			Name:        raw.Name,
-			FollowLinks: sets.New(raw.FollowLinks...),
-			Steps:       steps,
+			Id:           raw.Id,
+			Name:         raw.Name,
+			LinkSelector: tfconfig.ConstantLinkSelector(false),
+			Steps:        steps,
 		}
 
 		p.register(registeredConfig{config: config, modifierClasses: sets.New[string]()})

@@ -70,7 +70,7 @@ func NewSpanTree(spans []*model.Span) *SpanTree {
 }
 
 func (tree *SpanTree) Clone() (*SpanTree, error) {
-	copiedSpans := make([]*model.Span, len(tree.spanMap))
+	copiedSpans := make([]*model.Span, 0, len(tree.spanMap))
 	for _, span := range tree.spanMap {
 		spanCopy, err := CopySpan(span)
 		if err != nil {

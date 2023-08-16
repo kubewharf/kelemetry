@@ -26,7 +26,6 @@ import (
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/util/sets"
 
 	jaegerbackend "github.com/kubewharf/kelemetry/pkg/frontend/backend"
 	"github.com/kubewharf/kelemetry/pkg/frontend/clusterlist"
@@ -37,7 +36,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/frontend/tracecache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
-	"github.com/kubewharf/kelemetry/pkg/util/semaphore"
+	reflectutil "github.com/kubewharf/kelemetry/pkg/util/reflect"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
@@ -52,6 +51,8 @@ type Interface interface {
 type options struct {
 	cacheExtensions       bool
 	followLinkConcurrency int
+	followLinkLimit       int32
+	followLinksInList     bool
 }
 
 func (options *options) Setup(fs *pflag.FlagSet) {
@@ -64,8 +65,20 @@ func (options *options) Setup(fs *pflag.FlagSet) {
 	fs.IntVar(
 		&options.followLinkConcurrency,
 		"frontend-follow-link-concurrency",
-		5,
+		20,
 		"number of concurrent trace per request to follow links",
+	)
+	fs.Int32Var(
+		&options.followLinkLimit,
+		"frontend-follow-link-limit",
+		10,
+		"maximum number of linked objects to follow per search result",
+	)
+	fs.BoolVar(
+		&options.followLinksInList,
+		"frontend-follow-links-in-list",
+		true,
+		"whether links should be recursed into when listing traces",
 	)
 }
 
@@ -138,26 +151,54 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 	}
 
 	reader.Logger.WithField("query", query).
-		WithField("links", config.FollowLinks).
 		WithField("config", config.Name).
 		Debug("start trace list")
-	thumbnails, err := reader.Backend.List(ctx, query)
+
+	if len(query.OperationName) > 0 {
+		if query.Tags == nil {
+			query.Tags = map[string]string{}
+		}
+		query.Tags["cluster"] = query.OperationName
+	}
+
+	tts, err := reader.Backend.List(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := reader.followLinks(ctx, &thumbnails, config.FollowLinks, query); err != nil {
-		return nil, fmt.Errorf("resolving linked objects: %w", err)
+	twmList := make([]merge.TraceWithMetadata[any], len(tts))
+	for i, tt := range tts {
+		twmList[i] = merge.TraceWithMetadata[any]{
+			Tree:     tt.Spans,
+			Metadata: tt.Identifier,
+		}
+	}
+
+	merger := merge.Merger[any]{}
+	if err := merger.AddTraces(twmList); err != nil {
+		return nil, fmt.Errorf("group traces by object: %w", err)
+	}
+
+	if reader.options.followLinksInList {
+		if err := merger.FollowLinks(
+			ctx,
+			config.LinkSelector,
+			query.StartTimeMin, query.StartTimeMax,
+			merge.ListWithBackend[any](reader.Backend, reflectutil.Identity[any]),
+			reader.options.followLinkConcurrency, reader.options.followLinkLimit, false,
+		); err != nil {
+			return nil, fmt.Errorf("follow links: %w", err)
+		}
+	}
+
+	mergeTrees, err := merger.MergeTraces()
+	if err != nil {
+		return nil, fmt.Errorf("merging split and linked traces: %w", err)
 	}
 
 	var rootKey *utilobject.Key
 	if rootKeyValue, ok := utilobject.FromMap(query.Tags); ok {
 		rootKey = &rootKeyValue
-	}
-
-	mergeTrees, err := merge.Merger[*jaegerbackend.TraceThumbnail, any]{}.MergeTraces(thumbnails)
-	if err != nil {
-		return nil, fmt.Errorf("merging split and linked traces: %w", err)
 	}
 
 	cacheEntries := []tracecache.Entry{}
@@ -189,64 +230,6 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 	reader.Logger.WithField("numTraces", len(traces)).Info("query trace list")
 
 	return traces, nil
-}
-
-func (reader *spanReader) followLinks(
-	ctx context.Context,
-	thumbnailsPtr *[]*jaegerbackend.TraceThumbnail,
-	followLinks sets.Set[string],
-	query *spanstore.TraceQueryParameters,
-) error {
-	knownKeys := sets.New[utilobject.Key]()
-	for _, thumbnail := range *thumbnailsPtr {
-		key, _ := zconstants.ObjectKeyFromSpan(thumbnail.Spans.Root)
-		knownKeys.Insert(key)
-	}
-
-	sem := semaphore.New(reader.options.followLinkConcurrency)
-
-	var scheduleFollow func(thumbnails []*jaegerbackend.TraceThumbnail)
-	scheduleFollow = func(thumbnails []*jaegerbackend.TraceThumbnail) {
-		for _, thumbnail := range thumbnails {
-			for _, span := range thumbnail.Spans.GetSpans() {
-				span := span
-				linkKey, hasLinkKey := zconstants.LinkedKeyFromSpan(span)
-				if hasLinkKey && !knownKeys.Has(linkKey) {
-					linkRole, hasLinkRole := model.KeyValues(span.Tags).FindByKey(zconstants.LinkRole)
-					if !hasLinkRole || !followLinks.Has(linkRole.VStr) {
-						continue
-					}
-
-					sem.Schedule(func(ctx context.Context) (semaphore.Publish, error) {
-						newThumbnails, err := reader.Backend.List(ctx, &spanstore.TraceQueryParameters{
-							ServiceName:  zconstants.TraceSourceObject,
-							Tags:         zconstants.KeyToSpanTags(linkKey),
-							StartTimeMin: query.StartTimeMin,
-							StartTimeMax: query.StartTimeMax,
-							NumTraces:    query.NumTraces,
-						})
-						if err != nil {
-							return nil, fmt.Errorf("fetching linked traces: %w", err)
-						}
-
-						scheduleFollow(newThumbnails)
-						return func() error {
-							*thumbnailsPtr = append(*thumbnailsPtr, newThumbnails...)
-							return nil
-						}, nil
-					})
-				}
-			}
-		}
-	}
-
-	scheduleFollow(*thumbnailsPtr)
-
-	if err := sem.Run(ctx); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (reader *spanReader) prepareEntry(
@@ -334,12 +317,8 @@ func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (
 		return nil, fmt.Errorf("trace %v not found", cacheId)
 	}
 
-	aggTrace := &model.Trace{
-		ProcessMap: []model.Trace_ProcessMapping{{
-			ProcessID: "0",
-			Process:   model.Process{},
-		}},
-	}
+	displayMode := extractDisplayMode(cacheId)
+	var traces []merge.TraceWithMetadata[struct{}]
 
 	for _, identifier := range entry.Identifiers {
 		trace, err := reader.Backend.Get(ctx, identifier, cacheId, entry.StartTime, entry.EndTime)
@@ -348,7 +327,43 @@ func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (
 		}
 
 		clipped := filterTimeRange(trace.Spans, entry.StartTime, entry.EndTime)
-		aggTrace.Spans = append(aggTrace.Spans, clipped...)
+		traces = append(traces, merge.TraceWithMetadata[struct{}]{Tree: tftree.NewSpanTree(clipped)})
+	}
+
+	merger := merge.Merger[struct{}]{}
+	if err := merger.AddTraces(traces); err != nil {
+		return nil, fmt.Errorf("grouping traces by object: %w", err)
+	}
+
+	displayConfig := reader.TransformConfigs.GetById(displayMode)
+	if displayConfig == nil {
+		return nil, fmt.Errorf("display mode %x does not exist", displayMode)
+	}
+
+	if err := merger.FollowLinks(
+		ctx,
+		displayConfig.LinkSelector,
+		entry.StartTime, entry.EndTime,
+		merge.ListWithBackend[struct{}](reader.Backend, func(any) struct{} { return struct{}{} }),
+		reader.options.followLinkConcurrency, reader.options.followLinkLimit, true,
+	); err != nil {
+		return nil, fmt.Errorf("cannot follow links: %w", err)
+	}
+	mergedTrees, err := merger.MergeTraces()
+	if err != nil {
+		return nil, fmt.Errorf("merging linked trees: %w", err)
+	}
+
+	// if spans were connected, they should continue to be connected since link spans cannot be deleted, so assume there is only one trace
+	if len(mergedTrees) != 1 {
+		return nil, fmt.Errorf("inconsistent linked trace count %d", len(mergedTrees))
+	}
+	mergedTree := mergedTrees[0]
+	aggTrace := &model.Trace{
+		ProcessMap: []model.Trace_ProcessMapping{{
+			ProcessID: "0",
+		}},
+		Spans: mergedTree.Tree.GetSpans(),
 	}
 
 	var extensions transform.ExtensionProcessor = &transform.FetchExtensionsAndStoreCache{}
@@ -356,7 +371,6 @@ func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (
 		extensions = &transform.LoadExtensionCache{Cache: entry.Extensions}
 	}
 
-	displayMode := extractDisplayMode(cacheId)
 	if err := reader.Transformer.Transform(
 		ctx, aggTrace, entry.RootObject, displayMode,
 		extensions,

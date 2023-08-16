@@ -42,9 +42,28 @@ configs:
         batchName: final
 
 modifiers:
+  # Multiple active link-selector modifiers are additive (union)
   "01000000":
-    displayName: exclusive
-    modifierName: exclusive
+    displayName: ancestors
+    modifierName: link-selector
+    args:
+      modifierClass: parent
+
+      includeSiblings: false
+  "02000000":
+    displayName: ancestors tree
+    modifierName: link-selector
+    args:
+      modifierClass: parent
+      includeSiblings: true
+  "04000000":
+    displayName: all owned objects
+    modifierName: link-selector
+    args:
+      modifierClass: children
+      ifAll:
+        - linkClass: children
+          fromChild: false
 
 # Uncomment to enable extension trace from apiserver
 #   "00000001":

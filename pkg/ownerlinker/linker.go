@@ -110,7 +110,7 @@ func (ctrl *Controller) Lookup(ctx context.Context, object utilobject.Rich) ([]l
 					Key: utilobject.Key{
 						Cluster:   object.Cluster,
 						Group:     gvr.Group,
-						Resource:  gvr.Group,
+						Resource:  gvr.Resource,
 						Namespace: object.Namespace,
 						Name:      owner.Name,
 					},
@@ -121,9 +121,10 @@ func (ctrl *Controller) Lookup(ctx context.Context, object utilobject.Rich) ([]l
 			logger.WithField("owner", parentRef).Debug("Resolved owner")
 
 			results = append(results, linker.LinkerResult{
-				Object: parentRef,
-				Role:   zconstants.LinkRoleParent,
-				Class:  "children",
+				Object:  parentRef,
+				Role:    zconstants.LinkRoleParent,
+				Class:   "children",
+				DedupId: "ownerReference",
 			})
 		}
 	}

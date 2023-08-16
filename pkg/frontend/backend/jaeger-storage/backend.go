@@ -151,16 +151,6 @@ func (backend *Backend) List(
 	ctx context.Context,
 	params *spanstore.TraceQueryParameters,
 ) ([]*jaegerbackend.TraceThumbnail, error) {
-	filterTags := map[string]string{
-		zconstants.NotPseudo: zconstants.NotPseudo,
-	}
-	for key, val := range params.Tags {
-		filterTags[key] = val
-	}
-	if len(params.OperationName) > 0 {
-		filterTags["cluster"] = params.OperationName
-	}
-
 	traceThumbnails := []*jaegerbackend.TraceThumbnail{}
 	for _, traceSource := range zconstants.KnownTraceSources(false) {
 		if len(traceThumbnails) >= params.NumTraces {
@@ -169,7 +159,7 @@ func (backend *Backend) List(
 
 		newParams := &spanstore.TraceQueryParameters{
 			ServiceName:  traceSource,
-			Tags:         filterTags,
+			Tags:         params.Tags,
 			StartTimeMin: params.StartTimeMin,
 			StartTimeMax: params.StartTimeMax,
 			DurationMin:  params.DurationMin,

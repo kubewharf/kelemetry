@@ -97,8 +97,9 @@ func (ctrl *controller) Lookup(ctx context.Context, object utilobject.Rich) ([]l
 		logger.WithFields(objectRef.AsFields("parent")).Debug("Resolved parent")
 
 		return []linker.LinkerResult{{
-			Object: objectRef,
-			Role:   zconstants.LinkRoleParent,
+			Object:  objectRef,
+			Role:    zconstants.LinkRoleParent,
+			DedupId: "annotation",
 		}}, nil
 	}
 

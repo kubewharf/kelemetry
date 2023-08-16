@@ -102,6 +102,7 @@ type Aggregator interface {
 		parent tracer.SpanContext,
 		followsFrom tracer.SpanContext,
 		extraTags map[string]string,
+		dedupId string,
 	) (span tracer.SpanContext, isNew bool, err error)
 }
 
@@ -223,7 +224,7 @@ func (agg *aggregator) EnsureObjectSpan(
 	object utilobject.Rich,
 	eventTime time.Time,
 ) (tracer.SpanContext, error) {
-	span, isNew, err := agg.GetOrCreatePseudoSpan(ctx, object, zconstants.PseudoTypeObject, eventTime, nil, nil, nil)
+	span, isNew, err := agg.GetOrCreatePseudoSpan(ctx, object, zconstants.PseudoTypeObject, eventTime, nil, nil, nil, "object")
 	if err != nil {
 		return nil, err
 	}
@@ -282,6 +283,7 @@ func (agg *aggregator) GetOrCreatePseudoSpan(
 	parent tracer.SpanContext,
 	followsFrom tracer.SpanContext,
 	extraTags map[string]string,
+	dedupId string,
 ) (_span tracer.SpanContext, _isNew bool, _err error) {
 	lazySpanMetric := &lazySpanMetric{
 		Cluster: object.Cluster,
@@ -289,7 +291,7 @@ func (agg *aggregator) GetOrCreatePseudoSpan(
 	}
 	defer agg.LazySpanMetric.DeferCount(agg.Clock.Now(), lazySpanMetric)
 
-	cacheKey := agg.expiringSpanCacheKey(object.Key, eventTime, pseudoType)
+	cacheKey := agg.expiringSpanCacheKey(object.Key, eventTime, dedupId)
 
 	logger := agg.Logger.
 		WithField("step", "GetOrCreatePseudoSpan").
@@ -404,10 +406,10 @@ func (agg *aggregator) CreatePseudoSpan(
 func (aggregator *aggregator) expiringSpanCacheKey(
 	object utilobject.Key,
 	timestamp time.Time,
-	pseudoType zconstants.PseudoTypeValue,
+	subObject string,
 ) string {
 	expiringWindow := timestamp.Unix() / int64(aggregator.options.spanTtl.Seconds())
-	return aggregator.spanCacheKey(object, fmt.Sprintf("field=%s,window=%d", pseudoType, expiringWindow))
+	return aggregator.spanCacheKey(object, fmt.Sprintf("field=%s,window=%d", subObject, expiringWindow))
 }
 
 func (aggregator *aggregator) spanCacheKey(object utilobject.Key, window string) string {

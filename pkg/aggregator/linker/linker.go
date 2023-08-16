@@ -26,7 +26,8 @@ type Linker interface {
 }
 
 type LinkerResult struct {
-	Object utilobject.Rich
-	Role   zconstants.LinkRoleValue
-	Class  string
+	Object  utilobject.Rich
+	Role    zconstants.LinkRoleValue
+	Class   string
+	DedupId string
 }

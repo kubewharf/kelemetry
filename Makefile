@@ -71,7 +71,7 @@ endif
 .PHONY: run dump-rotate test usage dot kind stack pre-commit
 run: output/kelemetry $(DUMP_ROTATE_DEP)
 	GIN_MODE=debug \
-		./output/kelemetry \
+		$(RUN_PREFIX) ./output/kelemetry $(RUN_SUFFIX) \
 		--mq=local \
 		--audit-consumer-partition=$(PARTITIONS) \
 		--http-address=0.0.0.0 \
@@ -121,15 +121,15 @@ test:
 	go test -v -race -coverpkg=./pkg/... -coverprofile=coverage.out $(INTEGRATION_ARG) $(BUILD_ARGS) ./pkg/...
 
 usage: output/kelemetry
-	./output/kelemetry --usage=USAGE.txt
+	$(RUN_PREFIX) ./output/kelemetry $(RUN_SUFFIX) --usage=USAGE.txt
 
 dot: output/kelemetry
-	./output/kelemetry --dot=depgraph.dot
+	$(RUN_PREFIX) ./output/kelemetry $(RUN_SUFFIX) --dot=depgraph.dot
 	dot -Tpng depgraph.dot >depgraph.png
 	dot -Tsvg depgraph.dot >depgraph.svg
 
 output/kelemetry: go.mod go.sum $(shell find -type f -name "*.go")
-	go build -v $(RACE_ARG) -ldflags=$(LDFLAGS) -o $@ $(BUILD_ARGS) .
+	go build -v $(RACE_ARG) -gcflags=$(GCFLAGS) -ldflags=$(LDFLAGS) -o $@ $(BUILD_ARGS) .
 
 kind:
 	kind delete cluster --name tracetest

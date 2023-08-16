@@ -110,6 +110,8 @@ func (sem *Semaphore) Schedule(task Task) {
 			if publish != nil {
 				select {
 				case sem.publishCh <- publish:
+					// publishCh has zero capacity, so this case blocks until the main goroutine selects the publishCh case,
+					// so we can ensure that publishCh is received before calling sem.doneWg.Done()
 				case <-sem.errNotifyCh:
 					// no need to publish if the caller received error
 				}

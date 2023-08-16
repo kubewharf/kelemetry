@@ -15,38 +15,196 @@
 package merge
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
+	"sync/atomic"
+	"time"
 
 	"github.com/jaegertracing/jaeger/model"
+	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"k8s.io/apimachinery/pkg/util/sets"
 
+	jaegerbackend "github.com/kubewharf/kelemetry/pkg/frontend/backend"
+	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	reflectutil "github.com/kubewharf/kelemetry/pkg/util/reflect"
+	"github.com/kubewharf/kelemetry/pkg/util/semaphore"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
-type Merger[R RawTrace[M], M any] struct{}
-
-type RawTrace[M any] interface {
-	GetSpans() *tftree.SpanTree
-	GetMetadata() M
-}
-
 type objKey = utilobject.Key
 
-func (merger Merger[R, M]) MergeTraces(rawTraces []R) ([]*MergeTree[M], error) {
-	objects, err := merger.groupByKey(rawTraces)
-	if err != nil {
-		return nil, err
+type Merger[M any] struct {
+	objects map[objKey]*object[M]
+}
+
+type TraceWithMetadata[M any] struct {
+	Tree     *tftree.SpanTree
+	Metadata M
+}
+
+type RawTree struct {
+	Tree *tftree.SpanTree
+}
+
+func (tr RawTree) GetSpans() *tftree.SpanTree { return tr.Tree }
+func (tr RawTree) GetMetadata() struct{}      { return struct{}{} }
+func (tr RawTree) FromThumbnail(self *RawTree, tt *jaegerbackend.TraceThumbnail) {
+	self.Tree = tt.Spans
+}
+
+func (merger *Merger[M]) AddTraces(trees []TraceWithMetadata[M]) error {
+	if merger.objects == nil {
+		merger.objects = make(map[objKey]*object[M])
 	}
 
+	affected := sets.New[objKey]()
+	for _, trace := range trees {
+		key, _ := zconstants.ObjectKeyFromSpan(trace.Tree.Root)
+		affected.Insert(key)
+
+		if obj, hasPrev := merger.objects[key]; hasPrev {
+			if err := obj.merge(trace.Tree, trace.Metadata); err != nil {
+				return err
+			}
+		} else {
+			obj, err := newObject[M](key, trace.Tree, trace.Metadata)
+			if err != nil {
+				return err
+			}
+
+			merger.objects[key] = obj
+		}
+	}
+
+	for key := range affected {
+		merger.objects[key].identifyLinks()
+	}
+
+	return nil
+}
+
+type followLinkPool[M any] struct {
+	sem                *semaphore.Semaphore
+	knownKeys          sets.Set[objKey]
+	lister             ListFunc[M]
+	startTime, endTime time.Time
+	merger             *Merger[M]
+}
+
+func (fl *followLinkPool[M]) scheduleKnown(obj *object[M], limit *atomic.Int32, linkSelector tfconfig.LinkSelector) {
+	for _, link := range obj.links {
+		if _, known := fl.knownKeys[link.Key]; known {
+			continue
+		}
+		if limit.Add(-1) < 0 {
+			continue
+		}
+
+		parentKey, childKey, parentIsSource := obj.key, link.Key, true
+		if link.Role == zconstants.LinkRoleParent {
+			parentKey, childKey, parentIsSource = link.Key, obj.key, false
+		}
+
+		subSelector := linkSelector.Admit(parentKey, childKey, parentIsSource, link.Class)
+		if subSelector != nil {
+			fl.knownKeys.Insert(link.Key)
+			fl.schedule(link.Key, subSelector, int32(fl.endTime.Sub(fl.startTime)/(time.Minute*30)))
+		}
+	}
+}
+
+func (fl *followLinkPool[M]) schedule(key objKey, linkSelector tfconfig.LinkSelector, limit int32) {
+	fl.sem.Schedule(func(ctx context.Context) (semaphore.Publish, error) {
+		thumbnails, err := fl.lister(ctx, key, fl.startTime, fl.endTime, int(limit))
+		if err != nil {
+			return nil, fmt.Errorf("fetching linked traces: %w", err)
+		}
+
+		return func() error {
+			fl.merger.AddTraces(thumbnails)
+
+			return nil
+		}, nil
+	})
+}
+
+type ListFunc[M any] func(ctx context.Context, key objKey, startTime time.Time, endTime time.Time, limit int) ([]TraceWithMetadata[M], error)
+
+func ListWithBackend[M any](backend jaegerbackend.Backend, convertMetadata func(any) M) ListFunc[M] {
+	return func(ctx context.Context, key objKey, startTime time.Time, endTime time.Time, limit int) ([]TraceWithMetadata[M], error) {
+		tts, err := backend.List(ctx, &spanstore.TraceQueryParameters{
+			Tags:         zconstants.KeyToSpanTags(key),
+			StartTimeMin: startTime,
+			StartTimeMax: endTime,
+			NumTraces:    int(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		twmList := make([]TraceWithMetadata[M], len(tts))
+		for i, tt := range tts {
+			twmList[i] = TraceWithMetadata[M]{
+				Tree:     tt.Spans,
+				Metadata: convertMetadata(tt.Identifier),
+			}
+		}
+
+		return twmList, nil
+	}
+}
+
+func (merger *Merger[M]) FollowLinks(
+	ctx context.Context,
+	linkSelector tfconfig.LinkSelector,
+	startTime, endTime time.Time,
+	lister ListFunc[M],
+	concurrency int,
+	limit int32,
+	limitIsGlobal bool,
+) error {
+	fl := &followLinkPool[M]{
+		sem:       semaphore.New(concurrency),
+		knownKeys: sets.New[objKey](),
+		lister:    lister,
+		startTime: startTime,
+		endTime:   endTime,
+		merger:    merger,
+	}
+
+	for _, obj := range merger.objects {
+		fl.knownKeys.Insert(obj.key)
+	}
+
+	globalLimit := new(atomic.Int32)
+	globalLimit.Store(limit)
+
+	for _, obj := range merger.objects {
+		var remainingLimit *atomic.Int32
+		if limitIsGlobal {
+			remainingLimit = globalLimit
+		} else {
+			remainingLimit = new(atomic.Int32)
+			remainingLimit.Store(limit)
+		}
+
+		fl.scheduleKnown(obj, remainingLimit, linkSelector)
+	}
+
+	if err := fl.sem.Run(ctx); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (merger *Merger[M]) MergeTraces() ([]*MergeTree[M], error) {
 	abLinks := abLinkMap{}
 
-	for _, obj := range objects {
-		obj.identifyLinks()
-
+	for _, obj := range merger.objects {
 		for _, link := range obj.links {
 			abLink := abLinkFromTargetLink(obj.key, link)
 			abLinks.insert(abLink)
@@ -54,10 +212,10 @@ func (merger Merger[R, M]) MergeTraces(rawTraces []R) ([]*MergeTree[M], error) {
 	}
 
 	var mergeTrees []*MergeTree[M]
-	for _, keys := range merger.findConnectedComponents(objects, abLinks) {
-		var members []*object[R, M]
+	for _, keys := range merger.findConnectedComponents(merger.objects, abLinks) {
+		var members []*object[M]
 		for _, key := range keys {
-			members = append(members, objects[key])
+			members = append(members, merger.objects[key])
 		}
 
 		mergeTree, err := newMergeTree(members, abLinks)
@@ -71,57 +229,34 @@ func (merger Merger[R, M]) MergeTraces(rawTraces []R) ([]*MergeTree[M], error) {
 	return mergeTrees, nil
 }
 
-func (merger Merger[R, M]) groupByKey(rawTraces []R) (map[objKey]*object[R, M], error) {
-	objects := map[objKey]*object[R, M]{}
-
-	for _, trace := range rawTraces {
-		key, _ := zconstants.ObjectKeyFromSpan(trace.GetSpans().Root)
-
-		if obj, hasPrev := objects[key]; hasPrev {
-			if err := obj.merge(trace); err != nil {
-				return nil, err
-			}
-		} else {
-			obj, err := newObject[R, M](key, trace)
-			if err != nil {
-				return nil, err
-			}
-
-			objects[key] = obj
-		}
-	}
-
-	return objects, nil
-}
-
-type object[R RawTrace[M], M any] struct {
+type object[M any] struct {
 	key      objKey
 	metadata []M
 	tree     *tftree.SpanTree
 
-	links []targetLink
+	links []TargetLink
 }
 
-func newObject[R RawTrace[M], M any](key objKey, trace R) (*object[R, M], error) {
-	clonedTree, err := trace.GetSpans().Clone()
+func newObject[M any](key objKey, trace *tftree.SpanTree, metadata M) (*object[M], error) {
+	clonedTree, err := trace.Clone()
 	if err != nil {
 		return nil, fmt.Errorf("clone spans: %w", err)
 	}
-	obj := &object[R, M]{
+	obj := &object[M]{
 		key:      key,
-		metadata: []M{trace.GetMetadata()},
+		metadata: []M{metadata},
 		tree:     clonedTree,
 	}
 	return obj, nil
 }
 
-func (obj *object[R, M]) merge(trace R) error {
-	obj.metadata = append(obj.metadata, trace.GetMetadata())
+func (obj *object[M]) merge(trace *tftree.SpanTree, metadata M) error {
+	obj.metadata = append(obj.metadata, metadata)
 
-	mergeRoot(obj.tree.Root, trace.GetSpans().Root)
+	mergeRoot(obj.tree.Root, trace.Root)
 
 	copyVisitor := &copyTreeVisitor{to: obj.tree}
-	trace.GetSpans().Visit(copyVisitor)
+	trace.Visit(copyVisitor)
 	if copyVisitor.err != nil {
 		return copyVisitor.err
 	}
@@ -168,7 +303,7 @@ func mergeRootTags(base *model.Span, tail *model.Span) {
 	}
 }
 
-func (obj *object[R, M]) identifyLinks() {
+func (obj *object[M]) identifyLinks() {
 	for spanId := range obj.tree.Children(obj.tree.Root.SpanID) {
 		span := obj.tree.Span(spanId)
 		pseudoType, isPseudo := model.KeyValues(span.Tags).FindByKey(zconstants.PseudoType)
@@ -193,18 +328,18 @@ func (obj *object[R, M]) identifyLinks() {
 			linkClass = linkClassTag.VStr
 		}
 
-		obj.links = append(obj.links, targetLink{
-			key:   target,
-			role:  zconstants.LinkRoleValue(linkRole),
-			class: linkClass,
+		obj.links = append(obj.links, TargetLink{
+			Key:   target,
+			Role:  zconstants.LinkRoleValue(linkRole),
+			Class: linkClass,
 		})
 	}
 }
 
-type targetLink struct {
-	key   objKey
-	role  zconstants.LinkRoleValue
-	class string
+type TargetLink struct {
+	Key   objKey
+	Role  zconstants.LinkRoleValue
+	Class string
 }
 
 type copyTreeVisitor struct {
@@ -243,20 +378,20 @@ func (link abLink) isParent(key objKey) bool {
 	}
 }
 
-func abLinkFromTargetLink(subject objKey, link targetLink) abLink {
-	if groupingKeyLess(subject, link.key) {
+func abLinkFromTargetLink(subject objKey, link TargetLink) abLink {
+	if groupingKeyLess(subject, link.Key) {
 		return abLink{
 			alpha:         subject,
-			beta:          link.key,
-			alphaIsParent: link.role == zconstants.LinkRoleChild,
-			class:         link.class,
+			beta:          link.Key,
+			alphaIsParent: link.Role == zconstants.LinkRoleChild,
+			class:         link.Class,
 		}
 	} else {
 		return abLink{
 			beta:          subject,
-			alpha:         link.key,
-			alphaIsParent: link.role != zconstants.LinkRoleChild,
-			class:         link.class,
+			alpha:         link.Key,
+			alphaIsParent: link.Role != zconstants.LinkRoleChild,
+			class:         link.Class,
 		}
 	}
 }
@@ -296,24 +431,29 @@ func (m abLinkMap) insertDirected(k1, k2 objKey, link abLink) {
 	v1, hasK1 := m[k1]
 	if !hasK1 {
 		v1 = map[objKey]abLink{}
+		m[k1] = v1
 	}
 	v1[k2] = link
 }
 
-func (m abLinkMap) detectRoot(seed objKey) (_root objKey, _hasCycle bool) {
+func (m abLinkMap) detectRoot(seed objKey, vertexFilter func(objKey) bool) (_root objKey, _hasCycle bool) {
 	visited := sets.New[objKey]()
-	return m.dfsRoot(visited, seed)
+	return m.dfsRoot(visited, seed, vertexFilter)
 }
 
-func (m abLinkMap) dfsRoot(visited sets.Set[objKey], key objKey) (_root objKey, _hasCycle bool) {
+func (m abLinkMap) dfsRoot(visited sets.Set[objKey], key objKey, vertexFilter func(objKey) bool) (_root objKey, _hasCycle bool) {
 	if visited.Has(key) {
 		return key, true
 	}
 	visited.Insert(key) // avoid infinite recursion
 
 	for peer, link := range m[key] {
+		if !vertexFilter(peer) {
+			continue
+		}
+
 		if link.isParent(peer) {
-			return m.dfsRoot(visited, peer)
+			return m.dfsRoot(visited, peer, vertexFilter)
 		}
 	}
 
@@ -324,7 +464,7 @@ type componentTaint = int
 
 type connectedComponent = []objKey
 
-func (Merger[R, M]) findConnectedComponents(objects map[objKey]*object[R, M], abLinks abLinkMap) []connectedComponent {
+func (*Merger[M]) findConnectedComponents(objects map[objKey]*object[M], abLinks abLinkMap) []connectedComponent {
 	objectKeys := make(sets.Set[objKey], len(objects))
 	for gk := range objects {
 		objectKeys.Insert(gk)
@@ -340,8 +480,8 @@ func (Merger[R, M]) findConnectedComponents(objects map[objKey]*object[R, M], ab
 			break
 		}
 
-		taintCounter += 1
 		dfsTaint(objectKeys, abLinks, taints, taintCounter, seed)
+		taintCounter += 1
 	}
 
 	components := make([]connectedComponent, taintCounter)
@@ -385,8 +525,8 @@ type MergeTree[M any] struct {
 	Tree *tftree.SpanTree
 }
 
-func newMergeTree[R RawTrace[M], M any](
-	members []*object[R, M],
+func newMergeTree[M any](
+	members []*object[M],
 	abLinks abLinkMap,
 ) (*MergeTree[M], error) {
 	metadata := []M{}
@@ -406,13 +546,16 @@ func newMergeTree[R RawTrace[M], M any](
 	}, nil
 }
 
-func mergeLinkedTraces[R RawTrace[M], M any](objects []*object[R, M], abLinks abLinkMap) (*tftree.SpanTree, error) {
-	trees := make(map[objKey]*object[R, M], len(objects))
+func mergeLinkedTraces[M any](objects []*object[M], abLinks abLinkMap) (*tftree.SpanTree, error) {
+	trees := make(map[objKey]*object[M], len(objects))
 	for _, obj := range objects {
 		trees[obj.key] = obj
 	}
 
-	rootKey, _ := abLinks.detectRoot(objects[0].key)
+	rootKey, _ := abLinks.detectRoot(objects[0].key, func(key objKey) bool {
+		_, hasTree := trees[key]
+		return hasTree
+	})
 
 	tree := trees[rootKey].tree
 
@@ -422,19 +565,24 @@ func mergeLinkedTraces[R RawTrace[M], M any](objects []*object[R, M], abLinks ab
 		pendingObjects = pendingObjects[:len(pendingObjects)-1]
 
 		for _, link := range trees[subj].links {
-			if link.role != zconstants.LinkRoleChild {
+			if link.Role != zconstants.LinkRoleChild {
 				continue
 			}
 
 			parentSpan := trees[subj].tree.Root
-			if link.class != "" {
-				virtualSpan := createVirtualSpan(tree.Root.TraceID, parentSpan, link.class)
+			if link.Class != "" {
+				virtualSpan := createVirtualSpan(tree.Root.TraceID, parentSpan, link.Class)
 				tree.Add(virtualSpan, parentSpan.SpanID)
 				parentSpan = virtualSpan
 			}
 
-			tree.AddTree(trees[link.key].tree, parentSpan.SpanID)
-			pendingObjects = append(pendingObjects, link.key)
+			subtree, hasSubtree := trees[link.Key]
+			if !hasSubtree {
+				// this link was not fetched, e.g. because of fetch limit or link selector
+				continue
+			}
+			tree.AddTree(subtree.tree, parentSpan.SpanID)
+			pendingObjects = append(pendingObjects, link.Key)
 		}
 	}
 

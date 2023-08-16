@@ -102,7 +102,11 @@ func (worker *worker) execute(ctx context.Context, logger logrus.FieldLogger, li
 		}
 
 		forwardTags := map[string]string{}
-		zconstants.TagLinkedObject(forwardTags, link.Object.Key, link.Role, link.Class)
+		zconstants.TagLinkedObject(forwardTags, zconstants.LinkRef{
+			Key:   link.Object.Key,
+			Role:  link.Role,
+			Class: link.Class,
+		})
 		_, _, err = worker.Aggregator.GetOrCreatePseudoSpan(
 			ctx,
 			job.Object,
@@ -111,6 +115,7 @@ func (worker *worker) execute(ctx context.Context, logger logrus.FieldLogger, li
 			job.Span,
 			nil,
 			forwardTags,
+			link.DedupId,
 		)
 		if err != nil {
 			return metrics.LabelError(
@@ -120,7 +125,11 @@ func (worker *worker) execute(ctx context.Context, logger logrus.FieldLogger, li
 		}
 
 		backwardTags := map[string]string{}
-		zconstants.TagLinkedObject(backwardTags, job.Object.Key, zconstants.ReverseLinkRole(link.Role), link.Class)
+		zconstants.TagLinkedObject(backwardTags, zconstants.LinkRef{
+			Key:   job.Object.Key,
+			Role:  zconstants.ReverseLinkRole(link.Role),
+			Class: link.Class,
+		})
 		_, _, err = worker.Aggregator.GetOrCreatePseudoSpan(
 			ctx,
 			link.Object,
@@ -129,6 +138,7 @@ func (worker *worker) execute(ctx context.Context, logger logrus.FieldLogger, li
 			linkedSpan,
 			nil,
 			backwardTags,
+			fmt.Sprintf("%s@%s", link.DedupId, job.Object.String()),
 		)
 		if err != nil {
 			return metrics.LabelError(

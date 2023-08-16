@@ -17,8 +17,6 @@ package tfconfig
 import (
 	"strconv"
 
-	"k8s.io/apimachinery/pkg/util/sets"
-
 	"github.com/kubewharf/kelemetry/pkg/frontend/extension"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
@@ -54,7 +52,7 @@ type Config struct {
 	// The config name, used in search page display.
 	Name string
 	// Only links with roles in this set are followed.
-	FollowLinks sets.Set[string]
+	LinkSelector LinkSelector
 	// The extension traces for this config.
 	Extensions []extension.Provider
 	// The steps to transform the tree
@@ -69,11 +67,11 @@ func (config *Config) Clone() *Config {
 	copy(extensions, config.Extensions)
 
 	return &Config{
-		Id:          config.Id,
-		Name:        config.Name,
-		FollowLinks: config.FollowLinks.Clone(),
-		Extensions:  extensions,
-		Steps:       steps,
+		Id:           config.Id,
+		Name:         config.Name,
+		LinkSelector: config.LinkSelector, // modifier changes LinkSelector by wrapping the previous value
+		Extensions:   extensions,
+		Steps:        steps,
 	}
 }
 
