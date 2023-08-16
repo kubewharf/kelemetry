@@ -40,8 +40,8 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/k8s/multileader"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
-	"github.com/kubewharf/kelemetry/pkg/util"
 	informerutil "github.com/kubewharf/kelemetry/pkg/util/informer"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
@@ -312,12 +312,18 @@ func (ctrl *controller) handleEvent(ctx context.Context, event *corev1.Event) {
 		Resource: gvr.Resource,
 	}).Summary(float64(ctrl.Clock.Since(eventTime).Nanoseconds()))
 
-	if err := ctrl.Aggregator.Send(ctx, util.ObjectRef{
-		Cluster:              clusterName,
-		GroupVersionResource: gvr,
-		Namespace:            event.InvolvedObject.Namespace,
-		Name:                 event.InvolvedObject.Name,
-		Uid:                  event.InvolvedObject.UID,
+	if err := ctrl.Aggregator.Send(ctx, utilobject.Rich{
+		VersionedKey: utilobject.VersionedKey{
+			Key: utilobject.Key{
+				Cluster:   clusterName,
+				Group:     gvr.Group,
+				Resource:  gvr.Resource,
+				Namespace: event.InvolvedObject.Namespace,
+				Name:      event.InvolvedObject.Name,
+			},
+			Version: gvr.Version,
+		},
+		Uid: event.InvolvedObject.UID,
 	}, aggregatorEvent); err != nil {
 		logger.WithError(err).Error("Cannot send trace")
 		metric.Error = metrics.LabelError(err, "SendTrace")

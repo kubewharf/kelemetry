@@ -31,7 +31,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/k8s/objectcache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
 )
 
@@ -114,15 +114,15 @@ func (api *api) handleGet(ctx *gin.Context) error {
 		cluster = clusterQuery
 	}
 
-	raw, err := api.ObjectCache.Get(ctx, util.ObjectRef{
-		Cluster: cluster,
-		GroupVersionResource: schema.GroupVersionResource{
-			Group:    group,
-			Version:  version,
-			Resource: resource,
+	raw, err := api.ObjectCache.Get(ctx, utilobject.VersionedKey{
+		Key: utilobject.Key{
+			Cluster:   cluster,
+			Group:     group,
+			Resource:  resource,
+			Namespace: namespace,
+			Name:      name,
 		},
-		Namespace: namespace,
-		Name:      name,
+		Version: version,
 	})
 	if err != nil {
 		return err
@@ -131,13 +131,13 @@ func (api *api) handleGet(ctx *gin.Context) error {
 		return ctx.AbortWithError(404, fmt.Errorf("object does not exist"))
 	}
 
-	object := util.ObjectRefFromUnstructured(raw, cluster, schema.GroupVersionResource{
+	object := utilobject.RichFromUnstructured(raw, cluster, schema.GroupVersionResource{
 		Group:    group,
 		Version:  version,
 		Resource: resource,
 	})
 
-	patch, err := api.DiffCache.Fetch(ctx, object, rv, &rv)
+	patch, err := api.DiffCache.Fetch(ctx, object.Key, rv, &rv)
 	if err != nil || patch == nil {
 		return ctx.AbortWithError(404, fmt.Errorf("patch not found for rv: %w", err))
 	}
@@ -165,15 +165,15 @@ func (api *api) handleScan(ctx *gin.Context) error {
 		limit = parsedLimit
 	}
 
-	raw, err := api.ObjectCache.Get(ctx, util.ObjectRef{
-		Cluster: cluster,
-		GroupVersionResource: schema.GroupVersionResource{
-			Group:    group,
-			Version:  version,
-			Resource: resource,
+	raw, err := api.ObjectCache.Get(ctx, utilobject.VersionedKey{
+		Key: utilobject.Key{
+			Cluster:   cluster,
+			Group:     group,
+			Resource:  resource,
+			Namespace: namespace,
+			Name:      name,
 		},
-		Namespace: namespace,
-		Name:      name,
+		Version: version,
 	})
 	if err != nil {
 		return err
@@ -182,12 +182,12 @@ func (api *api) handleScan(ctx *gin.Context) error {
 		return ctx.AbortWithError(404, fmt.Errorf("object does not exist"))
 	}
 
-	object := util.ObjectRefFromUnstructured(raw, cluster, schema.GroupVersionResource{
+	object := utilobject.RichFromUnstructured(raw, cluster, schema.GroupVersionResource{
 		Group:    group,
 		Version:  version,
 		Resource: resource,
 	})
-	list, err := api.DiffCache.List(ctx, object, limit)
+	list, err := api.DiffCache.List(ctx, object.Key, limit)
 	if err != nil {
 		return err
 	}

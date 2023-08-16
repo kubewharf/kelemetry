@@ -36,6 +36,7 @@ import (
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/frontend/tracecache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	"github.com/kubewharf/kelemetry/pkg/util/semaphore"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
@@ -149,8 +150,8 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 		return nil, fmt.Errorf("resolving linked objects: %w", err)
 	}
 
-	var rootKey *tftree.GroupingKey
-	if rootKeyValue, ok := tftree.GroupingKeyFromMap(query.Tags); ok {
+	var rootKey *utilobject.Key
+	if rootKeyValue, ok := utilobject.FromMap(query.Tags); ok {
 		rootKey = &rootKeyValue
 	}
 
@@ -196,9 +197,9 @@ func (reader *spanReader) followLinks(
 	followLinks sets.Set[string],
 	query *spanstore.TraceQueryParameters,
 ) error {
-	knownKeys := sets.New[tftree.GroupingKey]()
+	knownKeys := sets.New[utilobject.Key]()
 	for _, thumbnail := range *thumbnailsPtr {
-		key, _ := tftree.GroupingKeyFromSpan(thumbnail.Spans.Root)
+		key, _ := zconstants.ObjectKeyFromSpan(thumbnail.Spans.Root)
 		knownKeys.Insert(key)
 	}
 
@@ -209,7 +210,7 @@ func (reader *spanReader) followLinks(
 		for _, thumbnail := range thumbnails {
 			for _, span := range thumbnail.Spans.GetSpans() {
 				span := span
-				linkKey, hasLinkKey := tftree.LinkGroupingKeyFromSpan(span)
+				linkKey, hasLinkKey := zconstants.LinkedKeyFromSpan(span)
 				if hasLinkKey && !knownKeys.Has(linkKey) {
 					linkRole, hasLinkRole := model.KeyValues(span.Tags).FindByKey(zconstants.LinkRole)
 					if !hasLinkRole || !followLinks.Has(linkRole.VStr) {
@@ -219,7 +220,7 @@ func (reader *spanReader) followLinks(
 					sem.Schedule(func(ctx context.Context) (semaphore.Publish, error) {
 						newThumbnails, err := reader.Backend.List(ctx, &spanstore.TraceQueryParameters{
 							ServiceName:  zconstants.TraceSourceObject,
-							Tags:         linkKey.AsSpanTags(),
+							Tags:         zconstants.KeyToSpanTags(linkKey),
 							StartTimeMin: query.StartTimeMin,
 							StartTimeMax: query.StartTimeMax,
 							NumTraces:    query.NumTraces,
@@ -251,7 +252,7 @@ func (reader *spanReader) followLinks(
 func (reader *spanReader) prepareEntry(
 	ctx context.Context,
 	config *tfconfig.Config,
-	rootKey *tftree.GroupingKey,
+	rootKey *utilobject.Key,
 	query *spanstore.TraceQueryParameters,
 	tree *tftree.SpanTree,
 	cacheId model.TraceID,
@@ -292,7 +293,7 @@ func (reader *spanReader) prepareEntry(
 
 func (reader *spanReader) storeCache(
 	ctx context.Context,
-	rootKey *tftree.GroupingKey,
+	rootKey *utilobject.Key,
 	query *spanstore.TraceQueryParameters,
 	identifiers []any,
 	cacheId model.TraceID,

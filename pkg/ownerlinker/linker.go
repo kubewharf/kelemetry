@@ -28,7 +28,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/k8s/objectcache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
@@ -61,7 +61,7 @@ func (ctrl *Controller) Init() error                     { return nil }
 func (ctrl *Controller) Start(ctx context.Context) error { return nil }
 func (ctrl *Controller) Close(ctx context.Context) error { return nil }
 
-func (ctrl *Controller) Lookup(ctx context.Context, object util.ObjectRef) ([]linker.LinkerResult, error) {
+func (ctrl *Controller) Lookup(ctx context.Context, object utilobject.Rich) ([]linker.LinkerResult, error) {
 	raw := object.Raw
 
 	logger := ctrl.Logger.WithFields(object.AsFields("object"))
@@ -70,7 +70,7 @@ func (ctrl *Controller) Lookup(ctx context.Context, object util.ObjectRef) ([]li
 		logger.Debug("Fetching dynamic object")
 
 		var err error
-		raw, err = ctrl.ObjectCache.Get(ctx, object)
+		raw, err = ctrl.ObjectCache.Get(ctx, object.VersionedKey)
 
 		if err != nil {
 			return nil, metrics.LabelError(fmt.Errorf("cannot fetch object value from cache: %w", err), "FetchCache")
@@ -105,12 +105,18 @@ func (ctrl *Controller) Lookup(ctx context.Context, object util.ObjectRef) ([]li
 				continue
 			}
 
-			parentRef := util.ObjectRef{
-				Cluster:              object.Cluster, // inherited from the same cluster
-				GroupVersionResource: gvr,
-				Namespace:            object.Namespace,
-				Name:                 owner.Name,
-				Uid:                  owner.UID,
+			parentRef := utilobject.Rich{
+				VersionedKey: utilobject.VersionedKey{
+					Key: utilobject.Key{
+						Cluster:   object.Cluster,
+						Group:     gvr.Group,
+						Resource:  gvr.Group,
+						Namespace: object.Namespace,
+						Name:      owner.Name,
+					},
+					Version: gvr.Version,
+				},
+				Uid: owner.UID,
 			}
 			logger.WithField("owner", parentRef).Debug("Resolved owner")
 

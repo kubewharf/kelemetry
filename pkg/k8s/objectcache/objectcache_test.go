@@ -29,7 +29,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/k8s"
 	"github.com/kubewharf/kelemetry/pkg/k8s/objectcache"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 func TestGet(t *testing.T) {
@@ -70,7 +70,7 @@ func TestGet(t *testing.T) {
 	assert.NoError(cache.Init())
 
 	for i := 0; i < 2; i++ {
-		uns, err := cache.Get(context.Background(), util.ObjectRef{
+		uns, err := cache.Get(context.Background(), utilobject.Rich{
 			Cluster:              "test-cluster",
 			GroupVersionResource: corev1.SchemeGroupVersion.WithResource("configmaps"),
 			Namespace:            "default",

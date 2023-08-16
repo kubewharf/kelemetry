@@ -32,7 +32,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/aggregator/tracer"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
@@ -84,19 +84,19 @@ type Aggregator interface {
 	manager.Component
 
 	// Send sends an event to the tracer backend.
-	Send(ctx context.Context, object util.ObjectRef, event *aggregatorevent.Event) error
+	Send(ctx context.Context, object utilobject.Rich, event *aggregatorevent.Event) error
 
 	// EnsureObjectSpan creates a pseudospan for the object, and triggers any possible relevant linkers.
 	EnsureObjectSpan(
 		ctx context.Context,
-		object util.ObjectRef,
+		object utilobject.Rich,
 		eventTime time.Time,
 	) (tracer.SpanContext, error)
 
 	// GetOrCreatePseudoSpan creates a span following the pseudospan standard with the required tags.
 	GetOrCreatePseudoSpan(
 		ctx context.Context,
-		object util.ObjectRef,
+		object utilobject.Rich,
 		pseudoType zconstants.PseudoTypeValue,
 		eventTime time.Time,
 		parent tracer.SpanContext,
@@ -162,7 +162,7 @@ func (aggregator *aggregator) Close(ctx context.Context) error { return nil }
 
 func (aggregator *aggregator) Send(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Rich,
 	event *aggregatorevent.Event,
 ) (err error) {
 	sendMetric := &sendMetric{Cluster: object.Cluster, TraceSource: event.TraceSource}
@@ -182,23 +182,18 @@ func (aggregator *aggregator) Send(
 		decorator.Decorate(ctx, object, event)
 	}
 
+	tags := zconstants.VersionedKeyToSpanTags(object.VersionedKey)
+	tags[zconstants.NotPseudo] = zconstants.NotPseudo
+	tags[zconstants.TraceSource] = event.TraceSource
+
 	span := tracer.Span{
 		Type:       event.TraceSource,
 		Name:       event.Title,
 		StartTime:  event.Time,
 		FinishTime: event.GetEndTime(),
 		Parent:     parentSpan,
-		Tags: map[string]string{
-			"cluster":              object.Cluster,
-			"namespace":            object.Namespace,
-			"name":                 object.Name,
-			"group":                object.Group,
-			"version":              object.Version,
-			"resource":             object.Resource,
-			zconstants.NotPseudo:   zconstants.NotPseudo,
-			zconstants.TraceSource: event.TraceSource,
-		},
-		Logs: event.Logs,
+		Tags:       tags,
+		Logs:       event.Logs,
 	}
 	for tagKey, tagValue := range event.Tags {
 		span.Tags[tagKey] = fmt.Sprint(tagValue)
@@ -225,7 +220,7 @@ func (aggregator *aggregator) Send(
 
 func (agg *aggregator) EnsureObjectSpan(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Rich,
 	eventTime time.Time,
 ) (tracer.SpanContext, error) {
 	span, isNew, err := agg.GetOrCreatePseudoSpan(ctx, object, zconstants.PseudoTypeObject, eventTime, nil, nil, nil)
@@ -281,7 +276,7 @@ func (c *spanCreator) fetchOrReserve(
 
 func (agg *aggregator) GetOrCreatePseudoSpan(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Rich,
 	pseudoType zconstants.PseudoTypeValue,
 	eventTime time.Time,
 	parent tracer.SpanContext,
@@ -294,7 +289,7 @@ func (agg *aggregator) GetOrCreatePseudoSpan(
 	}
 	defer agg.LazySpanMetric.DeferCount(agg.Clock.Now(), lazySpanMetric)
 
-	cacheKey := agg.expiringSpanCacheKey(object, eventTime, pseudoType)
+	cacheKey := agg.expiringSpanCacheKey(object.Key, eventTime, pseudoType)
 
 	logger := agg.Logger.
 		WithField("step", "GetOrCreatePseudoSpan").
@@ -356,7 +351,7 @@ func (agg *aggregator) GetOrCreatePseudoSpan(
 
 func (agg *aggregator) CreatePseudoSpan(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Rich,
 	pseudoType zconstants.PseudoTypeValue,
 	eventTime time.Time,
 	parent tracer.SpanContext,
@@ -365,6 +360,12 @@ func (agg *aggregator) CreatePseudoSpan(
 ) (tracer.SpanContext, error) {
 	remainderSeconds := eventTime.Unix() % int64(agg.options.spanTtl.Seconds())
 	startTime := eventTime.Add(-time.Duration(remainderSeconds) * time.Second)
+
+	tags := zconstants.VersionedKeyToSpanTags(object.VersionedKey)
+	tags[zconstants.TraceSource] = zconstants.TraceSourceObject
+	tags[zconstants.PseudoType] = string(pseudoType)
+	tags["timeStamp"] = startTime.Format(time.RFC3339)
+
 	span := tracer.Span{
 		Type:       string(pseudoType),
 		Name:       fmt.Sprintf("%s/%s", object.Resource, object.Name),
@@ -372,17 +373,7 @@ func (agg *aggregator) CreatePseudoSpan(
 		FinishTime: startTime.Add(agg.options.spanTtl),
 		Parent:     parent,
 		Follows:    followsFrom,
-		Tags: map[string]string{
-			"cluster":              object.Cluster,
-			"namespace":            object.Namespace,
-			"name":                 object.Name,
-			"group":                object.Group,
-			"version":              object.Version,
-			"resource":             object.Resource,
-			"timeStamp":            startTime.Format(time.RFC3339),
-			zconstants.TraceSource: zconstants.TraceSourceObject,
-			zconstants.PseudoType:  string(pseudoType),
-		},
+		Tags:       tags,
 	}
 	for tagKey, tagValue := range agg.options.globalPseudoTags {
 		span.Tags[tagKey] = tagValue
@@ -411,7 +402,7 @@ func (agg *aggregator) CreatePseudoSpan(
 }
 
 func (aggregator *aggregator) expiringSpanCacheKey(
-	object util.ObjectRef,
+	object utilobject.Key,
 	timestamp time.Time,
 	pseudoType zconstants.PseudoTypeValue,
 ) string {
@@ -419,6 +410,6 @@ func (aggregator *aggregator) expiringSpanCacheKey(
 	return aggregator.spanCacheKey(object, fmt.Sprintf("field=%s,window=%d", pseudoType, expiringWindow))
 }
 
-func (aggregator *aggregator) spanCacheKey(object util.ObjectRef, window string) string {
+func (aggregator *aggregator) spanCacheKey(object utilobject.Key, window string) string {
 	return fmt.Sprintf("%s/%s", object.String(), window)
 }

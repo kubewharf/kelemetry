@@ -38,7 +38,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/k8s/discovery"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
@@ -210,17 +210,7 @@ func (recv *receiver) handleItem(
 		}
 	}
 
-	objectRef := util.ObjectRef{
-		Cluster: message.Cluster,
-		GroupVersionResource: schema.GroupVersionResource{
-			Group:    message.ObjectRef.APIGroup,
-			Version:  message.ObjectRef.APIVersion,
-			Resource: message.ObjectRef.Resource,
-		},
-		Namespace: message.ObjectRef.Namespace,
-		Name:      message.ObjectRef.Name,
-		Uid:       message.ObjectRef.UID,
-	}
+	objectRef := utilobject.RichFromAudit(message.ObjectRef, message.Cluster)
 
 	if message.ResponseObject != nil {
 		objectRef.Raw = &unstructured.Unstructured{

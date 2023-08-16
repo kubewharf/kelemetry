@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	reflectutil "github.com/kubewharf/kelemetry/pkg/util/reflect"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
@@ -33,7 +34,7 @@ type RawTrace[M any] interface {
 	GetMetadata() M
 }
 
-type objKey = tftree.GroupingKey
+type objKey = utilobject.Key
 
 func (merger Merger[R, M]) MergeTraces(rawTraces []R) ([]*MergeTree[M], error) {
 	objects, err := merger.groupByKey(rawTraces)
@@ -74,7 +75,7 @@ func (merger Merger[R, M]) groupByKey(rawTraces []R) (map[objKey]*object[R, M], 
 	objects := map[objKey]*object[R, M]{}
 
 	for _, trace := range rawTraces {
-		key, _ := tftree.GroupingKeyFromSpan(trace.GetSpans().Root)
+		key, _ := zconstants.ObjectKeyFromSpan(trace.GetSpans().Root)
 
 		if obj, hasPrev := objects[key]; hasPrev {
 			if err := obj.merge(trace); err != nil {
@@ -175,7 +176,7 @@ func (obj *object[R, M]) identifyLinks() {
 			continue
 		}
 
-		target, hasTarget := tftree.LinkGroupingKeyFromSpan(span)
+		target, hasTarget := zconstants.LinkedKeyFromSpan(span)
 		if !hasTarget {
 			continue
 		}

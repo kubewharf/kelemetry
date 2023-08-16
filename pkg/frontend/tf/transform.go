@@ -22,12 +22,12 @@ import (
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/kubewharf/kelemetry/pkg/frontend/extension"
 	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 func init() {
@@ -56,7 +56,7 @@ func (transformer *Transformer) Close(ctx context.Context) error { return nil }
 func (transformer *Transformer) Transform(
 	ctx context.Context,
 	trace *model.Trace,
-	rootObject *tftree.GroupingKey,
+	rootObject *utilobject.Key,
 	configId tfconfig.Id,
 	extensionProcessor ExtensionProcessor,
 	start, end time.Time,
@@ -71,8 +71,6 @@ func (transformer *Transformer) Transform(
 	}
 
 	tree := tftree.NewSpanTree(trace.Spans)
-
-	transformer.groupDuplicates(tree)
 
 	newSpans, err := extensionProcessor.ProcessExtensions(ctx, transformer, config.Extensions, trace.Spans, start, end)
 	if err != nil {
@@ -89,49 +87,4 @@ func (transformer *Transformer) Transform(
 	trace.Spans = tree.GetSpans()
 
 	return nil
-}
-
-// merge spans of the same object from multiple traces
-func (transformer *Transformer) groupDuplicates(tree *tftree.SpanTree) {
-	commonSpans := map[tftree.GroupingKey][]model.SpanID{}
-
-	for _, span := range tree.GetSpans() {
-		if key, hasKey := tftree.GroupingKeyFromSpan(span); hasKey {
-			commonSpans[key] = append(commonSpans[key], span.SpanID)
-		}
-	}
-
-	for _, spans := range commonSpans {
-		if len(spans) > 1 {
-			// only retain the first span
-
-			desiredParent := spans[0]
-
-			originalTags := tree.Span(desiredParent).Tags
-			originalTagKeys := make(sets.Set[string], len(originalTags))
-			for _, tag := range originalTags {
-				originalTagKeys.Insert(tag.Key)
-			}
-
-			for _, obsoleteParent := range spans[1:] {
-				for _, tag := range tree.Span(obsoleteParent).Tags {
-					if !originalTagKeys.Has(tag.Key) {
-						originalTags = append(originalTags, tag)
-						originalTagKeys.Insert(tag.Key)
-					}
-				}
-
-				children := tree.Children(obsoleteParent)
-				for child := range children {
-					tree.Move(child, desiredParent)
-				}
-
-				if tree.Root.SpanID == obsoleteParent {
-					tree.Root = tree.Span(desiredParent)
-				}
-
-				tree.Delete(obsoleteParent)
-			}
-		}
-	}
 }

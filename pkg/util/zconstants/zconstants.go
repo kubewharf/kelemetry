@@ -19,7 +19,9 @@ package zconstants
 import (
 	"time"
 
-	"github.com/kubewharf/kelemetry/pkg/util"
+	"github.com/jaegertracing/jaeger/model"
+
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 // All tags with this prefix are not rendered.
@@ -93,7 +95,7 @@ const (
 	LinkClass = "linkClass"
 )
 
-func TagLinkedObject(tags map[string]string, object util.ObjectRef, role LinkRoleValue, class string) {
+func TagLinkedObject(tags map[string]string, object utilobject.Key, role LinkRoleValue, class string) {
 	tags[LinkedObjectCluster] = object.Cluster
 	tags[LinkedObjectGroup] = object.Group
 	tags[LinkedObjectResource] = object.Resource
@@ -101,6 +103,76 @@ func TagLinkedObject(tags map[string]string, object util.ObjectRef, role LinkRol
 	tags[LinkedObjectName] = object.Name
 	tags[LinkRole] = string(role)
 	tags[LinkClass] = class
+}
+
+func ObjectKeyFromSpan(span *model.Span) (utilobject.Key, bool) {
+	tags := model.KeyValues(span.Tags)
+	traceSource, hasTraceSource := tags.FindByKey(TraceSource)
+	if !hasTraceSource || traceSource.VStr != TraceSourceObject {
+		return utilobject.Key{}, false
+	}
+
+	cluster, _ := tags.FindByKey("cluster")
+	group, _ := tags.FindByKey("group")
+	resource, _ := tags.FindByKey("resource")
+	namespace, _ := tags.FindByKey("namespace")
+	name, _ := tags.FindByKey("name")
+	key := utilobject.Key{
+		Cluster:   cluster.VStr,
+		Group:     group.VStr,
+		Resource:  resource.VStr,
+		Namespace: namespace.VStr,
+		Name:      name.VStr,
+	}
+	return key, true
+}
+
+func LinkedKeyFromSpan(span *model.Span) (utilobject.Key, bool) {
+	tags := model.KeyValues(span.Tags)
+	pseudoType, isPseudo := tags.FindByKey(PseudoType)
+	if !isPseudo || pseudoType.VStr != string(PseudoTypeLink) {
+		return utilobject.Key{}, false
+	}
+
+	cluster, _ := tags.FindByKey(LinkedObjectCluster)
+	group, _ := tags.FindByKey(LinkedObjectGroup)
+	resource, _ := tags.FindByKey(LinkedObjectResource)
+	namespace, _ := tags.FindByKey(LinkedObjectNamespace)
+	name, _ := tags.FindByKey(LinkedObjectName)
+	key := utilobject.Key{
+		Cluster:   cluster.VStr,
+		Group:     group.VStr,
+		Resource:  resource.VStr,
+		Namespace: namespace.VStr,
+		Name:      name.VStr,
+	}
+	return key, true
+}
+
+func KeyToSpanTags(key utilobject.Key) map[string]string {
+	return map[string]string{
+		"cluster":   key.Cluster,
+		"group":     key.Group,
+		"resource":  key.Resource,
+		"namespace": key.Namespace,
+		"name":      key.Name,
+	}
+}
+
+func VersionedKeyToSpanTags(key utilobject.VersionedKey) map[string]string {
+	m := KeyToSpanTags(key.Key)
+	m["version"] = key.Version
+	return m
+}
+
+func KeyToSpanLinkedTags(key utilobject.Key) map[string]string {
+	return map[string]string{
+		LinkedObjectCluster:   key.Cluster,
+		LinkedObjectGroup:     key.Group,
+		LinkedObjectResource:  key.Resource,
+		LinkedObjectNamespace: key.Namespace,
+		LinkedObjectName:      key.Name,
+	}
 }
 
 type LinkRoleValue string

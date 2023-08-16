@@ -21,7 +21,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator/linker"
 	"github.com/kubewharf/kelemetry/pkg/k8s"
@@ -29,7 +28,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/k8s/objectcache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
@@ -62,7 +61,7 @@ func (ctrl *controller) Init() error                     { return nil }
 func (ctrl *controller) Start(ctx context.Context) error { return nil }
 func (ctrl *controller) Close(ctx context.Context) error { return nil }
 
-func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) ([]linker.LinkerResult, error) {
+func (ctrl *controller) Lookup(ctx context.Context, object utilobject.Rich) ([]linker.LinkerResult, error) {
 	raw := object.Raw
 
 	logger := ctrl.Logger.WithFields(object.AsFields("object"))
@@ -71,7 +70,7 @@ func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) ([]li
 		logger.Debug("Fetching dynamic object")
 
 		var err error
-		raw, err = ctrl.ObjectCache.Get(ctx, object)
+		raw, err = ctrl.ObjectCache.Get(ctx, object.VersionedKey)
 
 		if err != nil {
 			return nil, metrics.LabelError(fmt.Errorf("cannot fetch object value: %w", err), "FetchCache")
@@ -94,18 +93,8 @@ func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) ([]li
 			ref.Cluster = object.Cluster
 		}
 
-		objectRef := util.ObjectRef{
-			Cluster: ref.Cluster,
-			GroupVersionResource: schema.GroupVersionResource{
-				Group:    ref.GroupVersionResource.Group,
-				Version:  ref.GroupVersionResource.Version,
-				Resource: ref.GroupVersionResource.Resource,
-			},
-			Namespace: ref.Namespace,
-			Name:      ref.Name,
-			Uid:       ref.Uid,
-		}
-		logger.WithField("parent", objectRef).Debug("Resolved parent")
+		objectRef := ref.ToRich()
+		logger.WithFields(objectRef.AsFields("parent")).Debug("Resolved parent")
 
 		return []linker.LinkerResult{{
 			Object: objectRef,

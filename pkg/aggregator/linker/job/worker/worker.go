@@ -102,7 +102,7 @@ func (worker *worker) execute(ctx context.Context, logger logrus.FieldLogger, li
 		}
 
 		forwardTags := map[string]string{}
-		zconstants.TagLinkedObject(forwardTags, link.Object, link.Role, link.Class)
+		zconstants.TagLinkedObject(forwardTags, link.Object.Key, link.Role, link.Class)
 		_, _, err = worker.Aggregator.GetOrCreatePseudoSpan(
 			ctx,
 			job.Object,
@@ -120,7 +120,7 @@ func (worker *worker) execute(ctx context.Context, logger logrus.FieldLogger, li
 		}
 
 		backwardTags := map[string]string{}
-		zconstants.TagLinkedObject(backwardTags, job.Object, zconstants.ReverseLinkRole(link.Role), link.Class)
+		zconstants.TagLinkedObject(backwardTags, job.Object.Key, zconstants.ReverseLinkRole(link.Role), link.Class)
 		_, _, err = worker.Aggregator.GetOrCreatePseudoSpan(
 			ctx,
 			link.Object,

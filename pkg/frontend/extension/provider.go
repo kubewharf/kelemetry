@@ -21,7 +21,7 @@ import (
 	"github.com/jaegertracing/jaeger/model"
 
 	"github.com/kubewharf/kelemetry/pkg/manager"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 // Produces new extension providers based on the configuration.
@@ -58,7 +58,7 @@ type Provider interface {
 	// `tags` contains the tags in the object pseudospan in the main trace.
 	FetchForObject(
 		ctx context.Context,
-		object util.ObjectRef,
+		object utilobject.Rich,
 		tags model.KeyValues,
 		start, end time.Time,
 	) (*FetchResult, error)
@@ -73,7 +73,7 @@ type Provider interface {
 	// `tags` contains the tags in the object pseudospan in the main trace.
 	FetchForVersion(
 		ctx context.Context,
-		object util.ObjectRef,
+		object utilobject.Rich,
 		resourceVersion string,
 		tags model.KeyValues,
 		start, end time.Time,

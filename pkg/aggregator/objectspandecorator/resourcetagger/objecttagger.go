@@ -23,7 +23,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/aggregator/objectspandecorator"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/resourcetagger"
 	"github.com/kubewharf/kelemetry/pkg/manager"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 func init() {
@@ -54,7 +54,7 @@ func (d *ObjectSpanTag) Init() error                     { return nil }
 func (d *ObjectSpanTag) Start(ctx context.Context) error { return nil }
 func (d *ObjectSpanTag) Close(ctx context.Context) error { return nil }
 
-func (d *ObjectSpanTag) Decorate(ctx context.Context, object util.ObjectRef, traceSource string, tags map[string]string) {
+func (d *ObjectSpanTag) Decorate(ctx context.Context, object utilobject.Rich, traceSource string, tags map[string]string) {
 	if tags == nil {
 		return
 	}

@@ -32,7 +32,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/k8s"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 func init() {
@@ -95,11 +95,11 @@ func (oc *ObjectCache) Start(ctx context.Context) error { return nil }
 
 func (oc *ObjectCache) Close(ctx context.Context) error { return nil }
 
-func (oc *ObjectCache) Get(ctx context.Context, object util.ObjectRef) (*unstructured.Unstructured, error) {
+func (oc *ObjectCache) Get(ctx context.Context, object utilobject.VersionedKey) (*unstructured.Unstructured, error) {
 	metric := &CacheRequestMetric{Cluster: object.Cluster, Error: "Unknown"}
 	defer oc.CacheRequestMetric.DeferCount(oc.Clock.Now(), metric)
 
-	key := objectKey(object)
+	key := objectKey(object.Key)
 
 	for {
 		fetchCtx, cancelFunc := context.WithTimeout(ctx, oc.options.fetchTimeout)
@@ -173,7 +173,7 @@ func decodeCached(cached []byte, metric *CacheRequestMetric) (*unstructured.Unst
 
 func (oc *ObjectCache) penetrate(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.VersionedKey,
 ) (_raw *unstructured.Unstructured, _err error, _metricCode string) {
 	// first, try fetching from server
 	clusterClient, err := oc.Clients.Cluster(object.Cluster)
@@ -181,7 +181,7 @@ func (oc *ObjectCache) penetrate(
 		return nil, fmt.Errorf("cannot initialize clients for cluster %q: %w", object.Cluster, err), "UnknownCluster"
 	}
 
-	nsClient := clusterClient.DynamicClient().Resource(object.GroupVersionResource)
+	nsClient := clusterClient.DynamicClient().Resource(object.GroupVersionResource())
 	var client dynamic.ResourceInterface = nsClient
 	if object.Namespace != "" {
 		client = nsClient.Namespace(object.Namespace)
@@ -199,7 +199,7 @@ func (oc *ObjectCache) penetrate(
 	}
 
 	// not found from apiserver, try deletion snapshot instead
-	snapshot, err := oc.DiffCache.FetchSnapshot(ctx, object, diffcache.SnapshotNameDeletion)
+	snapshot, err := oc.DiffCache.FetchSnapshot(ctx, object.Key, diffcache.SnapshotNameDeletion)
 	if err != nil {
 		return nil, metrics.LabelError(fmt.Errorf("cannot fallback to snapshot: %w", err), "SnapshotFetch"), "SnapshotFetch"
 	}
@@ -218,6 +218,6 @@ func (oc *ObjectCache) penetrate(
 	return nil, nil, "NotFoundAnywhere"
 }
 
-func objectKey(object util.ObjectRef) []byte {
+func objectKey(object utilobject.Key) []byte {
 	return []byte(fmt.Sprintf("%s/%s/%s/%s", object.Group, object.Resource, object.Namespace, object.Name))
 }

@@ -20,7 +20,7 @@ import (
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator/tracer"
 	"github.com/kubewharf/kelemetry/pkg/manager"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 type Publisher interface {
@@ -57,7 +57,7 @@ func (mux *subscriberMux) Subscribe(ctx context.Context) <-chan *LinkJob {
 }
 
 type LinkJob struct {
-	Object    util.ObjectRef
+	Object    utilobject.Rich
 	EventTime time.Time
 	Span      tracer.SpanContext
 }
