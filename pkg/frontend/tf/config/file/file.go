@@ -20,8 +20,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
@@ -30,7 +32,7 @@ import (
 
 func init() {
 	manager.Global.ProvideMuxImpl("jaeger-transform-config/file", manager.Ptr(&FileProvider{
-		configs:        make(map[tfconfig.Id]*tfconfig.Config),
+		configs:        make(map[tfconfig.Id]registeredConfig),
 		nameToConfigId: make(map[string]tfconfig.Id),
 	}), tfconfig.Provider.DefaultId)
 }
@@ -53,9 +55,14 @@ type FileProvider struct {
 
 	options        options
 	names          []string
-	configs        map[tfconfig.Id]*tfconfig.Config
+	configs        map[tfconfig.Id]registeredConfig
 	nameToConfigId map[string]tfconfig.Id
 	defaultConfig  tfconfig.Id
+}
+
+type registeredConfig struct {
+	modifierClasses sets.Set[string]
+	config          *tfconfig.Config
 }
 
 var (
@@ -98,6 +105,7 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 	}
 
 	type modifierConfig struct {
+		Priority     int64           `json:"priority"`
 		DisplayName  string          `json:"displayName"`
 		ModifierName string          `json:"modifierName"`
 		Args         json.RawMessage `json:"args"`
@@ -117,10 +125,18 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 		return fmt.Errorf("parse tfconfig error: %w", err)
 	}
 
-	modifiers := make([]func(*tfconfig.Config), 0, len(file.Modifiers))
+	type knownModifier struct {
+		class    string
+		priority int64
+		fn       func(config *tfconfig.Config)
+	}
+
+	modifiers := make([]knownModifier, 0, len(file.Modifiers))
+
 	for bitmask, modifierConfig := range file.Modifiers {
 		bitmask := bitmask
 		modifierConfig := modifierConfig
+
 		displayName := modifierConfig.DisplayName
 
 		factory, hasFactory := p.RegisteredModifiers.Indexed[modifierConfig.ModifierName]
@@ -133,12 +149,19 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 			return fmt.Errorf("parse tfconfig modifier error: invalid modifier args: %w", err)
 		}
 
-		modifiers = append(modifiers, func(config *tfconfig.Config) {
-			config.Id |= bitmask
-			config.Name += fmt.Sprintf(" [%s]", displayName)
-			modifier.Modify(config)
+		modifiers = append(modifiers, knownModifier{
+			class:    modifier.ModifierClass(),
+			priority: modifierConfig.Priority,
+			fn: func(config *tfconfig.Config) {
+				config.Id |= bitmask
+				config.Name += fmt.Sprintf(" [%s]", displayName)
+				modifier.Modify(config)
+			},
 		})
 	}
+
+	// Sort modifiers by the ascending order of priorities
+	sort.Slice(modifiers, func(i, j int) bool { return modifiers[i].priority < modifiers[j].priority })
 
 	batches := map[string][]tfconfig.Step{}
 	for _, batch := range file.Batches {
@@ -163,16 +186,28 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 			Steps:      steps,
 		}
 
-		p.register(config)
+		p.register(registeredConfig{config: config, modifierClasses: sets.New[string]()})
 	}
 
 	for _, modifier := range modifiers {
-		var newEntries []*tfconfig.Config
+		var newEntries []registeredConfig
 
 		for _, config := range p.configs {
-			newConfig := config.Clone()
-			modifier(newConfig)
-			newEntries = append(newEntries, newConfig)
+			newConfig := config.config.Clone()
+			modifier.fn(newConfig)
+
+			if config.modifierClasses.Has(modifier.class) {
+				// incompatible combination
+				continue
+			}
+
+			classes := config.modifierClasses.Clone()
+			classes.Insert(modifier.class)
+
+			newEntries = append(newEntries, registeredConfig{
+				config:          newConfig,
+				modifierClasses: classes,
+			})
 		}
 
 		for _, newEntry := range newEntries {
@@ -183,9 +218,11 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 	return nil
 }
 
-func (p *FileProvider) register(config *tfconfig.Config) {
+func (p *FileProvider) register(regConfig registeredConfig) {
+	config := regConfig.config
+
 	p.names = append(p.names, config.Name)
-	p.configs[config.Id] = config
+	p.configs[config.Id] = regConfig
 	p.nameToConfigId[config.Name] = config.Id
 }
 
@@ -196,7 +233,7 @@ func (p *FileProvider) Names() []string {
 	return p.names
 }
 
-func (p *FileProvider) DefaultName() string { return p.configs[p.defaultConfig].Name }
+func (p *FileProvider) DefaultName() string { return p.configs[p.defaultConfig].config.Name }
 
 func (p *FileProvider) DefaultId() tfconfig.Id { return p.defaultConfig }
 
@@ -205,7 +242,7 @@ func (p *FileProvider) GetByName(name string) *tfconfig.Config {
 	if !exists {
 		return nil
 	}
-	return p.configs[id]
+	return p.configs[id].config
 }
 
-func (p *FileProvider) GetById(id tfconfig.Id) *tfconfig.Config { return p.configs[id] }
+func (p *FileProvider) GetById(id tfconfig.Id) *tfconfig.Config { return p.configs[id].config }
