@@ -108,12 +108,23 @@ func (sem *Semaphore) Schedule(task Task) {
 			}
 		} else {
 			if publish != nil {
+				sem.doneWg.Add(1)
+				wrappedPublish := func() error {
+					defer sem.doneWg.Done()
+					return publish()
+				}
+
 				select {
-				case sem.publishCh <- publish:
+				case sem.publishCh <- wrappedPublish:
 					// publishCh has zero capacity, so this case blocks until the main goroutine selects the publishCh case,
-					// so we can ensure that publishCh is received before calling sem.doneWg.Done()
+					// so we can ensure that publishCh is received before calling sem.doneWg.Done().
+					// However we need to call doneWg again to ensure that
+					// schedules during publish are called before this function brings doneWg to zero.
+
+					// the main goroutine will call `sem.doneWg.Done()` for us.
 				case <-sem.errNotifyCh:
 					// no need to publish if the caller received error
+					sem.doneWg.Done()
 				}
 			}
 		}

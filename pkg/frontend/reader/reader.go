@@ -175,7 +175,7 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 	}
 
 	merger := merge.Merger[any]{}
-	if err := merger.AddTraces(twmList); err != nil {
+	if _, err := merger.AddTraces(twmList); err != nil {
 		return nil, fmt.Errorf("group traces by object: %w", err)
 	}
 
@@ -184,7 +184,7 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 			ctx,
 			config.LinkSelector,
 			query.StartTimeMin, query.StartTimeMax,
-			merge.ListWithBackend[any](reader.Backend, reflectutil.Identity[any]),
+			mergeListWithBackend[any](reader.Backend, reflectutil.Identity[any]),
 			reader.options.followLinkConcurrency, reader.options.followLinkLimit, false,
 		); err != nil {
 			return nil, fmt.Errorf("follow links: %w", err)
@@ -206,14 +206,14 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 	for _, mergeTree := range mergeTrees {
 		cacheId := generateCacheId(config.Id)
 
-		trace, extensionCache, err := reader.prepareEntry(ctx, config, rootKey, query, mergeTree.Tree, cacheId)
+		trace, extensionCache, err := reader.prepareEntry(ctx, rootKey, query, mergeTree.Tree, cacheId)
 		if err != nil {
 			return nil, err
 		}
 
 		traces = append(traces, trace)
 
-		cacheEntry, err := reader.storeCache(ctx, rootKey, query, mergeTree.Metadata, cacheId, extensionCache)
+		cacheEntry, err := reader.prepareCache(rootKey, query, mergeTree.Metadata, cacheId, extensionCache)
 		if err != nil {
 			return nil, err
 		}
@@ -234,7 +234,6 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 
 func (reader *spanReader) prepareEntry(
 	ctx context.Context,
-	config *tfconfig.Config,
 	rootKey *utilobject.Key,
 	query *spanstore.TraceQueryParameters,
 	tree *tftree.SpanTree,
@@ -274,8 +273,7 @@ func (reader *spanReader) prepareEntry(
 	return trace, extensions.Cache, nil
 }
 
-func (reader *spanReader) storeCache(
-	ctx context.Context,
+func (reader *spanReader) prepareCache(
 	rootKey *utilobject.Key,
 	query *spanstore.TraceQueryParameters,
 	identifiers []any,
@@ -318,8 +316,8 @@ func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (
 	}
 
 	displayMode := extractDisplayMode(cacheId)
-	var traces []merge.TraceWithMetadata[struct{}]
 
+	traces := make([]merge.TraceWithMetadata[struct{}], 0, len(entry.Identifiers))
 	for _, identifier := range entry.Identifiers {
 		trace, err := reader.Backend.Get(ctx, identifier, cacheId, entry.StartTime, entry.EndTime)
 		if err != nil {
@@ -331,7 +329,7 @@ func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (
 	}
 
 	merger := merge.Merger[struct{}]{}
-	if err := merger.AddTraces(traces); err != nil {
+	if _, err := merger.AddTraces(traces); err != nil {
 		return nil, fmt.Errorf("grouping traces by object: %w", err)
 	}
 
@@ -344,7 +342,7 @@ func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (
 		ctx,
 		displayConfig.LinkSelector,
 		entry.StartTime, entry.EndTime,
-		merge.ListWithBackend[struct{}](reader.Backend, func(any) struct{} { return struct{}{} }),
+		mergeListWithBackend[struct{}](reader.Backend, func(any) struct{} { return struct{}{} }),
 		reader.options.followLinkConcurrency, reader.options.followLinkLimit, true,
 	); err != nil {
 		return nil, fmt.Errorf("cannot follow links: %w", err)
@@ -424,4 +422,33 @@ func filterTimeRange(spans []*model.Span, startTime, endTime time.Time) []*model
 	}
 
 	return retained
+}
+
+func mergeListWithBackend[M any](backend jaegerbackend.Backend, convertMetadata func(any) M) merge.ListFunc[M] {
+	return func(
+		ctx context.Context,
+		key utilobject.Key,
+		startTime time.Time, endTime time.Time,
+		limit int,
+	) ([]merge.TraceWithMetadata[M], error) {
+		tts, err := backend.List(ctx, &spanstore.TraceQueryParameters{
+			Tags:         zconstants.KeyToSpanTags(key),
+			StartTimeMin: startTime,
+			StartTimeMax: endTime,
+			NumTraces:    limit,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		twmList := make([]merge.TraceWithMetadata[M], len(tts))
+		for i, tt := range tts {
+			twmList[i] = merge.TraceWithMetadata[M]{
+				Tree:     tt.Spans,
+				Metadata: convertMetadata(tt.Identifier),
+			}
+		}
+
+		return twmList, nil
+	}
 }

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Utilities for unmarshaling in config files
+// Utilities for unmarshalling in config files
 package utilmarshal
 
 import (

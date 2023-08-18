@@ -16,6 +16,7 @@ package merge_test
 
 import (
 	"context"
+	"sort"
 	"testing"
 	"time"
 
@@ -33,7 +34,7 @@ func newTrace(id uint64, key utilobject.Key, startTime int64, endTime int64, lin
 	traceId := model.NewTraceID(id, id)
 	objectSpan := &model.Span{
 		TraceID:   traceId,
-		SpanID:    model.SpanID(1),
+		SpanID:    model.SpanID(id | (1 << 16)),
 		StartTime: time.Time{}.Add(time.Duration(startTime)),
 		Duration:  time.Duration(endTime - startTime),
 		Tags: append(
@@ -54,7 +55,7 @@ func newTrace(id uint64, key utilobject.Key, startTime int64, endTime int64, lin
 
 		spans = append(spans, &model.Span{
 			TraceID:   traceId,
-			SpanID:    model.SpanID(100 + i),
+			SpanID:    model.SpanID(id | (3 << 16) | (uint64(i) << 20)),
 			StartTime: objectSpan.StartTime,
 			Duration:  objectSpan.Duration,
 			Tags: append(
@@ -62,8 +63,22 @@ func newTrace(id uint64, key utilobject.Key, startTime int64, endTime int64, lin
 				model.String(zconstants.TraceSource, zconstants.TraceSourceObject),
 				model.String(zconstants.PseudoType, string(zconstants.PseudoTypeLink)),
 			),
+			References: []model.SpanRef{model.NewChildOfRef(traceId, objectSpan.SpanID)},
 		})
 	}
+
+	spans = append(spans, &model.Span{
+		TraceID:   traceId,
+		SpanID:    model.SpanID(id | (2 << 16)),
+		StartTime: time.Time{}.Add(time.Duration(startTime+endTime) / 2),
+		Duration:  time.Duration(endTime-startTime) / 4,
+		Tags: append(
+			mapToTags(zconstants.KeyToSpanTags(key)),
+			model.String(zconstants.TraceSource, zconstants.TraceSourceEvent),
+			model.String(zconstants.NotPseudo, zconstants.NotPseudo),
+		),
+		References: []model.SpanRef{model.NewChildOfRef(traceId, objectSpan.SpanID)},
+	})
 
 	tree := tftree.NewSpanTree(spans)
 
@@ -81,27 +96,170 @@ func mapToTags(m map[string]string) (out []model.KeyValue) {
 	return out
 }
 
-// Assume traces[0] is the only result returned by the initial list.
+type traceList []merge.TraceWithMetadata[uint64]
+
+func (list traceList) append(idLow uint32, key utilobject.Key, links []merge.TargetLink) traceList {
+	for time := 0; time < 4; time++ {
+		id := uint64(idLow) | (uint64(time) << 8)
+		list = append(list, newTrace(
+			id, key,
+			int64(time*10), int64((time+1)*10),
+			links,
+		))
+	}
+	return list
+}
+
+// IDs:
+// - rs = 0x10, 0x11
+// - dp = 0x20
+// - pod = 0x30 | rs | (replica*2)
+// - node = 0x40
+func sampleTraces(withPods bool, withNode bool) traceList {
+	rsKeys := []utilobject.Key{
+		{
+			Cluster:   "test",
+			Group:     "apps",
+			Resource:  "replicasets",
+			Namespace: "default",
+			Name:      "dp-spec1",
+		},
+		{
+			Cluster:   "test",
+			Group:     "apps",
+			Resource:  "replicasets",
+			Namespace: "default",
+			Name:      "dp-spec2",
+		},
+	}
+	dpKey := utilobject.Key{
+		Cluster:   "test",
+		Group:     "apps",
+		Resource:  "deployments",
+		Namespace: "default",
+		Name:      "dp",
+	}
+	podKeys := [][]utilobject.Key{
+		{
+			{
+				Cluster:   "test",
+				Group:     "",
+				Resource:  "pods",
+				Namespace: "default",
+				Name:      "dp-spec1-replica1",
+			},
+			{
+				Cluster:   "test",
+				Group:     "",
+				Resource:  "pods",
+				Namespace: "default",
+				Name:      "dp-spec1-replica2",
+			},
+		},
+		{
+			{
+				Cluster:   "test",
+				Group:     "",
+				Resource:  "pods",
+				Namespace: "default",
+				Name:      "dp-spec2-replica1",
+			},
+			{
+				Cluster:   "test",
+				Group:     "",
+				Resource:  "pods",
+				Namespace: "default",
+				Name:      "dp-spec2-replica2",
+			},
+		},
+	}
+	nodeKey := utilobject.Key{
+		Cluster:   "test",
+		Group:     "",
+		Resource:  "nodes",
+		Namespace: "",
+		Name:      "node",
+	}
+
+	list := traceList{}
+	for spec := uint32(0); spec < 2; spec++ {
+		rsLinks := []merge.TargetLink{
+			{Key: dpKey, Role: zconstants.LinkRoleParent, Class: "children"},
+		}
+		if withPods {
+			rsLinks = append(rsLinks,
+				merge.TargetLink{Key: podKeys[spec][0], Role: zconstants.LinkRoleChild, Class: "children"},
+				merge.TargetLink{Key: podKeys[spec][1], Role: zconstants.LinkRoleChild, Class: "children"},
+			)
+		}
+		list = list.append(0x10|spec, rsKeys[spec], rsLinks)
+	}
+	list = list.append(0x20, dpKey, []merge.TargetLink{
+		{Key: rsKeys[0], Role: zconstants.LinkRoleChild, Class: "children"},
+		{Key: rsKeys[1], Role: zconstants.LinkRoleChild, Class: "children"},
+	})
+
+	nodeLinks := []merge.TargetLink{}
+	if withPods {
+		for spec := uint32(0); spec < 2; spec++ {
+			for replica := uint32(0); replica < 2; replica++ {
+				podLinks := []merge.TargetLink{
+					{Key: rsKeys[spec], Role: zconstants.LinkRoleParent, Class: "children"},
+				}
+				if withNode {
+					podLinks = append(podLinks, merge.TargetLink{Key: nodeKey, Role: zconstants.LinkRoleChild, Class: "node"})
+				}
+				list = list.append(0x30|spec|(replica<<1), podKeys[spec][replica], podLinks)
+				nodeLinks = append(nodeLinks, merge.TargetLink{Key: podKeys[spec][replica], Role: zconstants.LinkRoleParent, Class: "node"})
+			}
+		}
+	}
+	if withNode {
+		list = list.append(0x40, nodeKey, nodeLinks)
+	}
+	return list
+}
+
 func do(
 	t *testing.T,
-	traces []merge.TraceWithMetadata[uint64],
 	clipTimeStart, clipTimeEnd int64,
+	traces traceList,
+	activePrefixLength int,
+	linkSelector tfconfig.LinkSelector,
+	expectGroupSizes []int,
+	expectObjectCounts []int,
 ) {
+	t.Helper()
+
 	assert := assert.New(t)
 
+	active := []merge.TraceWithMetadata[uint64]{}
+	for _, trace := range traces[:activePrefixLength] {
+		traceTime := int64(trace.Tree.Root.StartTime.Sub(time.Time{}))
+		if clipTimeStart <= traceTime && traceTime < clipTimeEnd {
+			active = append(active, trace)
+		}
+	}
+
 	merger := merge.Merger[uint64]{}
-	assert.NoError(merger.AddTraces(traces))
+	_, err := merger.AddTraces(active)
+	assert.NoError(err)
 
 	assert.NoError(merger.FollowLinks(
 		context.Background(),
-		tfconfig.ConstantLinkSelector(true),
+		linkSelector,
 		time.Time{}.Add(time.Duration(clipTimeStart)),
 		time.Time{}.Add(time.Duration(clipTimeEnd)),
-		func(ctx context.Context, key utilobject.Key, startTime, endTime time.Time, limit int) (out []merge.TraceWithMetadata[uint64], _ error) {
+		func(
+			ctx context.Context,
+			key utilobject.Key,
+			startTime, endTime time.Time,
+			limit int,
+		) (out []merge.TraceWithMetadata[uint64], _ error) {
 			for _, trace := range traces {
-				traceKey, hasKey := zconstants.ObjectKeyFromSpan(trace.Tree.Root)
-				assert.True(hasKey)
-				if key == traceKey {
+				traceKey := zconstants.ObjectKeyFromSpan(trace.Tree.Root)
+				traceTime := int64(trace.Tree.Root.StartTime.Sub(time.Time{}))
+				if key == traceKey && clipTimeStart <= traceTime && traceTime < clipTimeEnd {
 					out = append(out, trace)
 				}
 			}
@@ -115,8 +273,46 @@ func do(
 
 	result, err := merger.MergeTraces()
 	assert.NoError(err)
-	t.Log(result)
+	assert.Len(result, len(expectGroupSizes))
+
+	sort.Ints(expectGroupSizes)
+	actualGroupSizes := make([]int, len(result))
+	for i, group := range result {
+		actualGroupSizes[i] = len(group.Metadata)
+	}
+	sort.Ints(actualGroupSizes)
+	assert.Equal(expectGroupSizes, actualGroupSizes)
+
+	actualObjectCounts := []int{}
+	for _, group := range result {
+		objectCount := 0
+		for _, span := range group.Tree.GetSpans() {
+			pseudoTag, isPseudo := model.KeyValues(span.Tags).FindByKey(zconstants.PseudoType)
+			if isPseudo && pseudoTag.VStr == string(zconstants.PseudoTypeObject) {
+				objectCount += 1
+			}
+		}
+
+		actualObjectCounts = append(actualObjectCounts, objectCount)
+	}
+	sort.Ints(actualObjectCounts)
+	assert.Equal(expectObjectCounts, actualObjectCounts)
 }
 
 func TestFullTree(t *testing.T) {
+	do(t, 10, 30, sampleTraces(true, true), 4, tfconfig.ConstantLinkSelector(true), []int{2 * (1 + 2 + 4 + 1)}, []int{1 + 2 + 4 + 1})
+}
+
+func TestFilteredTree(t *testing.T) {
+	do(t, 10, 30, sampleTraces(true, true), 4, rsPodLinksOnly{}, []int{2 * (1 + 2)}, []int{1 + 2})
+}
+
+type rsPodLinksOnly struct{}
+
+func (rsPodLinksOnly) Admit(parent, child utilobject.Key, parentIsSource bool, class string) tfconfig.LinkSelector {
+	if parent.Resource == "replicasets" && child.Resource == "pods" {
+		return rsPodLinksOnly{}
+	} else {
+		return nil
+	}
 }

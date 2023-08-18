@@ -51,12 +51,8 @@ func TagLinkedObject(tags map[string]string, ln LinkRef) {
 	tags[LinkClass] = ln.Class
 }
 
-func ObjectKeyFromSpan(span *model.Span) (utilobject.Key, bool) {
+func ObjectKeyFromSpan(span *model.Span) utilobject.Key {
 	tags := model.KeyValues(span.Tags)
-	traceSource, hasTraceSource := tags.FindByKey(TraceSource)
-	if !hasTraceSource || traceSource.VStr != TraceSourceObject {
-		return utilobject.Key{}, false
-	}
 
 	cluster, _ := tags.FindByKey("cluster")
 	group, _ := tags.FindByKey("group")
@@ -70,7 +66,7 @@ func ObjectKeyFromSpan(span *model.Span) (utilobject.Key, bool) {
 		Namespace: namespace.VStr,
 		Name:      name.VStr,
 	}
-	return key, true
+	return key
 }
 
 func LinkedKeyFromSpan(span *model.Span) (utilobject.Key, bool) {

@@ -318,6 +318,8 @@ func (tree *SpanTree) Delete(spanId model.SpanID) {
 }
 
 // Adds all spans in a tree as a subtree in this span.
+//
+// TODO FIXME: when the two trees have overlapping span IDs, this does not work correctly.
 func (tree *SpanTree) AddTree(childTree *SpanTree, parentId model.SpanID) {
 	if tree == childTree {
 		panic("cannot add tree to itself")
