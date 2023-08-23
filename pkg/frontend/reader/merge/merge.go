@@ -143,7 +143,12 @@ func (fl *followLinkPool[M]) schedule(key objKey, linkSelector tfconfig.LinkSele
 	})
 }
 
-type ListFunc[M any] func(ctx context.Context, key objKey, startTime time.Time, endTime time.Time, limit int) ([]TraceWithMetadata[M], error)
+type ListFunc[M any] func(
+	ctx context.Context,
+	key objKey,
+	startTime, endTime time.Time,
+	limit int,
+) ([]TraceWithMetadata[M], error)
 
 func (merger *Merger[M]) FollowLinks(
 	ctx context.Context,
@@ -199,8 +204,9 @@ func (merger *Merger[M]) MergeTraces() ([]*MergeTree[M], error) {
 		}
 	}
 
-	var mergeTrees []*MergeTree[M]
-	for _, keys := range merger.findConnectedComponents(merger.objects, abLinks) {
+	connectedComps := merger.findConnectedComponents(merger.objects, abLinks)
+	mergeTrees := make([]*MergeTree[M], 0, len(connectedComps))
+	for _, keys := range connectedComps {
 		var members []*object[M]
 		for _, key := range keys {
 			members = append(members, merger.objects[key])
