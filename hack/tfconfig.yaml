@@ -52,7 +52,6 @@ modifiers:
     modifierName: link-selector
     args:
       modifierClass: parent
-
       includeSiblings: false
   "02000000":
     displayName: ancestors tree
