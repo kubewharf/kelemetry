@@ -24,6 +24,7 @@ import (
 	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	utilmarshal "github.com/kubewharf/kelemetry/pkg/util/marshal"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
@@ -41,7 +42,7 @@ func init() {
 //
 // Must be followed by PruneTagsVisitor in the last step.
 type CollapseNestingVisitor struct {
-	ShouldCollapse   StringFilter                  `json:"shouldCollapse"`   // tests traceSource
+	ShouldCollapse   utilmarshal.StringFilter      `json:"shouldCollapse"`   // tests traceSource
 	TagMappings      map[string][]TagMapping       `json:"tagMappings"`      // key = traceSource
 	AuditDiffClasses AuditDiffClassification       `json:"auditDiffClasses"` // key = prefix
 	LogTypeMapping   map[zconstants.LogType]string `json:"logTypeMapping"`   // key = log type, value = log field
@@ -104,7 +105,7 @@ func (classes *AuditDiffClassification) Get(prefix string) *AuditDiffClass {
 }
 
 func (visitor CollapseNestingVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
-	if _, hasTag := model.KeyValues(span.Tags).FindByKey(zconstants.PseudoType); !hasTag {
+	if _, isPseudo := model.KeyValues(span.Tags).FindByKey(zconstants.PseudoType); !isPseudo {
 		return visitor
 	}
 
@@ -128,7 +129,7 @@ func (visitor CollapseNestingVisitor) processChild(tree *tftree.SpanTree, span *
 		return
 	}
 	traceSource := traceSourceKv.VStr
-	if !visitor.ShouldCollapse.Test(traceSource) {
+	if !visitor.ShouldCollapse.Matches(traceSource) {
 		return
 	}
 

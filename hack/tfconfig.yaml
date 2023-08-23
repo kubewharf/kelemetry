@@ -23,6 +23,10 @@ configs:
         batchName: initial
       - kind: Batch
         batchName: collapse
+      - kind: ExtractNestingVisitor
+        matchesPseudoType:
+          oneOf: ["linkClass"]
+        matchesName:
       - kind: CompactDurationVisitor
       - kind: Batch
         batchName: final
@@ -36,7 +40,7 @@ configs:
       - kind: GroupByTraceSourceVisitor
         shouldBeGrouped:
           oneOf: ["event"]
-          negate: true
+          then: false
       - kind: CompactDurationVisitor
       - kind: Batch
         batchName: final
@@ -131,9 +135,6 @@ batches:
   - name: collapse
     steps:
       - kind: CollapseNestingVisitor
-        shouldCollapse:
-          oneOf: []
-          negate: true
         tagMappings:
           "audit":
             - fromSpanTag: "userAgent"

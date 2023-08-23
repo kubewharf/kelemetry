@@ -36,8 +36,7 @@ func init() {
 
 type TransformerOptions struct{}
 
-func (options *TransformerOptions) Setup(fs *pflag.FlagSet) {
-}
+func (options *TransformerOptions) Setup(fs *pflag.FlagSet) {}
 
 func (options *TransformerOptions) EnableFlag() *bool { return nil }
 

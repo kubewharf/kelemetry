@@ -21,6 +21,8 @@ import (
 	"regexp"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
@@ -92,8 +94,49 @@ func (filter *ObjectFilter) Matches(key utilobject.Key) bool {
 	return true
 }
 
+type stringPredicate = func(string) bool
+
 type StringFilter struct {
-	fn func(s string) bool
+	fn stringPredicate
+}
+
+type fields struct {
+	Exact    Optional[string]   `json:"exact"`
+	OneOf    Optional[[]string] `json:"oneOf"`
+	CaseFold Optional[string]   `json:"caseInsensitive"`
+	Regex    Optional[string]   `json:"regex"`
+	Then     Optional[bool]     `json:"then"`
+}
+
+func (value fields) getBasePredicate() (stringPredicate, error) {
+	isSet := 0
+	for _, b := range []bool{value.Exact.IsSet, value.OneOf.IsSet, value.CaseFold.IsSet, value.Regex.IsSet} {
+		if b {
+			isSet += 1
+		}
+	}
+
+	if isSet > 1 {
+		return nil, fmt.Errorf("string filter must set exactly one of `exact`, `oneOf`, `caseInsensitive` or `regex`")
+	}
+
+	if value.Exact.IsSet {
+		return func(s string) bool { return s == value.Exact.Value }, nil
+	} else if value.OneOf.IsSet {
+		options := sets.New[string](value.OneOf.Value...)
+		return options.Has, nil
+	} else if value.CaseFold.IsSet {
+		return func(s string) bool { return strings.EqualFold(value.CaseFold.Value, value.CaseFold.Value) }, nil
+	} else if value.Regex.IsSet {
+		regex, err := regexp.Compile(value.Regex.Value)
+		if err != nil {
+			return nil, fmt.Errorf("pattern contains invalid regex: %w", err)
+		}
+
+		return regex.MatchString, nil
+	} else {
+		return func(string) bool { return true }, nil // caller will change value to `then`
+	}
 }
 
 func (f *StringFilter) UnmarshalJSON(buf []byte) error {
@@ -103,34 +146,34 @@ func (f *StringFilter) UnmarshalJSON(buf []byte) error {
 		return nil
 	}
 
-	var value struct {
-		Exact    Optional[string] `json:"exact"`
-		CaseFold Optional[string] `json:"caseInsensitive"`
-		Regex    Optional[string] `json:"regex"`
-	}
-
+	var value fields
 	if err := json.Unmarshal(buf, &value); err != nil {
 		return err
 	}
 
-	if value.Exact.IsSet {
-		f.fn = func(s string) bool { return s == value.Exact.Value }
-	} else if value.CaseFold.IsSet {
-		f.fn = func(s string) bool { return strings.EqualFold(value.CaseFold.Value, value.CaseFold.Value) }
-	} else if value.Regex.IsSet {
-		regex, err := regexp.Compile(value.Regex.Value)
-		if err != nil {
-			return fmt.Errorf("pattern contains invalid regex: %w", err)
-		}
+	predicate, err := value.getBasePredicate()
+	if err != nil {
+		return err
+	}
 
-		f.fn = regex.MatchString
-	} else {
-		return fmt.Errorf("no filter selected")
+	then := value.Then.GetOr(true)
+	f.fn = func(s string) bool {
+		base := predicate(s)
+		if base {
+			return then
+		} else {
+			return !then
+		}
 	}
 
 	return nil
 }
 
 func (f *StringFilter) Matches(subject string) bool {
+	if f.fn == nil {
+		// string filter not set, take default then = true
+		return true
+	}
+
 	return f.fn(subject)
 }
