@@ -8,3 +8,4 @@ dump*.json
 /depgraph.*
 /local
 /USAGE.txt
+node_modules

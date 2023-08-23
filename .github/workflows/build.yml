@@ -100,15 +100,13 @@ jobs:
       - name: Start test cluster
         run: make kind
 
-      - name: Download docker image
+      - name: Download executable
         uses: actions/download-artifact@v3
         with:
-          name: ci-docker-image
-          path: local
+          name: kelemetry-linux-amd64
+          path: output
       - name: Load docker image
         run: docker load -i local/kelemetry-ci.tar
-      - name: Start quickstart setup
-        run: make quickstart KELEMETRY_IMAGE=kelemetry:ci
 
       - name: Install kubectl
         run: |
@@ -240,8 +238,8 @@ jobs:
       - name: Start static HTTP server in background
         run: docker run -d -v $PWD/pages:/var/www/html/kelemetry -p 5000:5000 busybox httpd -f -p 0.0.0.0:5000 -h /var/www/html
       - run: npm install puppeteer
-      - name: Take screenshots
-        run: |
+      - name: Check UI on browser
+        run: make e2e SCREENSHOT_PATH=
           node <<'EOF'
             const pt = require("puppeteer")
             const fs = require("fs/promises")
