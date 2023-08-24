@@ -153,7 +153,8 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 			priority: modifierConfig.Priority,
 			fn: func(config *tfconfig.Config) {
 				config.Id |= bitmask
-				config.Name += fmt.Sprintf(" [%s]", displayName)
+				config.ModifierNames.Insert(displayName)
+				config.RecomputeName()
 				modifier.Modify(config)
 			},
 		})
@@ -181,6 +182,8 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 		config := &tfconfig.Config{
 			Id:           raw.Id,
 			Name:         raw.Name,
+			BaseName:     raw.Name,
+			ModifierNames: sets.New[string](),
 			LinkSelector: tfconfig.ConstantLinkSelector(false),
 			Steps:        steps,
 		}

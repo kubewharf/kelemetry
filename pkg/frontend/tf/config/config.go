@@ -15,10 +15,14 @@
 package tfconfig
 
 import (
+	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/kubewharf/kelemetry/pkg/frontend/extension"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 func init() {
@@ -51,12 +55,26 @@ type Config struct {
 	Id Id
 	// The config name, used in search page display.
 	Name string
+	// Base config name without modifiers, used to help reconstruct the name.
+	BaseName string
+	// Names of modifiers, used to help reconstruct the name.
+	ModifierNames sets.Set[string]
 	// Only links with roles in this set are followed.
 	LinkSelector LinkSelector
 	// The extension traces for this config.
 	Extensions []extension.Provider
 	// The steps to transform the tree
 	Steps []Step
+}
+
+func (config *Config) RecomputeName() {
+	modifiers := config.ModifierNames.UnsortedList()
+	sort.Strings(modifiers)
+	if len(modifiers) > 0 {
+		config.Name = fmt.Sprintf("%s [%s]", config.BaseName, strings.Join(modifiers, "+"))
+	} else {
+		config.Name = config.BaseName
+	}
 }
 
 func (config *Config) Clone() *Config {
@@ -69,6 +87,8 @@ func (config *Config) Clone() *Config {
 	return &Config{
 		Id:           config.Id,
 		Name:         config.Name,
+		BaseName: config.BaseName,
+		ModifierNames: config.ModifierNames.Clone(),
 		LinkSelector: config.LinkSelector, // modifier changes LinkSelector by wrapping the previous value
 		Extensions:   extensions,
 		Steps:        steps,
