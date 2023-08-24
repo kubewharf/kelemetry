@@ -105,7 +105,7 @@ func (server *server) handleTrace(ctx *gin.Context, metric *requestMetric) (code
 		return 400, fmt.Errorf("invalid param %w", err)
 	}
 
-	trace, code, err := server.findTrace(metric, "tracing (exclusive)", query)
+	trace, code, err := server.findTrace(metric, "tracing", query)
 	if err != nil {
 		return code, err
 	}

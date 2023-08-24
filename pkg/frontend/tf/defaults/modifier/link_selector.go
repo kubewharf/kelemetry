@@ -72,7 +72,8 @@ type LinkSelectorModifier struct {
 	Class           string        `json:"modifierClass"`
 	IncludeSiblings bool          `json:"includeSiblings"`
 	PatternFilters  []LinkPattern `json:"ifAll"`
-	Depth             utilmarshal.Optional[uint32]                    `json:"depth"`
+	UpwardDistance    utilmarshal.Optional[uint32]                    `json:"upwardDistance"`
+	DownwardDistance    utilmarshal.Optional[uint32]                    `json:"downwardDistance"`
 }
 
 type LinkPattern struct {
@@ -112,21 +113,26 @@ func (modifier *LinkSelectorModifier) ModifierClass() string {
 }
 
 func (modifier *LinkSelectorModifier) Modify(config *tfconfig.Config) {
-	var selector tfconfig.LinkSelector = patternLinkSelector{patterns: modifier.PatternFilters}
-	if !modifier.IncludeSiblings {
-		selector = tfconfig.IntersectLinkSelector{
-			selector,
-			denySiblingsLinkSelector{},
-		}
+	intersectSelector := tfconfig.IntersectLinkSelector{
+		patternLinkSelector{patterns: modifier.PatternFilters},
 	}
-	if modifier.Depth.IsSet {
-		selector = tfconfig.IntersectLinkSelector{
-			selector,
-			depthLinkSelector(modifier.Depth.Value),
-		}
+	if !modifier.IncludeSiblings {
+		intersectSelector = append(intersectSelector, denySiblingsLinkSelector{})
+	}
+	if modifier.UpwardDistance.IsSet {
+		intersectSelector = append(
+			intersectSelector,
+			directedDistanceLinkSelector{distance: modifier.UpwardDistance.Value, direction: directionUpwards},
+		)
+	}
+	if modifier.DownwardDistance.IsSet {
+		intersectSelector = append(
+			intersectSelector,
+			directedDistanceLinkSelector{distance: modifier.DownwardDistance.Value, direction: directionDownwards},
+		)
 	}
 
-	config.LinkSelector = tfconfig.UnionLinkSelector{config.LinkSelector, selector}
+	config.LinkSelector = tfconfig.UnionLinkSelector{config.LinkSelector, intersectSelector}
 }
 
 type denySiblingsLinkSelector struct {
@@ -163,11 +169,25 @@ func (s patternLinkSelector) Admit(parent utilobject.Key, child utilobject.Key, 
 	return s
 }
 
-type depthLinkSelector uint32
+type direction bool
+const (
+	directionUpwards direction = true
+	directionDownwards direction = false
+)
+type directedDistanceLinkSelector struct {
+	direction direction
+	distance uint32
+}
 
-func (d depthLinkSelector) Admit(parent utilobject.Key, child utilobject.Key, isFromParent bool, linkClass string) tfconfig.LinkSelector {
-	if d == 0 {
+func (d directedDistanceLinkSelector) Admit(parent utilobject.Key, child utilobject.Key, isFromParent bool, linkClass string) tfconfig.LinkSelector {
+	if isFromParent != (d.direction == directionDownwards) {
+		return d
+	}
+	if d.distance == 0 {
 		return nil
 	}
-	return d - 1
+	return directedDistanceLinkSelector{
+		direction: d.direction,
+		distance: d.distance - 1,
+	}
 }

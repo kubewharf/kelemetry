@@ -54,7 +54,8 @@ modifiers:
     args:
       modifierClass: owner-ref
       includeSiblings: false
-      depth: 3
+      upwardDistance: 3
+      downwardDistance: 3
   "02000000":
     # include all ancestors (up to 3) but not siblings of ancestors
     displayName: ancestors
@@ -62,7 +63,7 @@ modifiers:
     args:
       modifierClass: owner-ref
       includeSiblings: true
-      depth: 3
+      upwardDistance: 3
   "04000000":
     # the entire subtree under this object
     displayName: owned objects
@@ -72,11 +73,10 @@ modifiers:
       ifAll:
         - linkClass: children
           fromChild: false
-      depth: 3
+      downwardDistance: 3
 
 # Uncomment to enable extension trace from apiserver
 #   "00000001":
-#     # We want to run extension modifiers after exclusive modifier to avoid fetching unused traces
 #     displayName: apiserver trace
 #     modifierName: extension
 #     args:
