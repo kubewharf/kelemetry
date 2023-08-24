@@ -72,6 +72,7 @@ type LinkSelectorModifier struct {
 	Class           string        `json:"modifierClass"`
 	IncludeSiblings bool          `json:"includeSiblings"`
 	PatternFilters  []LinkPattern `json:"ifAll"`
+	Depth             utilmarshal.Optional[uint32]                    `json:"depth"`
 }
 
 type LinkPattern struct {
@@ -118,6 +119,12 @@ func (modifier *LinkSelectorModifier) Modify(config *tfconfig.Config) {
 			denySiblingsLinkSelector{},
 		}
 	}
+	if modifier.Depth.IsSet {
+		selector = tfconfig.IntersectLinkSelector{
+			selector,
+			depthLinkSelector(modifier.Depth.Value),
+		}
+	}
 
 	config.LinkSelector = tfconfig.UnionLinkSelector{config.LinkSelector, selector}
 }
@@ -154,4 +161,13 @@ func (s patternLinkSelector) Admit(parent utilobject.Key, child utilobject.Key, 
 	}
 
 	return s
+}
+
+type depthLinkSelector uint32
+
+func (d depthLinkSelector) Admit(parent utilobject.Key, child utilobject.Key, isFromParent bool, linkClass string) tfconfig.LinkSelector {
+	if d == 0 {
+		return nil
+	}
+	return d - 1
 }

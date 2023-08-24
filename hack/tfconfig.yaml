@@ -48,25 +48,31 @@ configs:
 modifiers:
   # Multiple active link-selector modifiers are additive (union)
   "01000000":
+    # the entire tree under the deepest (up to 3 levels) ancestor
+    displayName: full tree
+    modifierName: link-selector
+    args:
+      modifierClass: owner-ref
+      includeSiblings: false
+      depth: 3
+  "02000000":
+    # include all ancestors (up to 3) but not siblings of ancestors
     displayName: ancestors
     modifierName: link-selector
     args:
-      modifierClass: parent
-      includeSiblings: false
-  "02000000":
-    displayName: ancestors tree
-    modifierName: link-selector
-    args:
-      modifierClass: parent
+      modifierClass: owner-ref
       includeSiblings: true
+      depth: 3
   "04000000":
-    displayName: all owned objects
+    # the entire subtree under this object
+    displayName: owned objects
     modifierName: link-selector
     args:
-      modifierClass: children
+      modifierClass: owner-ref
       ifAll:
         - linkClass: children
           fromChild: false
+      depth: 3
 
 # Uncomment to enable extension trace from apiserver
 #   "00000001":
