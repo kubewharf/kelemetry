@@ -69,11 +69,11 @@ func (*LinkSelectorModifierFactory) Build(jsonBuf []byte) (tfconfig.Modifier, er
 }
 
 type LinkSelectorModifier struct {
-	Class           string        `json:"modifierClass"`
-	IncludeSiblings bool          `json:"includeSiblings"`
-	PatternFilters  []LinkPattern `json:"ifAll"`
-	UpwardDistance    utilmarshal.Optional[uint32]                    `json:"upwardDistance"`
-	DownwardDistance    utilmarshal.Optional[uint32]                    `json:"downwardDistance"`
+	Class            string                       `json:"modifierClass"`
+	IncludeSiblings  bool                         `json:"includeSiblings"`
+	PatternFilters   []LinkPattern                `json:"ifAll"`
+	UpwardDistance   utilmarshal.Optional[uint32] `json:"upwardDistance"`
+	DownwardDistance utilmarshal.Optional[uint32] `json:"downwardDistance"`
 }
 
 type LinkPattern struct {
@@ -170,16 +170,23 @@ func (s patternLinkSelector) Admit(parent utilobject.Key, child utilobject.Key, 
 }
 
 type direction bool
+
 const (
-	directionUpwards direction = true
+	directionUpwards   direction = true
 	directionDownwards direction = false
 )
+
 type directedDistanceLinkSelector struct {
 	direction direction
-	distance uint32
+	distance  uint32
 }
 
-func (d directedDistanceLinkSelector) Admit(parent utilobject.Key, child utilobject.Key, isFromParent bool, linkClass string) tfconfig.LinkSelector {
+func (d directedDistanceLinkSelector) Admit(
+	parent utilobject.Key,
+	child utilobject.Key,
+	isFromParent bool,
+	linkClass string,
+) tfconfig.LinkSelector {
 	if isFromParent != (d.direction == directionDownwards) {
 		return d
 	}
@@ -188,6 +195,6 @@ func (d directedDistanceLinkSelector) Admit(parent utilobject.Key, child utilobj
 	}
 	return directedDistanceLinkSelector{
 		direction: d.direction,
-		distance: d.distance - 1,
+		distance:  d.distance - 1,
 	}
 }

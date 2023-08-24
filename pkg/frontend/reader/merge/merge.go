@@ -249,7 +249,7 @@ func (obj *object[M]) merge(trace *tftree.SpanTree, metadata M) error {
 
 	mergeRoot(obj.tree.Root, trace.Root)
 
-	copyVisitor := &copyTreeVisitor{to: obj.tree}
+	copyVisitor := &copyTreeVisitor{to: obj.tree, toParent: obj.tree.Root.SpanID}
 	trace.Visit(copyVisitor)
 	if copyVisitor.err != nil {
 		return copyVisitor.err
@@ -337,8 +337,9 @@ type TargetLink struct {
 }
 
 type copyTreeVisitor struct {
-	to  *tftree.SpanTree
-	err error
+	to       *tftree.SpanTree
+	toParent model.SpanID
+	err      error
 }
 
 func (visitor *copyTreeVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
@@ -349,7 +350,12 @@ func (visitor *copyTreeVisitor) Enter(tree *tftree.SpanTree, span *model.Span) t
 			return nil
 		}
 
-		visitor.to.Add(spanCopy, span.ParentSpanID())
+		visitor.to.Add(spanCopy, visitor.toParent)
+
+		return &copyTreeVisitor{
+			to:       visitor.to,
+			toParent: spanCopy.SpanID,
+		}
 	}
 
 	return visitor

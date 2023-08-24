@@ -20,9 +20,10 @@ import (
 	"strconv"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	"github.com/kubewharf/kelemetry/pkg/frontend/extension"
 	"github.com/kubewharf/kelemetry/pkg/manager"
-	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 func init() {
@@ -85,13 +86,13 @@ func (config *Config) Clone() *Config {
 	copy(extensions, config.Extensions)
 
 	return &Config{
-		Id:           config.Id,
-		Name:         config.Name,
-		BaseName: config.BaseName,
+		Id:            config.Id,
+		Name:          config.Name,
+		BaseName:      config.BaseName,
 		ModifierNames: config.ModifierNames.Clone(),
-		LinkSelector: config.LinkSelector, // modifier changes LinkSelector by wrapping the previous value
-		Extensions:   extensions,
-		Steps:        steps,
+		LinkSelector:  config.LinkSelector, // modifier changes LinkSelector by wrapping the previous value
+		Extensions:    extensions,
+		Steps:         steps,
 	}
 }
 

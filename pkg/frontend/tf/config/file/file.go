@@ -180,12 +180,12 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 		}
 
 		config := &tfconfig.Config{
-			Id:           raw.Id,
-			Name:         raw.Name,
-			BaseName:     raw.Name,
+			Id:            raw.Id,
+			Name:          raw.Name,
+			BaseName:      raw.Name,
 			ModifierNames: sets.New[string](),
-			LinkSelector: tfconfig.ConstantLinkSelector(false),
-			Steps:        steps,
+			LinkSelector:  tfconfig.ConstantLinkSelector(false),
+			Steps:         steps,
 		}
 
 		p.register(registeredConfig{config: config, modifierClasses: sets.New[string]()})
