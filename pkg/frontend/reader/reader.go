@@ -184,7 +184,7 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 			ctx,
 			config.LinkSelector,
 			query.StartTimeMin, query.StartTimeMax,
-			mergeListWithBackend[any](reader.Backend, reflectutil.Identity[any]),
+			mergeListWithBackend[any](reader.Backend, reflectutil.Identity[any], OriginalTraceRequest{FindTraces: query}),
 			reader.options.followLinkConcurrency, reader.options.followLinkLimit, false,
 		); err != nil {
 			return nil, fmt.Errorf("follow links: %w", err)
@@ -342,7 +342,7 @@ func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (
 		ctx,
 		displayConfig.LinkSelector,
 		entry.StartTime, entry.EndTime,
-		mergeListWithBackend[struct{}](reader.Backend, func(any) struct{} { return struct{}{} }),
+		mergeListWithBackend[struct{}](reader.Backend, func(any) struct{} { return struct{}{} }, OriginalTraceRequest{GetTrace: &cacheId}),
 		reader.options.followLinkConcurrency, reader.options.followLinkLimit, true,
 	); err != nil {
 		return nil, fmt.Errorf("cannot follow links: %w", err)
@@ -424,19 +424,32 @@ func filterTimeRange(spans []*model.Span, startTime, endTime time.Time) []*model
 	return retained
 }
 
-func mergeListWithBackend[M any](backend jaegerbackend.Backend, convertMetadata func(any) M) merge.ListFunc[M] {
+type (
+	OriginalTraceRequestKey struct{}
+	OriginalTraceRequest    struct {
+		GetTrace   *model.TraceID
+		FindTraces *spanstore.TraceQueryParameters
+	}
+)
+
+func mergeListWithBackend[M any](backend jaegerbackend.Backend, convertMetadata func(any) M, otr OriginalTraceRequest) merge.ListFunc[M] {
 	return func(
 		ctx context.Context,
 		key utilobject.Key,
 		startTime time.Time, endTime time.Time,
 		limit int,
 	) ([]merge.TraceWithMetadata[M], error) {
-		tts, err := backend.List(ctx, &spanstore.TraceQueryParameters{
-			Tags:         zconstants.KeyToSpanTags(key),
-			StartTimeMin: startTime,
-			StartTimeMax: endTime,
-			NumTraces:    limit,
-		})
+		tags := zconstants.KeyToSpanTags(key)
+
+		tts, err := backend.List(
+			context.WithValue(ctx, OriginalTraceRequestKey{}, otr),
+			&spanstore.TraceQueryParameters{
+				Tags:         tags,
+				StartTimeMin: startTime,
+				StartTimeMax: endTime,
+				NumTraces:    limit,
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
