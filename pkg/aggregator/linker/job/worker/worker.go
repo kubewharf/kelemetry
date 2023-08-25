@@ -20,6 +20,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"k8s.io/utils/clock"
 	"k8s.io/utils/pointer"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator"
@@ -45,18 +46,27 @@ func (options *workerOptions) Setup(fs *pflag.FlagSet) {
 func (options *workerOptions) EnableFlag() *bool { return pointer.Bool(options.WorkerCount > 0) }
 
 type worker struct {
-	options    workerOptions
-	Logger     logrus.FieldLogger
-	Linkers    *manager.List[linker.Linker]
-	Subscriber linkjob.Subscriber
-	Aggregator aggregator.Aggregator
+	options          workerOptions
+	Logger           logrus.FieldLogger
+	Clock            clock.Clock
+	Linkers          *manager.List[linker.Linker]
+	Subscriber       linkjob.Subscriber
+	Aggregator       aggregator.Aggregator
+	ExecuteJobMetric *metrics.Metric[*executeJobMetric]
 
 	ch <-chan *linkjob.LinkJob
 }
 
+type executeJobMetric struct {
+	Linker string
+	Error  metrics.LabeledError
+}
+
+func (*executeJobMetric) MetricName() string { return "linker_job_exec" }
+
 func (worker *worker) Options() manager.Options { return &worker.options }
 func (worker *worker) Init() error {
-	worker.ch = worker.Subscriber.Subscribe(context.Background()) // never unsubscribe
+	worker.ch = worker.Subscriber.Subscribe(context.Background(), "worker") // background context, never unsubscribe
 	return nil
 }
 
@@ -82,15 +92,21 @@ func (worker *worker) Close(ctx context.Context) error { return nil }
 
 func (worker *worker) executeJob(ctx context.Context, logger logrus.FieldLogger, job *linkjob.LinkJob) {
 	for _, linker := range worker.Linkers.Impls {
-		linkerLogger := logger.WithField("linker", fmt.Sprintf("%T", linker))
+		linkerLogger := logger.WithField("linker", linker.LinkerName())
 		if err := worker.execute(ctx, linkerLogger, linker, job); err != nil {
-			logger.WithError(err).Error("generating links")
+			linkerLogger.WithError(err).Error("generating links")
 		}
 	}
 }
 
 func (worker *worker) execute(ctx context.Context, logger logrus.FieldLogger, linker linker.Linker, job *linkjob.LinkJob) error {
+	logger.Debug("execute linker")
+	startTime := worker.Clock.Now()
 	links, err := linker.Lookup(ctx, job.Object)
+	worker.ExecuteJobMetric.DeferCount(startTime, &executeJobMetric{
+		Linker: linker.LinkerName(),
+		Error:  err,
+	})
 	if err != nil {
 		return metrics.LabelError(fmt.Errorf("calling linker: %w", err), "CallLinker")
 	}

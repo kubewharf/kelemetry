@@ -61,6 +61,7 @@ func (ctrl *Controller) Init() error                     { return nil }
 func (ctrl *Controller) Start(ctx context.Context) error { return nil }
 func (ctrl *Controller) Close(ctx context.Context) error { return nil }
 
+func (ctrl *Controller) LinkerName() string { return "owner-linker" }
 func (ctrl *Controller) Lookup(ctx context.Context, object utilobject.Rich) ([]linker.LinkerResult, error) {
 	raw := object.Raw
 

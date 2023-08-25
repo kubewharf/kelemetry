@@ -22,6 +22,7 @@ import (
 
 	linkjob "github.com/kubewharf/kelemetry/pkg/aggregator/linker/job"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	"github.com/kubewharf/kelemetry/pkg/metrics"
 	"github.com/kubewharf/kelemetry/pkg/util/channel"
 )
 
@@ -68,17 +69,25 @@ func (publisher *publisher) Publish(job *linkjob.LinkJob) {
 }
 
 type subscriber struct {
-	Queue *queue
+	Queue   *queue
+	Metrics metrics.Client
 	manager.MuxImplBase
 }
+
+type queueMetricTags struct {
+	Name string
+}
+
+func (*queueMetricTags) MetricName() string { return "linker_local_worker_lag" }
 
 func (subscriber *subscriber) Options() manager.Options                   { return &manager.NoOptions{} }
 func (subscriber *subscriber) Init() error                                { return nil }
 func (subscriber *subscriber) Start(ctx context.Context) error            { return nil }
 func (subscriber *subscriber) Close(ctx context.Context) error            { return nil }
 func (subscriber *subscriber) MuxImplName() (name string, isDefault bool) { return "local", true }
-func (subscriber *subscriber) Subscribe(ctx context.Context) <-chan *linkjob.LinkJob {
+func (subscriber *subscriber) Subscribe(ctx context.Context, name string) <-chan *linkjob.LinkJob {
 	queue := channel.NewUnboundedQueue[*linkjob.LinkJob](16)
+	channel.InitMetricLoop(queue, subscriber.Metrics, &queueMetricTags{Name: name})
 
 	subscriber.Queue.subscribersMu.Lock()
 	defer subscriber.Queue.subscribersMu.Unlock()

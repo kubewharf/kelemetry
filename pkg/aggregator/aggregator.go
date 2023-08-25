@@ -141,8 +141,9 @@ type sinceEventMetric struct {
 func (*sinceEventMetric) MetricName() string { return "aggregator_send_since_event" }
 
 type lazySpanMetric struct {
-	Cluster string
-	Result  string
+	Cluster    string
+	PseudoType zconstants.PseudoTypeValue
+	Result     string
 }
 
 func (*lazySpanMetric) MetricName() string { return "aggregator_lazy_span" }
@@ -286,8 +287,9 @@ func (agg *aggregator) GetOrCreatePseudoSpan(
 	dedupId string,
 ) (_span tracer.SpanContext, _isNew bool, _err error) {
 	lazySpanMetric := &lazySpanMetric{
-		Cluster: object.Cluster,
-		Result:  "error",
+		Cluster:    object.Cluster,
+		PseudoType: pseudoType,
+		Result:     "error",
 	}
 	defer agg.LazySpanMetric.DeferCount(agg.Clock.Now(), lazySpanMetric)
 
@@ -295,6 +297,7 @@ func (agg *aggregator) GetOrCreatePseudoSpan(
 
 	logger := agg.Logger.
 		WithField("step", "GetOrCreatePseudoSpan").
+		WithField("dedupId", dedupId).
 		WithFields(object.AsFields("object"))
 
 	defer func() {

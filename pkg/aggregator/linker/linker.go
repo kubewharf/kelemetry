@@ -22,6 +22,7 @@ import (
 )
 
 type Linker interface {
+	LinkerName() string
 	Lookup(ctx context.Context, object utilobject.Rich) ([]LinkerResult, error)
 }
 

@@ -188,9 +188,6 @@ func (backend *Backend) List(
 			}
 
 			traceThumbnails = append(traceThumbnails, thumbnail)
-			backend.Logger.WithField("ident", thumbnail.Identifier).
-				WithField("filteredSpans", len(thumbnail.Spans.GetSpans())).
-				Debug("matched trace")
 		}
 	}
 

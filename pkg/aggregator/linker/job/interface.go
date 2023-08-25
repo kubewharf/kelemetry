@@ -28,7 +28,7 @@ type Publisher interface {
 }
 
 type Subscriber interface {
-	Subscribe(ctx context.Context) <-chan *LinkJob
+	Subscribe(ctx context.Context, name string) <-chan *LinkJob
 }
 
 func init() {
@@ -52,8 +52,8 @@ type subscriberMux struct {
 	*manager.Mux
 }
 
-func (mux *subscriberMux) Subscribe(ctx context.Context) <-chan *LinkJob {
-	return mux.Impl().(Subscriber).Subscribe(ctx)
+func (mux *subscriberMux) Subscribe(ctx context.Context, name string) <-chan *LinkJob {
+	return mux.Impl().(Subscriber).Subscribe(ctx, name)
 }
 
 type LinkJob struct {

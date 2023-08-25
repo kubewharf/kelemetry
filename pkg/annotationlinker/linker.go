@@ -61,6 +61,7 @@ func (ctrl *controller) Init() error                     { return nil }
 func (ctrl *controller) Start(ctx context.Context) error { return nil }
 func (ctrl *controller) Close(ctx context.Context) error { return nil }
 
+func (ctrl *controller) LinkerName() string { return "annotation-linker" }
 func (ctrl *controller) Lookup(ctx context.Context, object utilobject.Rich) ([]linker.LinkerResult, error) {
 	raw := object.Raw
 
