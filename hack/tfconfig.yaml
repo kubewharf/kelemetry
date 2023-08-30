@@ -1,3 +1,4 @@
+defaultConfig: "20000000"
 configs:
   - id: "00000000"
     name: "tree"

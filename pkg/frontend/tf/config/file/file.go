@@ -118,11 +118,14 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 			Id    tfconfig.Id     `json:"id"`
 			Name  string          `json:"name"`
 			Steps json.RawMessage `json:"steps"`
-		}
+		} `json:"configs"`
+		DefaultConfig tfconfig.Id `json:"defaultConfig"`
 	}
 	if err := json.Unmarshal(jsonBytes, &file); err != nil {
 		return fmt.Errorf("parse tfconfig error: %w", err)
 	}
+
+	p.defaultConfig = file.DefaultConfig
 
 	type knownModifier struct {
 		class    string
