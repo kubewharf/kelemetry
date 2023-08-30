@@ -43,9 +43,9 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/k8s/multileader"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
-	"github.com/kubewharf/kelemetry/pkg/util"
 	"github.com/kubewharf/kelemetry/pkg/util/channel"
 	informerutil "github.com/kubewharf/kelemetry/pkg/util/informer"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
 )
 
@@ -585,7 +585,7 @@ func (monitor *monitor) onUpdate(
 		patch.DiffList = diffcmp.Compare(oldObj.Object, newObj.Object)
 	}
 
-	objectRef := util.ObjectRefFromUnstructured(newObj, monitor.ctrl.Clients.TargetCluster().ClusterName(), monitor.gvr).Clone()
+	objectRef := utilobject.RichFromUnstructured(newObj, monitor.ctrl.Clients.TargetCluster().ClusterName(), monitor.gvr).Clone()
 
 	return func(ctx context.Context) {
 		ctx, cancelFunc := context.WithTimeout(ctx, monitor.ctrl.options.storeTimeout)
@@ -593,7 +593,7 @@ func (monitor *monitor) onUpdate(
 
 		monitor.ctrl.Cache.Store(
 			ctx,
-			objectRef,
+			objectRef.Key,
 			patch,
 		)
 	}
@@ -617,7 +617,7 @@ func (monitor *monitor) onNeedSnapshot(
 			Error("cannot re-marshal unstructured object")
 	}
 
-	objectRef := util.ObjectRefFromUnstructured(obj, monitor.ctrl.Clients.TargetCluster().ClusterName(), monitor.gvr).Clone()
+	objectRef := utilobject.RichFromUnstructured(obj, monitor.ctrl.Clients.TargetCluster().ClusterName(), monitor.gvr).Clone()
 	snapshotRv := obj.GetResourceVersion()
 
 	return func(ctx context.Context) {
@@ -626,7 +626,7 @@ func (monitor *monitor) onNeedSnapshot(
 
 		monitor.ctrl.Cache.StoreSnapshot(
 			ctx,
-			objectRef,
+			objectRef.Key,
 			snapshotName,
 			&diffcache.Snapshot{
 				ResourceVersion: snapshotRv,

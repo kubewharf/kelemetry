@@ -26,8 +26,8 @@ import (
 	diffcache "github.com/kubewharf/kelemetry/pkg/diff/cache"
 	k8sconfig "github.com/kubewharf/kelemetry/pkg/k8s/config"
 	"github.com/kubewharf/kelemetry/pkg/manager"
-	"github.com/kubewharf/kelemetry/pkg/util"
 	"github.com/kubewharf/kelemetry/pkg/util/cache"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
 )
 
@@ -111,7 +111,7 @@ func (cache *localCache) GetCommonOptions() *diffcache.CommonOptions {
 	return cache.GetAdditionalOptions().(*diffcache.CommonOptions)
 }
 
-func (cache *localCache) Store(ctx context.Context, object util.ObjectRef, patch *diffcache.Patch) {
+func (cache *localCache) Store(ctx context.Context, object utilobject.Key, patch *diffcache.Patch) {
 	cache.dataLock.Lock()
 	defer cache.dataLock.Unlock()
 
@@ -128,7 +128,7 @@ func (cache *localCache) Store(ctx context.Context, object util.ObjectRef, patch
 
 func (cache *localCache) Fetch(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Key,
 	oldResourceVersion string,
 	newResourceVersion *string,
 ) (*diffcache.Patch, error) {
@@ -160,13 +160,13 @@ func (cache *localCache) Fetch(
 	return nil, nil
 }
 
-func (cache *localCache) StoreSnapshot(ctx context.Context, object util.ObjectRef, snapshotName string, value *diffcache.Snapshot) {
+func (cache *localCache) StoreSnapshot(ctx context.Context, object utilobject.Key, snapshotName string, value *diffcache.Snapshot) {
 	cache.snapshotCache.Add(fmt.Sprintf("%v/%s", object, snapshotName), value)
 }
 
 func (cache *localCache) FetchSnapshot(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Key,
 	snapshotName string,
 ) (*diffcache.Snapshot, error) {
 	if value, ok := cache.snapshotCache.Get(fmt.Sprintf("%v/%s", object, snapshotName)); ok {
@@ -176,7 +176,7 @@ func (cache *localCache) FetchSnapshot(
 	return nil, nil
 }
 
-func (cache *localCache) List(ctx context.Context, object util.ObjectRef, limit int) ([]string, error) {
+func (cache *localCache) List(ctx context.Context, object utilobject.Key, limit int) ([]string, error) {
 	cache.dataLock.RLock()
 	defer cache.dataLock.RUnlock()
 

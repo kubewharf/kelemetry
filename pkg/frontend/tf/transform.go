@@ -29,6 +29,7 @@ import (
 	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 func init() {
@@ -57,7 +58,7 @@ func (transformer *Transformer) Close(ctx context.Context) error { return nil }
 func (transformer *Transformer) Transform(
 	ctx context.Context,
 	trace *model.Trace,
-	rootObject *tftree.GroupingKey,
+	rootObject *utilobject.Key,
 	configId tfconfig.Id,
 	extensionProcessor ExtensionProcessor,
 	start, end time.Time,
@@ -80,7 +81,7 @@ func (transformer *Transformer) Transform(
 		hasRootSpan := false
 
 		for _, span := range tree.GetSpans() {
-			if key, hasKey := tftree.GroupingKeyFromSpan(span); hasKey && key == *rootObject {
+			if key, hasKey := utilobject.FromSpan(span); hasKey && key == *rootObject {
 				rootSpan = span.SpanID
 				hasRootSpan = true
 			}
@@ -120,10 +121,10 @@ func (transformer *Transformer) Transform(
 
 // merge spans of the same object from multiple traces
 func (transformer *Transformer) groupDuplicates(tree *tftree.SpanTree) {
-	commonSpans := map[tftree.GroupingKey][]model.SpanID{}
+	commonSpans := map[utilobject.Key][]model.SpanID{}
 
 	for _, span := range tree.GetSpans() {
-		if key, hasKey := tftree.GroupingKeyFromSpan(span); hasKey {
+		if key, hasKey := utilobject.FromSpan(span); hasKey {
 			commonSpans[key] = append(commonSpans[key], span.SpanID)
 		}
 	}

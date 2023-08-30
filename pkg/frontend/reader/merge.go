@@ -19,21 +19,21 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	jaegerbackend "github.com/kubewharf/kelemetry/pkg/frontend/backend"
-	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 type mergeMap struct {
 	ptrSet   sets.Set[*mergeEntry]
-	fromKeys map[tftree.GroupingKey]*mergeEntry
+	fromKeys map[utilobject.Key]*mergeEntry
 }
 
 type mergeEntry struct {
-	keys        sets.Set[tftree.GroupingKey]
+	keys        sets.Set[utilobject.Key]
 	identifiers []any
 	spans       []*model.Span
 }
 
-func singletonMerged(keys sets.Set[tftree.GroupingKey], thumbnail *jaegerbackend.TraceThumbnail) *mergeEntry {
+func singletonMerged(keys sets.Set[utilobject.Key], thumbnail *jaegerbackend.TraceThumbnail) *mergeEntry {
 	return &mergeEntry{
 		keys:        keys,
 		identifiers: []any{thumbnail.Identifier},
@@ -51,7 +51,7 @@ func (entry *mergeEntry) join(other *mergeEntry) {
 }
 
 // add a thumbnail with a preferred root key.
-func (m *mergeMap) add(keys sets.Set[tftree.GroupingKey], thumbnail *jaegerbackend.TraceThumbnail) {
+func (m *mergeMap) add(keys sets.Set[utilobject.Key], thumbnail *jaegerbackend.TraceThumbnail) {
 	entry := singletonMerged(keys.Clone(), thumbnail)
 	m.ptrSet.Insert(entry)
 
@@ -77,11 +77,11 @@ func (m *mergeMap) add(keys sets.Set[tftree.GroupingKey], thumbnail *jaegerbacke
 func mergeSegments(thumbnails []*jaegerbackend.TraceThumbnail) []*mergeEntry {
 	m := mergeMap{
 		ptrSet:   sets.New[*mergeEntry](),
-		fromKeys: map[tftree.GroupingKey]*mergeEntry{},
+		fromKeys: map[utilobject.Key]*mergeEntry{},
 	}
 
 	for _, thumbnail := range thumbnails {
-		keys := tftree.GroupingKeysFromSpans(thumbnail.Spans)
+		keys := utilobject.FromSpans(thumbnail.Spans)
 		m.add(keys, thumbnail)
 	}
 

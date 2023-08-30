@@ -17,6 +17,8 @@ package annotationlinker
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 const LinkAnnotation = "kelemetry.kubewharf.io/parent-link"
@@ -30,4 +32,20 @@ type ParentLink struct {
 	Name      string `json:"name"`
 
 	Uid types.UID `json:"uid"`
+}
+
+func (ln ParentLink) ToRich() utilobject.Rich {
+	return utilobject.Rich{
+		VersionedKey: utilobject.VersionedKey{
+			Key: utilobject.Key{
+				Cluster:   ln.Cluster,
+				Group:     ln.Group,
+				Resource:  ln.Resource,
+				Namespace: ln.Namespace,
+				Name:      ln.Name,
+			},
+			Version: ln.Version,
+		},
+		Uid: ln.Uid,
+	}
 }

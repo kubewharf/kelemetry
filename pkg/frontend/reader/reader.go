@@ -31,9 +31,9 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/frontend/clusterlist"
 	transform "github.com/kubewharf/kelemetry/pkg/frontend/tf"
 	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
-	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/frontend/tracecache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
@@ -135,8 +135,8 @@ func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 		return nil, err
 	}
 
-	var rootKey *tftree.GroupingKey
-	if rootKeyValue, ok := tftree.GroupingKeyFromMap(query.Tags); ok {
+	var rootKey *utilobject.Key
+	if rootKeyValue, ok := utilobject.FromMap(query.Tags); ok {
 		rootKey = &rootKeyValue
 	}
 

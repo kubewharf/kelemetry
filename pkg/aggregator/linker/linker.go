@@ -17,9 +17,9 @@ package linker
 import (
 	"context"
 
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 type Linker interface {
-	Lookup(ctx context.Context, object util.ObjectRef) *util.ObjectRef
+	Lookup(ctx context.Context, object utilobject.Rich) *utilobject.Rich
 }

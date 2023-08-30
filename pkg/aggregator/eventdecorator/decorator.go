@@ -18,9 +18,9 @@ import (
 	"context"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator/aggregatorevent"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 type Decorator interface {
-	Decorate(ctx context.Context, object util.ObjectRef, event *aggregatorevent.Event)
+	Decorate(ctx context.Context, object utilobject.Rich, event *aggregatorevent.Event)
 }

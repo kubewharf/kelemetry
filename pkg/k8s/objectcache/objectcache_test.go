@@ -29,7 +29,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/k8s"
 	"github.com/kubewharf/kelemetry/pkg/k8s/objectcache"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 func TestGet(t *testing.T) {
@@ -70,11 +70,15 @@ func TestGet(t *testing.T) {
 	assert.NoError(cache.Init())
 
 	for i := 0; i < 2; i++ {
-		uns, err := cache.Get(context.Background(), util.ObjectRef{
-			Cluster:              "test-cluster",
-			GroupVersionResource: corev1.SchemeGroupVersion.WithResource("configmaps"),
-			Namespace:            "default",
-			Name:                 "test-cm",
+		uns, err := cache.Get(context.Background(), utilobject.VersionedKey{
+			Key: utilobject.Key{
+				Cluster:   "test-cluster",
+				Namespace: "default",
+				Name:      "test-cm",
+				Group:     corev1.GroupName,
+				Resource:  "configmaps",
+			},
+			Version: corev1.SchemeGroupVersion.Version,
 		})
 		assert.NoError(err)
 
