@@ -165,7 +165,7 @@ func (backend *Backend) List(
 	// TODO support additional user-defined trace sources
 	var traces []*model.Trace
 	for _, traceSource := range zconstants.KnownTraceSources(false) {
-		if len(traces) >= params.NumTraces {
+		if params.NumTraces != 0 && len(traces) >= params.NumTraces {
 			break
 		}
 
@@ -176,7 +176,9 @@ func (backend *Backend) List(
 			StartTimeMax: params.StartTimeMax,
 			DurationMin:  params.DurationMin,
 			DurationMax:  params.DurationMax,
-			NumTraces:    params.NumTraces - len(traces),
+		}
+		if params.NumTraces != 0 {
+			newParams.NumTraces = params.NumTraces - len(traces)
 		}
 
 		newTraces, err := backend.reader.FindTraces(ctx, newParams)
