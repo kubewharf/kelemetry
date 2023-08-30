@@ -33,7 +33,7 @@ import (
 	diffcache "github.com/kubewharf/kelemetry/pkg/diff/cache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
@@ -211,7 +211,7 @@ func (decorator *decorator) tryDecorate(
 	}
 
 	// NOTE: UID may be empty, but we don't use it anyway
-	object := util.ObjectRefFromAudit(message.ObjectRef, message.Cluster, message.ObjectRef.UID)
+	object := utilobject.RichFromAudit(message.ObjectRef, message.Cluster)
 
 	var tryOnce func(context.Context) (bool, error)
 
@@ -306,14 +306,14 @@ func decoratesResource(message *audit.Message) bool {
 
 func (decorator *decorator) tryUpdateOnce(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Rich,
 	oldRv string,
 	newRv *string,
 	event *aggregatorevent.Event,
 	message *audit.Message,
 ) (bool, error) {
 	var err error
-	patch, err := decorator.Cache.Fetch(ctx, object, oldRv, newRv)
+	patch, err := decorator.Cache.Fetch(ctx, object.Key, oldRv, newRv)
 	if err != nil || patch == nil {
 		return false, err
 	}
@@ -347,11 +347,11 @@ func (decorator *decorator) tryUpdateOnce(
 
 func (decorator *decorator) tryCreateDeleteOnce(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Rich,
 	snapshotName string,
 	event *aggregatorevent.Event,
 ) (bool, error) {
-	snapshot, err := decorator.Cache.FetchSnapshot(ctx, object, snapshotName)
+	snapshot, err := decorator.Cache.FetchSnapshot(ctx, object.Key, snapshotName)
 	if err != nil || snapshot == nil {
 		return false, err
 	}

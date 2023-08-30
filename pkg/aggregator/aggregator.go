@@ -33,7 +33,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/aggregator/tracer"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
@@ -109,7 +109,7 @@ type Aggregator interface {
 	// it waits for the primary event to be created and takes it as the parent.
 	// If the primary event does not get created after options.subObjectPrimaryBackoff, this event is promoted as primary.
 	// If multiple primary events are sent, the slower one (by SpanCache-authoritative timing) is demoted.
-	Send(ctx context.Context, object util.ObjectRef, event *aggregatorevent.Event, subObjectId *SubObjectId) error
+	Send(ctx context.Context, object utilobject.Rich, event *aggregatorevent.Event, subObjectId *SubObjectId) error
 }
 
 type SubObjectId struct {
@@ -183,7 +183,7 @@ func (aggregator *aggregator) Close(ctx context.Context) error { return nil }
 
 func (aggregator *aggregator) Send(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Rich,
 	event *aggregatorevent.Event,
 	subObjectId *SubObjectId,
 ) (err error) {
@@ -370,12 +370,12 @@ func (aggregator *aggregator) Send(
 
 func (aggregator *aggregator) ensureObjectSpan(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Rich,
 	eventTime time.Time,
 ) (tracer.SpanContext, error) {
 	return aggregator.getOrCreateSpan(ctx, object, eventTime, func() (_ tracer.SpanContext, err error) {
 		// try to associate a parent object
-		var parent *util.ObjectRef
+		var parent *utilobject.Rich
 
 		for _, linker := range aggregator.Linkers.Impls {
 			parent = linker.Lookup(ctx, object)
@@ -395,7 +395,7 @@ func (aggregator *aggregator) ensureObjectSpan(
 
 func (aggregator *aggregator) getOrCreateSpan(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Rich,
 	eventTime time.Time,
 	parentGetter func() (tracer.SpanContext, error),
 ) (tracer.SpanContext, error) {
@@ -530,7 +530,7 @@ func (aggregator *aggregator) getOrCreateSpan(
 
 func (aggregator *aggregator) createSpan(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Rich,
 	nestLevel string,
 	eventTime time.Time,
 	parent tracer.SpanContext,
@@ -580,11 +580,11 @@ func (aggregator *aggregator) createSpan(
 	return spanContext, nil
 }
 
-func (aggregator *aggregator) expiringSpanCacheKey(object util.ObjectRef, timestamp time.Time) string {
+func (aggregator *aggregator) expiringSpanCacheKey(object utilobject.Rich, timestamp time.Time) string {
 	expiringWindow := timestamp.Unix() / int64(aggregator.options.spanTtl.Seconds())
 	return aggregator.spanCacheKey(object, fmt.Sprintf("field=object,window=%d", expiringWindow))
 }
 
-func (aggregator *aggregator) spanCacheKey(object util.ObjectRef, subObjectId string) string {
+func (aggregator *aggregator) spanCacheKey(object utilobject.Rich, subObjectId string) string {
 	return fmt.Sprintf("%s/%s", object.String(), subObjectId)
 }
