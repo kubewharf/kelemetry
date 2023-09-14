@@ -93,6 +93,9 @@ informers:
   otherClusterBurst: 1000
   # Whether to expose pprof server
   pprof: true
+  metrics:
+    # Export Prometheus metrics on the `metrics` port
+    enable: true
   # Log verbosity level (`debug`, `info`, `warn`, `error`)
   logLevel: info
   # klog verbosity level for Kubernetes SDK calls
@@ -179,6 +182,9 @@ consumer:
   otherClusterBurst: 100
   # Whether to expose pprof server
   pprof: true
+  metrics:
+    # Export Prometheus metrics on the `metrics` port
+    enable: true
   # Log verbosity level (`debug`, `info`, `warn`, `error`)
   logLevel: info
   # klog verbosity level for Kubernetes SDK calls
@@ -222,6 +228,9 @@ frontend:
 
     # Whether to expose pprof server
     pprof: true
+    metrics:
+      # Export Prometheus metrics on the `metrics` port
+      enable: true
     # Log verbosity level (`debug`, `info`, `warn`, `error`)
     logLevel: info
 
