@@ -136,7 +136,7 @@ jobs:
           TRACE_ID=$(grep "Location: /trace/" curl-output.http | cut -d/ -f3 | tr -d '\r')
 
           mkdir -p output/api/traces
-          for mode in ff{0,1,2,3}{0,1}00000{0,1}; do
+          for mode in ff{0,1,2,3}{0,1,5,6}000000; do
             mode_trace=${mode}${TRACE_ID:10}
             curl -o output/api/traces/$mode_trace http://localhost:16686/api/traces/$mode_trace
           done
@@ -172,12 +172,12 @@ jobs:
               <html>
                 <head>
                   <title>Redirecting to ${basename}</title>
-                  <meta http-equiv="refresh" content="0;URL='/kelemetry/trace/ff20000000$(cat $trace_dir/trace_id)'" />
+                  <meta http-equiv="refresh" content="0;URL='/kelemetry/trace/ff26000000$(cat $trace_dir/trace_id)'" />
                 </head>
               </html>
           EOF
-            mkdir -p output/trace/ff20000000$(cat $trace_dir/trace_id)
-            cp spa.html output/trace/ff20000000$(cat $trace_dir/trace_id)/index.html
+            mkdir -p output/trace/ff26000000$(cat $trace_dir/trace_id)
+            cp spa.html output/trace/ff26000000$(cat $trace_dir/trace_id)/index.html
             cp $trace_dir/api/traces/* output/api/traces/
           done
           mv output/dot-usage/* output/
@@ -261,7 +261,7 @@ jobs:
                 promises.push((async () => {
                   const traceName = await fs.readFile(`pages/${trace}/trace_name`, {encoding: "utf8"})
                   const partialTraceId = await fs.readFile(`pages/${trace}/trace_id`, {encoding: "utf8"})
-                  const traceId = "ff20000000" + partialTraceId
+                  const traceId = "ff26000000" + partialTraceId
 
                   console.log(`Loading trace ${traceName}`)
 
