@@ -261,6 +261,7 @@ func (obj *object[M]) merge(trace *tftree.SpanTree, metadata M) error {
 func mergeRoot(base *model.Span, tail *model.Span) {
 	mergeRootInterval(base, tail)
 	mergeRootTags(base, tail)
+	mergeRootLogs(base, tail)
 }
 
 func mergeRootInterval(base *model.Span, tail *model.Span) {
@@ -295,6 +296,10 @@ func mergeRootTags(base *model.Span, tail *model.Span) {
 			base.Tags = append(base.Tags, tag)
 		}
 	}
+}
+
+func mergeRootLogs(base *model.Span, tail *model.Span) {
+	base.Logs = append(base.Logs, tail.Logs...)
 }
 
 func (obj *object[M]) identifyLinks() {
