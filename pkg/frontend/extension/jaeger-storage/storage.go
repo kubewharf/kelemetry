@@ -195,7 +195,7 @@ func (provider *Provider) MaxConcurrency() int         { return provider.maxConc
 
 func (provider *Provider) FetchForObject(
 	ctx context.Context,
-	object utilobject.Rich,
+	object utilobject.VersionedKey,
 	mainTags model.KeyValues,
 	start, end time.Time,
 ) (*extension.FetchResult, error) {
@@ -211,7 +211,7 @@ func (provider *Provider) FetchForObject(
 
 func (provider *Provider) FetchForVersion(
 	ctx context.Context,
-	object utilobject.Rich,
+	object utilobject.VersionedKey,
 	resourceVersion string,
 	mainTags model.KeyValues,
 	start, end time.Time,
@@ -229,7 +229,7 @@ func (provider *Provider) FetchForVersion(
 	)
 }
 
-func objectTemplateArgs(object utilobject.Rich) map[string]any {
+func objectTemplateArgs(object utilobject.VersionedKey) map[string]any {
 	var objectApiPath string
 	if object.Group == "" {
 		objectApiPath = fmt.Sprintf("/api/%s", object.Version)
