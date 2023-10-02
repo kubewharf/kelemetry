@@ -31,7 +31,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/k8s/objectcache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 func init() {
@@ -133,7 +133,7 @@ func (d *ResourceTagger) registerResource(gr schema.GroupResource, tagPathMappin
 	}
 }
 
-func (d *ResourceTagger) DecorateTag(ctx context.Context, object util.ObjectRef, traceSource string, tags map[string]any) {
+func (d *ResourceTagger) DecorateTag(ctx context.Context, object utilobject.Rich, traceSource string, tags map[string]any) {
 	if tags == nil {
 		return
 	}
@@ -153,7 +153,7 @@ func (d *ResourceTagger) DecorateTag(ctx context.Context, object util.ObjectRef,
 		logger.Debug("Fetching dynamic object for tag decorator")
 
 		var err error
-		raw, err = d.ObjectCache.Get(ctx, object)
+		raw, err = d.ObjectCache.Get(ctx, object.VersionedKey)
 		if err != nil {
 			tagMetric.Result = "FetchErr"
 			logger.WithError(err).Error("cannot fetch object value")

@@ -22,8 +22,8 @@ import (
 
 	k8sconfig "github.com/kubewharf/kelemetry/pkg/k8s/config"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
-	"github.com/kubewharf/kelemetry/pkg/util"
 	"github.com/kubewharf/kelemetry/pkg/util/cache"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 type CacheWrapper struct {
@@ -77,7 +77,7 @@ func (wrapper *CacheWrapper) GetCommonOptions() *CommonOptions {
 	return wrapper.options
 }
 
-func (wrapper *CacheWrapper) Store(ctx context.Context, object util.ObjectRef, patch *Patch) {
+func (wrapper *CacheWrapper) Store(ctx context.Context, object utilobject.Key, patch *Patch) {
 	wrapper.delegate.Store(ctx, object, patch)
 
 	wrapper.patchCache.Add(cacheWrapperKey(object, patch.NewResourceVersion), patch)
@@ -85,7 +85,7 @@ func (wrapper *CacheWrapper) Store(ctx context.Context, object util.ObjectRef, p
 
 func (wrapper *CacheWrapper) Fetch(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Key,
 	oldResourceVersion string,
 	newResourceVersion *string,
 ) (*Patch, error) {
@@ -113,7 +113,7 @@ func (wrapper *CacheWrapper) Fetch(
 
 func (wrapper *CacheWrapper) StoreSnapshot(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Key,
 	snapshotName string,
 	snapshot *Snapshot,
 ) {
@@ -123,7 +123,7 @@ func (wrapper *CacheWrapper) StoreSnapshot(
 
 func (wrapper *CacheWrapper) FetchSnapshot(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Key,
 	snapshotName string,
 ) (*Snapshot, error) {
 	penetrateMetric := &penetrateMetric{Type: fmt.Sprintf("snapshot/%s", snapshotName)}
@@ -140,10 +140,10 @@ func (wrapper *CacheWrapper) FetchSnapshot(
 }
 
 // List always penetrates the cache because we cannot get notified of new keys
-func (wrapper *CacheWrapper) List(ctx context.Context, object util.ObjectRef, limit int) ([]string, error) {
+func (wrapper *CacheWrapper) List(ctx context.Context, object utilobject.Key, limit int) ([]string, error) {
 	return wrapper.delegate.List(ctx, object, limit)
 }
 
-func cacheWrapperKey(object util.ObjectRef, subkey string) string {
+func cacheWrapperKey(object utilobject.Key, subkey string) string {
 	return fmt.Sprintf("%s/%s", object.String(), subkey)
 }

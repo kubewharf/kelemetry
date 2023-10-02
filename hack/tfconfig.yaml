@@ -1,3 +1,4 @@
+defaultConfig: "20000000"
 configs:
   - id: "00000000"
     name: "tree"
@@ -12,9 +13,8 @@ configs:
       - kind: Batch
         batchName: initial
       - kind: ExtractNestingVisitor
-        matchesNestLevel:
-          oneOf: []
-          negate: true
+        matchesPseudoType:
+          oneOf: ["object"]
       - kind: Batch
         batchName: final
   - id: "20000000"
@@ -22,12 +22,12 @@ configs:
     steps:
       - kind: Batch
         batchName: initial
-      - kind: ExtractNestingVisitor
-        matchesNestLevel:
-          oneOf: ["object"]
-          negate: true
       - kind: Batch
         batchName: collapse
+      - kind: ExtractNestingVisitor
+        matchesPseudoType:
+          oneOf: ["linkClass"]
+        matchesName:
       - kind: CompactDurationVisitor
       - kind: Batch
         batchName: final
@@ -36,28 +36,48 @@ configs:
     steps:
       - kind: Batch
         batchName: initial
-      - kind: ExtractNestingVisitor
-        matchesNestLevel:
-          oneOf: ["object"]
-          negate: true
       - kind: Batch
         batchName: collapse
       - kind: GroupByTraceSourceVisitor
         shouldBeGrouped:
           oneOf: ["event"]
-          negate: true
+          then: false
       - kind: CompactDurationVisitor
       - kind: Batch
         batchName: final
 
 modifiers:
+  # Multiple active link-selector modifiers are additive (union)
   "01000000":
-    displayName: exclusive
-    modifierName: exclusive
+    # the entire tree under the deepest (up to 3 levels) ancestor
+    displayName: full tree
+    modifierName: link-selector
+    args:
+      modifierClass: owner-ref
+      includeSiblings: false
+      upwardDistance: 3
+      downwardDistance: 3
+  "02000000":
+    # include all ancestors (up to 3) but not siblings of ancestors
+    displayName: ancestors
+    modifierName: link-selector
+    args:
+      modifierClass: owner-ref
+      includeSiblings: true
+      upwardDistance: 3
+  "04000000":
+    # the entire subtree under this object
+    displayName: owned objects
+    modifierName: link-selector
+    args:
+      modifierClass: owner-ref
+      ifAll:
+        - linkClass: children
+          fromChild: false
+      downwardDistance: 3
 
 # Uncomment to enable extension trace from apiserver
 #   "00000001":
-#     # We want to run extension modifiers after exclusive modifier to avoid fetching unused traces
 #     displayName: apiserver trace
 #     modifierName: extension
 #     args:
@@ -121,9 +141,6 @@ batches:
   - name: collapse
     steps:
       - kind: CollapseNestingVisitor
-        shouldCollapse:
-          oneOf: []
-          negate: true
         tagMappings:
           "audit":
             - fromSpanTag: "userAgent"

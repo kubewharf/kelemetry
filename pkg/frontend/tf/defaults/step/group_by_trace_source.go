@@ -22,6 +22,7 @@ import (
 	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	utilmarshal "github.com/kubewharf/kelemetry/pkg/util/marshal"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
@@ -33,18 +34,18 @@ func init() {
 	)
 }
 
-const pseudoSpanNestLevel = "groupByTraceSource"
+const myPseudoType = "groupByTraceSource"
 
 // Splits span logs into pseudospans grouped by traceSource.
 type GroupByTraceSourceVisitor struct {
-	ShouldBeGrouped StringFilter `json:"shouldBeGrouped"`
+	ShouldBeGrouped utilmarshal.StringFilter `json:"shouldBeGrouped"`
 }
 
 func (GroupByTraceSourceVisitor) Kind() string { return "GroupByTraceSourceVisitor" }
 
 func (visitor GroupByTraceSourceVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
-	nestLevel, hasNestLevel := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel)
-	if hasNestLevel && nestLevel.AsString() == pseudoSpanNestLevel {
+	pseudoType, hasPseudoType := model.KeyValues(span.Tags).FindByKey(zconstants.PseudoType)
+	if hasPseudoType && pseudoType.AsString() == myPseudoType {
 		// already grouped, don't recurse
 		return visitor
 	}
@@ -54,7 +55,7 @@ func (visitor GroupByTraceSourceVisitor) Enter(tree *tftree.SpanTree, span *mode
 	index := map[string][]model.Log{}
 	for _, log := range span.Logs {
 		traceSource, hasTraceSource := model.KeyValues(log.Fields).FindByKey(zconstants.TraceSource)
-		if hasTraceSource && visitor.ShouldBeGrouped.Test(traceSource.AsString()) {
+		if hasTraceSource && visitor.ShouldBeGrouped.Matches(traceSource.AsString()) {
 			index[traceSource.AsString()] = append(index[traceSource.AsString()], log)
 		} else {
 			remainingLogs = append(remainingLogs, log)
@@ -74,9 +75,9 @@ func (visitor GroupByTraceSourceVisitor) Enter(tree *tftree.SpanTree, span *mode
 			Duration:      span.Duration,
 			Tags: []model.KeyValue{
 				{
-					Key:   zconstants.NestLevel,
+					Key:   zconstants.PseudoType,
 					VType: model.StringType,
-					VStr:  pseudoSpanNestLevel,
+					VStr:  myPseudoType,
 				},
 			},
 			Logs: logs,

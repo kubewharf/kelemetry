@@ -26,7 +26,7 @@ import (
 
 	"github.com/kubewharf/kelemetry/pkg/frontend/extension"
 	"github.com/kubewharf/kelemetry/pkg/frontend/tracecache"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	"github.com/kubewharf/kelemetry/pkg/util/semaphore"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
@@ -96,7 +96,7 @@ func (x *FetchExtensionsAndStoreCache) ProcessExtensions(
 		span := span
 
 		tags := model.KeyValues(span.Tags)
-		if tag, exists := tags.FindByKey(zconstants.NestLevel); exists && tag.VStr == zconstants.NestLevelObject {
+		if tag, isPseudo := tags.FindByKey(zconstants.PseudoType); isPseudo && tag.VStr == string(zconstants.PseudoTypeObject) {
 			for extId, ext := range extensions {
 				ext := ext
 
@@ -170,8 +170,8 @@ func (x *FetchExtensionsAndStoreCache) ProcessExtensions(
 	return newSpans, nil
 }
 
-func objectRefFromTags(tags model.KeyValues) (util.ObjectRef, bool) {
-	var object util.ObjectRef
+func objectRefFromTags(tags model.KeyValues) (utilobject.Rich, bool) {
+	var object utilobject.Rich
 
 	assign := func(name string, field *string) bool {
 		value, ok := tags.FindByKey(name)

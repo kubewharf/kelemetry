@@ -20,8 +20,12 @@ The "Service" field selects one of the display modes:
   Additional information is available in event tags.
 - `timeline`: All events are displayed as children of the root object.
 
-By default, the whole trace is displayed, including parent and sibling objects of the searched object.
-Enabling the `exclusive` option limits the output to the subtree under the object matched in the search.
+By default, only the trace for a single object is displayed.
+More traces are available by configuration:
+
+- `full tree`: view the full tree from the deepest ancestor
+- `ancestors`: include transitive owners
+- `children`: include child objects
 
 ### Cluster
 

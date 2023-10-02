@@ -24,7 +24,7 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/aggregator/eventdecorator"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/resourcetagger"
 	"github.com/kubewharf/kelemetry/pkg/manager"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 func init() {
@@ -71,7 +71,7 @@ func (d *eventTagDecorator) Init() error {
 func (d *eventTagDecorator) Start(ctx context.Context) error { return nil }
 func (d *eventTagDecorator) Close(ctx context.Context) error { return nil }
 
-func (d *eventTagDecorator) Decorate(ctx context.Context, object util.ObjectRef, event *aggregatorevent.Event) {
+func (d *eventTagDecorator) Decorate(ctx context.Context, object utilobject.Rich, event *aggregatorevent.Event) {
 	if event == nil {
 		return
 	}

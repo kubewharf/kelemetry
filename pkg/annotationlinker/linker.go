@@ -17,17 +17,19 @@ package annotationlinker
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator/linker"
 	"github.com/kubewharf/kelemetry/pkg/k8s"
 	"github.com/kubewharf/kelemetry/pkg/k8s/discovery"
 	"github.com/kubewharf/kelemetry/pkg/k8s/objectcache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
-	"github.com/kubewharf/kelemetry/pkg/util"
+	"github.com/kubewharf/kelemetry/pkg/metrics"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
+	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
 func init() {
@@ -59,7 +61,8 @@ func (ctrl *controller) Init() error                     { return nil }
 func (ctrl *controller) Start(ctx context.Context) error { return nil }
 func (ctrl *controller) Close(ctx context.Context) error { return nil }
 
-func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) *util.ObjectRef {
+func (ctrl *controller) LinkerName() string { return "annotation-linker" }
+func (ctrl *controller) Lookup(ctx context.Context, object utilobject.Rich) ([]linker.LinkerResult, error) {
 	raw := object.Raw
 
 	logger := ctrl.Logger.WithFields(object.AsFields("object"))
@@ -68,16 +71,15 @@ func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) *util
 		logger.Debug("Fetching dynamic object")
 
 		var err error
-		raw, err = ctrl.ObjectCache.Get(ctx, object)
+		raw, err = ctrl.ObjectCache.Get(ctx, object.VersionedKey)
 
 		if err != nil {
-			logger.WithError(err).Error("cannot fetch object value")
-			return nil
+			return nil, metrics.LabelError(fmt.Errorf("cannot fetch object value: %w", err), "FetchCache")
 		}
 
 		if raw == nil {
 			logger.Debug("object no longer exists")
-			return nil
+			return nil, nil
 		}
 	}
 
@@ -85,29 +87,22 @@ func (ctrl *controller) Lookup(ctx context.Context, object util.ObjectRef) *util
 		ref := &ParentLink{}
 		err := json.Unmarshal([]byte(ann), ref)
 		if err != nil {
-			logger.WithError(err).Error("cannot parse ParentLink annotation")
-			return nil
+			return nil, metrics.LabelError(fmt.Errorf("cannot parse ParentLink annotation: %w", err), "ParseAnnotation")
 		}
 
 		if ref.Cluster == "" {
 			ref.Cluster = object.Cluster
 		}
 
-		objectRef := &util.ObjectRef{
-			Cluster: ref.Cluster,
-			GroupVersionResource: schema.GroupVersionResource{
-				Group:    ref.GroupVersionResource.Group,
-				Version:  ref.GroupVersionResource.Version,
-				Resource: ref.GroupVersionResource.Resource,
-			},
-			Namespace: ref.Namespace,
-			Name:      ref.Name,
-			Uid:       ref.Uid,
-		}
-		logger.WithField("parent", objectRef).Debug("Resolved parent")
+		objectRef := ref.ToRich()
+		logger.WithFields(objectRef.AsFields("parent")).Debug("Resolved parent")
 
-		return objectRef
+		return []linker.LinkerResult{{
+			Object:  objectRef,
+			Role:    zconstants.LinkRoleParent,
+			DedupId: "annotation",
+		}}, nil
 	}
 
-	return nil
+	return nil, nil
 }

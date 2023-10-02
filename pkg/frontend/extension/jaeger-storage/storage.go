@@ -34,8 +34,8 @@ import (
 
 	"github.com/kubewharf/kelemetry/pkg/frontend/extension"
 	"github.com/kubewharf/kelemetry/pkg/manager"
-	"github.com/kubewharf/kelemetry/pkg/util"
 	utiljaeger "github.com/kubewharf/kelemetry/pkg/util/jaeger"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 func init() {
@@ -195,7 +195,7 @@ func (provider *Provider) MaxConcurrency() int         { return provider.maxConc
 
 func (provider *Provider) FetchForObject(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Rich,
 	mainTags model.KeyValues,
 	start, end time.Time,
 ) (*extension.FetchResult, error) {
@@ -211,7 +211,7 @@ func (provider *Provider) FetchForObject(
 
 func (provider *Provider) FetchForVersion(
 	ctx context.Context,
-	object util.ObjectRef,
+	object utilobject.Rich,
 	resourceVersion string,
 	mainTags model.KeyValues,
 	start, end time.Time,
@@ -229,7 +229,7 @@ func (provider *Provider) FetchForVersion(
 	)
 }
 
-func objectTemplateArgs(object util.ObjectRef) map[string]any {
+func objectTemplateArgs(object utilobject.Rich) map[string]any {
 	var objectApiPath string
 	if object.Group == "" {
 		objectApiPath = fmt.Sprintf("/api/%s", object.Version)
@@ -248,8 +248,8 @@ func objectTemplateArgs(object util.ObjectRef) map[string]any {
 		"group":         object.Group,
 		"version":       object.Version,
 		"resource":      object.Resource,
-		"groupVersion":  object.GroupVersionResource.GroupVersion().String(),
-		"groupResource": object.GroupVersionResource.GroupResource().String(),
+		"groupVersion":  object.GroupVersion().String(),
+		"groupResource": object.GroupResource().String(),
 		"namespace":     object.Namespace,
 		"name":          object.Name,
 		"objectApiPath": objectApiPath,

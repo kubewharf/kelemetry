@@ -17,9 +17,9 @@ package objectspandecorator
 import (
 	"context"
 
-	"github.com/kubewharf/kelemetry/pkg/util"
+	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
 type Decorator interface {
-	Decorate(ctx context.Context, object util.ObjectRef, traceSource string, tags map[string]string)
+	Decorate(ctx context.Context, object utilobject.Rich, traceSource string, tags map[string]string)
 }
