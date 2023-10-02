@@ -5,27 +5,29 @@ set -euo pipefail
 cd $(dirname $0)
 
 if [[ ! -v DISPLAY_MODES ]]; then
-	export DISPLAY_MODES="00000000 20000000"
+	export DISPLAY_MODES="01000000 21000000"
 fi
 
 run_test() {
 	local test_name=$1
-	source ${test_name}/curl-params.sh
+
+	local tmpdir=$(mktemp -d)
 
 	if [[ ! -v IS_RERUN ]]; then
-		bash ${test_name}/client.sh
+		bash -x ${test_name}/client.sh
 	fi
 
+	source ${test_name}/curl-params.sh
 	curl -i -G --data-urlencode ts="$(date --iso-8601=seconds)" \
 		--data-urlencode cluster=${cluster} \
 		--data-urlencode group=${group} \
 		--data-urlencode resource=${resource} \
 		--data-urlencode namespace=${namespace} \
 		--data-urlencode name=${name} \
-		-o curl-output.http\
+		-o ${tmpdir}/curl-output.http \
 		localhost:8080/redirect
 
-	local full_trace_id=$(grep -P "^Location: /trace/" curl-output.http | cut -d/ -f3 | tr -d '\r')
+	local full_trace_id=$(grep -P "^Location: /trace/" ${tmpdir}/curl-output.http | cut -d/ -f3 | tr -d '\r')
 	if [[ -z $full_trace_id ]]; then
 		echo "Trace not found for the parameters"
 		cat curl-output.http
@@ -41,8 +43,9 @@ run_test() {
 		done
 	fi
 
-	local test_mode_trace_id=ff20000000${fixed_id}
-	MODE_TRACE_ID=${test_mode_trace_id} TEST_DIR=$(realpath ${test_name}) node validate-bootstrap
+	local test_mode_trace_id=ff21000000${fixed_id}
+	curl -o ${tmpdir}/${test_mode_trace_id}.json localhost:16686/api/traces/${test_mode_trace_id}
+	go run github.com/itchyny/gojq/cmd/gojq -f ${test_name}/validate.jq ${tmpdir}/${test_mode_trace_id}.json
 }
 
 for client in */client.sh; do

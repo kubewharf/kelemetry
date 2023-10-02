@@ -9,4 +9,4 @@ sleep 5
 kubectl scale deployment demo --replicas=2
 sleep 5
 kubectl delete deployment demo
-sleep 30
+sleep 10

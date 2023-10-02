@@ -1,8 +1,0 @@
-HTTP/1.1 302 Found
-Content-Type: text/html; charset=utf-8
-Location: /trace/ff00000000e1e3e74c4cbc0f1cf87a7e
-Date: Wed, 23 Aug 2023 02:44:39 GMT
-Content-Length: 62
-
-<a href="/trace/ff00000000e1e3e74c4cbc0f1cf87a7e">Found</a>.
-
