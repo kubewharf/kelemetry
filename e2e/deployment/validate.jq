@@ -1,44 +1,26 @@
-def assert(msg; condition):
-  if condition then . else error(msg) end
-;
-
-def assertEq(msg; left; right):
-  assert(
-    msg + " (" + (left | @json) + " != " + (right | @json) + ")";
-    left == right)
-;
-
-def root($spans):
-  $spans
-  | map(select(.references | length == 0))
-  | assertEq("only one root span"; length; 1)
-  | .[0]
-;
-
-def children($spans; $spanId):
-  $spans
-  | map(select(.references | any(.spanID == $spanId)))
-;
+include "assert";
+include "graph";
 
 .data[0]
 | ._ = (
   # check tags
   .spans
-    | root(.)
+    | root
     | .tags | from_entries
     | assertEq("root span is deployment"; .resource; "deployments")
     | assertEq("root span has the correct name"; .name; "demo")
-)  | ._ = (
+) | ._ = (
   .spans
-    | root(.).logs
+    | root.logs
     | map(.fields |= from_entries)
     | assert(
-      "delete operation was logged";
-      any(.fields.audit == "kubernetes-admin delete")
+      "delete operation was logged (" + (map(.fields.audit) | @json) + ")";
+      any(.fields.audit != null and (.fields.audit | endswith(" delete")))
     )
     | assertEq(
       "delete operation contains snapshot"; "demo";
-      .[] | select(.fields.audit == "kubernetes-admin delete")
+      .[]
+        | select(.fields.audit != null and (.fields.audit | endswith(" delete")))
         | .fields.snapshot
         | fromjson
         | .metadata.name
@@ -48,13 +30,13 @@ def children($spans; $spanId):
       any(.fields.audit == "system:serviceaccount:kube-system:deployment-controller update status")
     )
     | assert(
-      "status update contains diff";
+      "status update contains diff (" + (map(.fields.audit) | @json) + ")";
       map(select(.fields.diff))
         | any(.fields.diff | contains("status.observedGeneration 1 -> 2"))
     )
-)  | ._ = (
+) | ._ = (
   .spans
-    | children(.; root(.).spanID)
+    | children(root.spanID)
     | assertEq("there are two child replicasets"; length; 2)
 )
 | null

@@ -188,7 +188,7 @@ local-docker-build:
 	cp hack/tfconfig.yaml output
 	docker build --build-arg BIN_FILE=kelemetry --build-arg TFCONFIG=tfconfig.yaml -f ./hack/local.Dockerfile -t kelemetry:local output
 
-e2e: local-docker-build kind
+e2e: local-docker-build
 	make quickstart COMPOSE_COMMAND='down --remove-orphans --volumes' KELEMETRY_IMAGE=kelemetry:local
 	make quickstart COMPOSE_COMMAND='up --build -d --remove-orphans' KELEMETRY_IMAGE=kelemetry:local
 	bash e2e/run-all.sh
