@@ -18,13 +18,15 @@ package kelemetry_pkg
 import (
 	_ "github.com/kubewharf/kelemetry/pkg/aggregator/aggregatorevent"
 	_ "github.com/kubewharf/kelemetry/pkg/aggregator/eventdecorator/eventtagger"
+	_ "github.com/kubewharf/kelemetry/pkg/aggregator/linker/annotation"
 	_ "github.com/kubewharf/kelemetry/pkg/aggregator/linker/job/local"
 	_ "github.com/kubewharf/kelemetry/pkg/aggregator/linker/job/worker"
+	_ "github.com/kubewharf/kelemetry/pkg/aggregator/linker/owner"
+	_ "github.com/kubewharf/kelemetry/pkg/aggregator/linker/rule"
 	_ "github.com/kubewharf/kelemetry/pkg/aggregator/objectspandecorator/resourcetagger"
 	_ "github.com/kubewharf/kelemetry/pkg/aggregator/spancache/etcd"
 	_ "github.com/kubewharf/kelemetry/pkg/aggregator/spancache/local"
 	_ "github.com/kubewharf/kelemetry/pkg/aggregator/tracer/otel"
-	_ "github.com/kubewharf/kelemetry/pkg/annotationlinker"
 	_ "github.com/kubewharf/kelemetry/pkg/audit"
 	_ "github.com/kubewharf/kelemetry/pkg/audit/consumer"
 	_ "github.com/kubewharf/kelemetry/pkg/audit/dump"
@@ -58,5 +60,4 @@ import (
 	_ "github.com/kubewharf/kelemetry/pkg/kelemetrix/defaults/tags"
 	_ "github.com/kubewharf/kelemetry/pkg/metrics/noop"
 	_ "github.com/kubewharf/kelemetry/pkg/metrics/prometheus"
-	_ "github.com/kubewharf/kelemetry/pkg/ownerlinker"
 )

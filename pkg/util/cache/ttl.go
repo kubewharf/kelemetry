@@ -46,7 +46,7 @@ func NewTtlOnce(ttl time.Duration, clock clock.Clock) *TtlOnce {
 	return &TtlOnce{
 		ttl:          ttl,
 		clock:        clock,
-		wakeupCh:     make(chan struct{}),
+		wakeupCh:     make(chan struct{}, 1),
 		cleanupQueue: channel.NewDeque[cleanupEntry](16),
 		data:         map[string]any{},
 	}
@@ -60,6 +60,11 @@ func (cache *TtlOnce) Add(key string, value any) {
 		cache.data[key] = value
 		expiry := cache.clock.Now().Add(cache.ttl)
 		cache.cleanupQueue.LockedPushBack(cleanupEntry{key: key, expiry: expiry})
+
+		select {
+		case cache.wakeupCh <- struct{}{}:
+		default:
+		}
 	}
 }
 
@@ -85,8 +90,11 @@ func (cache *TtlOnce) RunCleanupLoop(ctx context.Context, logger logrus.FieldLog
 		wakeup := cache.wakeupCh
 		var nextExpiryCh <-chan time.Time
 		if expiry, hasNext := cache.peekExpiry(); hasNext {
-			nextExpiryCh = cache.clock.After(expiry.Sub(cache.clock.Now()) + time.Second) // +1s to mitigate race conditions
-			wakeup = nil
+			timeout := expiry.Sub(cache.clock.Now()) + time.Second
+			if timeout > 0 {
+				nextExpiryCh = cache.clock.After(timeout) // +1s to mitigate race conditions
+				wakeup = nil
+			}
 		}
 
 		select {

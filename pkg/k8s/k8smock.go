@@ -28,6 +28,9 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+
+	kelemetryversioned "github.com/kubewharf/kelemetry/pkg/crds/client/clientset/versioned"
+	kelemetryfake "github.com/kubewharf/kelemetry/pkg/crds/client/clientset/versioned/fake"
 )
 
 type MockClients struct {
@@ -55,6 +58,7 @@ type MockClient struct {
 	singleFakeGuard bool
 	dynamicClient   *dynamicfake.FakeDynamicClient
 	k8sClient       *k8sfake.Clientset
+	kelemetryClient *kelemetryfake.Clientset
 }
 
 func (client *MockClient) BindKlog(verbosity int32) {
@@ -96,6 +100,17 @@ func (client *MockClient) KubernetesClient() kubernetes.Interface {
 		client.k8sClient = k8sfake.NewSimpleClientset(client.Objects...)
 	}
 	return client.k8sClient
+}
+
+func (client *MockClient) KelemetryClient() kelemetryversioned.Interface {
+	client.mutex.Lock()
+	defer client.mutex.Unlock()
+
+	if client.kelemetryClient == nil {
+		client.acquireSingleFake()
+		client.kelemetryClient = kelemetryfake.NewSimpleClientset(client.Objects...)
+	}
+	return client.kelemetryClient
 }
 
 func (client *MockClient) InformerFactory() informers.SharedInformerFactory {

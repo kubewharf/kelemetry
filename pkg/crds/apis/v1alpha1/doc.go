@@ -1,5 +1,3 @@
-// Copyright 2023 The Kelemetry Authors.
-//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -12,18 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package reflectutil
+// +k8s:deepcopy-gen=package
+// +groupName=kelemetry.kubewharf.io
 
-import "reflect"
-
-func TypeOf[T any]() reflect.Type {
-	array := [0]T{}
-	arrayTy := reflect.TypeOf(array)
-	return arrayTy.Elem()
-}
-
-func ZeroOf[T any]() (_ T) { return }
-
-func Identity[T any](t T) T { return t }
-
-func Box[T any](t T) *T { return &t }
+package v1alpha1
