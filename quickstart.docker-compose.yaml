@@ -70,6 +70,7 @@ services:
       "--diff-cache-wrapper-enable",
       "--diff-controller-leader-election-enable=false",
       "--event-informer-leader-election-enable=false",
+      "--linker-worker-count=8",
       "--span-cache=etcd",
       "--span-cache-etcd-endpoints=etcd:2379",
       "--tracer-otel-endpoint=jaeger-collector:4317",

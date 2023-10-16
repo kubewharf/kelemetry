@@ -20,6 +20,7 @@ import (
 	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	utilmarshal "github.com/kubewharf/kelemetry/pkg/util/marshal"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
@@ -31,11 +32,10 @@ func init() {
 	)
 }
 
-// Deletes spans matching MatchesNestLevel and brings their children one level up.
+// Deletes spans matching MatchesPseudoType and brings their children one level up.
 type ExtractNestingVisitor struct {
-	// NestLevels returns true if the span should be deleted.
-	// It is only called on spans with the tag zconstants.Nesting
-	MatchesNestLevel StringFilter `json:"matchesNestLevel"`
+	// Filters the trace sources to delete.
+	MatchesPseudoType utilmarshal.StringFilter `json:"matchesPseudoType"`
 }
 
 func (ExtractNestingVisitor) Kind() string { return "ExtractNestingVisitor" }
@@ -46,8 +46,8 @@ func (visitor ExtractNestingVisitor) Enter(tree *tftree.SpanTree, span *model.Sp
 		return visitor
 	}
 
-	if nestLevel, ok := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel); ok {
-		if visitor.MatchesNestLevel.Test(nestLevel.AsString()) {
+	if pseudoType, ok := model.KeyValues(span.Tags).FindByKey(zconstants.PseudoType); ok {
+		if visitor.MatchesPseudoType.Matches(pseudoType.AsString()) {
 			childrenMap := tree.Children(span.SpanID)
 			childrenCopy := make([]model.SpanID, 0, len(childrenMap))
 			for childId := range childrenMap {

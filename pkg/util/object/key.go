@@ -18,13 +18,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jaegertracing/jaeger/model"
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/sets"
-
-	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
 type Key struct {
@@ -78,39 +74,6 @@ func FromMap(tags map[string]string) (key Key, ok bool) {
 	}
 
 	return key, true
-}
-
-func FromSpan(span *model.Span) (Key, bool) {
-	tags := model.KeyValues(span.Tags)
-	traceSource, hasTraceSource := tags.FindByKey(zconstants.TraceSource)
-	if !hasTraceSource || traceSource.VStr != zconstants.TraceSourceObject {
-		return Key{}, false
-	}
-
-	cluster, _ := tags.FindByKey("cluster")
-	group, _ := tags.FindByKey("group")
-	resource, _ := tags.FindByKey("resource")
-	namespace, _ := tags.FindByKey("namespace")
-	name, _ := tags.FindByKey("name")
-	key := Key{
-		Cluster:   cluster.VStr,
-		Group:     group.VStr,
-		Resource:  resource.VStr,
-		Namespace: namespace.VStr,
-		Name:      name.VStr,
-	}
-	return key, true
-}
-
-func FromSpans(spans []*model.Span) sets.Set[Key] {
-	keys := sets.New[Key]()
-
-	for _, span := range spans {
-		if key, ok := FromSpan(span); ok {
-			keys.Insert(key)
-		}
-	}
-	return keys
 }
 
 type VersionedKey struct {

@@ -16,7 +16,9 @@
 // for span transformation in the frontend storage plugin.
 package zconstants
 
-import "time"
+import (
+	"time"
+)
 
 // All tags with this prefix are not rendered.
 const Prefix = "zzz-"
@@ -26,10 +28,23 @@ const SpanName = Prefix + "kelemetryName"
 
 // Indicates that the current span is a pseudospan that can be folded or flattened.
 // The value is the folding type.
-const NestLevel = Prefix + "nestingLevel"
+const PseudoType = Prefix + "pseudoType"
+
+// Indicates that the current span is not pseudo.
+// Used to optimize trace listing.
+//
+// This constant is used as both tag key and value.
+const NotPseudo = Prefix + "notPseudo"
+
+type PseudoTypeValue string
 
 const (
-	NestLevelObject = "object"
+	// Root span in an object trace.
+	PseudoTypeObject PseudoTypeValue = "object"
+	// Indicate that another trace shall be included.
+	PseudoTypeLink PseudoTypeValue = "link"
+	// A virtual span synthesized in the frontend when link class is nonempty.
+	PseudoTypeLinkClass PseudoTypeValue = "linkClass"
 )
 
 // Identifies that the span represents an actual event (rather than as a pseudospan).
@@ -37,11 +52,14 @@ const TraceSource = Prefix + "traceSource"
 
 const (
 	TraceSourceObject = "object"
-	TraceSourceAudit  = "audit"
-	TraceSourceEvent  = "event"
+
+	TraceSourceAudit = "audit"
+	TraceSourceEvent = "event"
 )
 
 func KnownTraceSources(withPseudo bool) []string {
+	numPseudoTraceSources := 1
+
 	traceSources := []string{
 		// pseudo
 		TraceSourceObject,
@@ -52,7 +70,7 @@ func KnownTraceSources(withPseudo bool) []string {
 	}
 
 	if !withPseudo {
-		traceSources = traceSources[1:]
+		traceSources = traceSources[numPseudoTraceSources:]
 	}
 
 	return traceSources

@@ -18,8 +18,17 @@ import (
 	"context"
 
 	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
+	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
 type Linker interface {
-	Lookup(ctx context.Context, object utilobject.Rich) *utilobject.Rich
+	LinkerName() string
+	Lookup(ctx context.Context, object utilobject.Rich) ([]LinkerResult, error)
+}
+
+type LinkerResult struct {
+	Object  utilobject.Rich
+	Role    zconstants.LinkRoleValue
+	Class   string
+	DedupId string
 }
