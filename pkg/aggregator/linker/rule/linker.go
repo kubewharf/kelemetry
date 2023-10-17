@@ -89,8 +89,8 @@ type listerEntry struct {
 
 var _ manager.Component = &Controller{}
 
-func (ctrl *Controller) Options() manager.Options        { return &ctrl.options }
-func (ctrl *Controller) Init() error                     {
+func (ctrl *Controller) Options() manager.Options { return &ctrl.options }
+func (ctrl *Controller) Init() error {
 	ctrl.listers = make(map[string]*listerEntry)
 	return nil
 }
