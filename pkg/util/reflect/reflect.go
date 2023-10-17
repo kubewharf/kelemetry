@@ -23,3 +23,5 @@ func TypeOf[T any]() reflect.Type {
 }
 
 func ZeroOf[T any]() (_ T) { return }
+
+func Identity[T any](t T) T { return t }

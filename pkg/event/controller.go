@@ -324,7 +324,7 @@ func (ctrl *controller) handleEvent(ctx context.Context, event *corev1.Event) {
 			Version: gvr.Version,
 		},
 		Uid: event.InvolvedObject.UID,
-	}, aggregatorEvent, nil); err != nil {
+	}, aggregatorEvent); err != nil {
 		logger.WithError(err).Error("Cannot send trace")
 		metric.Error = metrics.LabelError(err, "SendTrace")
 		return
