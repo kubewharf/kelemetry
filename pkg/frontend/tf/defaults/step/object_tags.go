@@ -31,6 +31,7 @@ func init() {
 	)
 }
 
+// Copy tags from child spans to the object.
 type ObjectTagsVisitor struct {
 	ResourceTags []string `json:"resourceTags"`
 }
@@ -38,7 +39,8 @@ type ObjectTagsVisitor struct {
 func (ObjectTagsVisitor) Kind() string { return "ObjectTagsVisitor" }
 
 func (visitor ObjectTagsVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
-	if tagKv, hasTag := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel); !hasTag || tagKv.VStr != zconstants.NestLevelObject {
+	if tagKv, isPseudo := model.KeyValues(span.Tags).FindByKey(zconstants.PseudoType); !isPseudo ||
+		tagKv.VStr != string(zconstants.PseudoTypeObject) {
 		return visitor
 	}
 	if _, hasTag := model.KeyValues(span.Tags).FindByKey("resource"); !hasTag {
@@ -61,10 +63,14 @@ func (visitor ObjectTagsVisitor) findTagRecursively(tree *tftree.SpanTree, span 
 
 	for childId := range tree.Children(span.SpanID) {
 		childSpan := tree.Span(childId)
-		if tagKv, hasTag := model.KeyValues(childSpan.Tags).FindByKey(zconstants.NestLevel); hasTag &&
-			tagKv.VStr == zconstants.NestLevelObject {
-			continue
+		{
+			tagKv, isPseudo := model.KeyValues(childSpan.Tags).FindByKey(zconstants.PseudoType)
+			if isPseudo && tagKv.VStr == string(zconstants.PseudoTypeObject) {
+				// do not copy from another object
+				continue
+			}
 		}
+
 		kv := visitor.findTagRecursively(tree, childSpan, tagKey)
 		if len(kv.Key) > 0 {
 			span.Tags = append(span.Tags, kv)

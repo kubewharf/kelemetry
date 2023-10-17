@@ -54,6 +54,7 @@ services:
       - 127.0.0.1:17272:17271
     volumes:
       - badger:/mnt/badger
+    restart: always
 
   # Web frontend for raw trace database view.
   jaeger-query-raw:

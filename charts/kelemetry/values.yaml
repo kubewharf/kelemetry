@@ -323,6 +323,9 @@ aggregator:
 
 # Linkers associated objects together.
 linkers:
+  # Maximum number of concurrent link jobs.
+  # Each link job runs each of the linkers for a single object in series.
+  workerCount: 8
   # Enable the owner linker, which links objects based on native owner references.
   ownerReference: true
   # Enable the annotation linker, which links objects based on the `kelemetry.kubewharf.io/parent-link` annotation.

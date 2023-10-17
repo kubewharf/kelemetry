@@ -96,7 +96,7 @@ func (x *FetchExtensionsAndStoreCache) ProcessExtensions(
 		span := span
 
 		tags := model.KeyValues(span.Tags)
-		if tag, exists := tags.FindByKey(zconstants.NestLevel); exists && tag.VStr == zconstants.NestLevelObject {
+		if tag, isPseudo := tags.FindByKey(zconstants.PseudoType); isPseudo && tag.VStr == string(zconstants.PseudoTypeObject) {
 			for extId, ext := range extensions {
 				ext := ext
 
