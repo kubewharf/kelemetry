@@ -115,10 +115,9 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 		Modifiers map[tfconfig.Id]modifierConfig `json:"modifiers"`
 		Batches   []Batch                        `json:"batches"`
 		Configs   []struct {
-			Id         tfconfig.Id     `json:"id"`
-			Name       string          `json:"name"`
-			UseSubtree bool            `json:"useSubtree"`
-			Steps      json.RawMessage `json:"steps"`
+			Id    tfconfig.Id     `json:"id"`
+			Name  string          `json:"name"`
+			Steps json.RawMessage `json:"steps"`
 		} `json:"configs"`
 		DefaultConfig tfconfig.Id `json:"defaultConfig"`
 	}
@@ -157,7 +156,8 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 			priority: modifierConfig.Priority,
 			fn: func(config *tfconfig.Config) {
 				config.Id |= bitmask
-				config.Name += fmt.Sprintf(" [%s]", displayName)
+				config.ModifierNames.Insert(displayName)
+				config.RecomputeName()
 				modifier.Modify(config)
 			},
 		})
@@ -183,10 +183,12 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 		}
 
 		config := &tfconfig.Config{
-			Id:         raw.Id,
-			Name:       raw.Name,
-			UseSubtree: raw.UseSubtree,
-			Steps:      steps,
+			Id:            raw.Id,
+			Name:          raw.Name,
+			BaseName:      raw.Name,
+			ModifierNames: sets.New[string](),
+			LinkSelector:  tfconfig.ConstantLinkSelector(false),
+			Steps:         steps,
 		}
 
 		p.register(registeredConfig{config: config, modifierClasses: sets.New[string]()})

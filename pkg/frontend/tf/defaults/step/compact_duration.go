@@ -45,7 +45,7 @@ func (visitor CompactDurationVisitor) Enter(tree *tftree.SpanTree, span *model.S
 func (visitor CompactDurationVisitor) Exit(tree *tftree.SpanTree, span *model.Span) {
 	// use exit hook to use compact results of children
 
-	if _, hasNestLevel := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel); !hasNestLevel {
+	if _, isPseudo := model.KeyValues(span.Tags).FindByKey(zconstants.PseudoType); !isPseudo {
 		return
 	}
 

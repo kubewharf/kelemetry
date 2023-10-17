@@ -15,6 +15,7 @@
 package tftree
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/jaegertracing/jaeger/model"
@@ -66,6 +67,34 @@ func NewSpanTree(spans []*model.Span) *SpanTree {
 	}
 
 	return tree
+}
+
+func (tree *SpanTree) Clone() (*SpanTree, error) {
+	copiedSpans := make([]*model.Span, 0, len(tree.spanMap))
+	for _, span := range tree.spanMap {
+		spanCopy, err := CopySpan(span)
+		if err != nil {
+			return nil, err
+		}
+
+		copiedSpans = append(copiedSpans, spanCopy)
+	}
+
+	return NewSpanTree(copiedSpans), nil
+}
+
+func CopySpan(span *model.Span) (*model.Span, error) {
+	spanJson, err := json.Marshal(span)
+	if err != nil {
+		return nil, err
+	}
+
+	var spanCopy *model.Span
+	if err := json.Unmarshal(spanJson, &spanCopy); err != nil {
+		return nil, err
+	}
+
+	return spanCopy, nil
 }
 
 func (tree *SpanTree) Span(id model.SpanID) *model.Span { return tree.spanMap[id] }
@@ -133,7 +162,10 @@ func (subtree spanNode) visit(visitor TreeVisitor) {
 		panic("cannot visit nonexistent node in tree")
 	}
 
-	subvisitor := visitor.Enter(subtree.tree, subtree.node)
+	var subvisitor TreeVisitor
+	if visitor != nil {
+		subvisitor = visitor.Enter(subtree.tree, subtree.node)
+	}
 	// enter before visitorStack is populated to allow removal
 
 	if _, stillExists := subtree.tree.spanMap[subtree.node.SpanID]; !stillExists {
@@ -169,7 +201,10 @@ func (subtree spanNode) visit(visitor TreeVisitor) {
 
 	delete(subtree.tree.visitorStack, subtree.node.SpanID)
 
-	visitor.Exit(subtree.tree, subtree.node)
+	if visitor != nil {
+		visitor.Exit(subtree.tree, subtree.node)
+	}
+
 	if _, stillExists := subtree.tree.spanMap[subtree.node.SpanID]; !stillExists {
 		// deleted during exit
 		return
@@ -279,6 +314,24 @@ func (tree *SpanTree) Delete(spanId model.SpanID) {
 		}
 
 		delete(tree.childrenMap, spanId)
+	}
+}
+
+// Adds all spans in a tree as a subtree in this span.
+//
+// TODO FIXME: when the two trees have overlapping span IDs, this does not work correctly.
+func (tree *SpanTree) AddTree(childTree *SpanTree, parentId model.SpanID) {
+	if tree == childTree {
+		panic("cannot add tree to itself")
+	}
+
+	tree.addSubtree(parentId, childTree, childTree.Root.SpanID)
+}
+
+func (tree *SpanTree) addSubtree(parentId model.SpanID, otherTree *SpanTree, subroot model.SpanID) {
+	tree.Add(otherTree.Span(subroot), parentId)
+	for child := range otherTree.Children(subroot) {
+		tree.addSubtree(subroot, otherTree, child)
 	}
 }
 

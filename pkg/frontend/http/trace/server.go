@@ -106,7 +106,7 @@ func (server *server) handleTrace(ctx *gin.Context, metric *requestMetric) (code
 	}
 
 	if query.DisplayMode == "" {
-		query.DisplayMode = "tracing [exclusive]"
+		query.DisplayMode = "tracing"
 	}
 
 	trace, code, err := server.findTrace(metric, query.DisplayMode, query)

@@ -41,7 +41,7 @@ func (visitor PruneChildlessVisitor) Enter(tree *tftree.SpanTree, span *model.Sp
 
 // Prune in postorder traversal to recursively remove higher pseudospans without leaves.
 func (visitor PruneChildlessVisitor) Exit(tree *tftree.SpanTree, span *model.Span) {
-	if _, hasTag := model.KeyValues(span.Tags).FindByKey(zconstants.NestLevel); hasTag {
+	if _, isPseudo := model.KeyValues(span.Tags).FindByKey(zconstants.PseudoType); isPseudo {
 		if len(tree.Children(span.SpanID)) == 0 && span.SpanID != tree.Root.SpanID {
 			tree.Delete(span.SpanID)
 		}

@@ -1,3 +1,8 @@
+run:
+  timeout: 5m
+  skip-dirs:
+    - tools
+
 linters:
   enable:
     - asasalint

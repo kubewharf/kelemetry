@@ -34,6 +34,8 @@ else
 	LOG_FILE_ARG ?=
 endif
 
+LINKER_WORKER_COUNT ?= 1
+
 CONTROLLERS ?= audit-consumer,audit-producer,audit-webhook,event-informer,annotation-linker,owner-linker,resource-object-tag,resource-event-tag,diff-decorator,diff-controller,diff-api,pprof,jaeger-storage-plugin,jaeger-redirect-server,kelemetrix
 ifeq ($(CONTROLLERS),)
 	ENABLE_ARGS ?=
@@ -66,10 +68,10 @@ else
 	TAG := $(shell git describe --always)-$(shell git diff --exit-code >/dev/null && echo clean || (echo dirty- && git ls-files | xargs cat --show-all | crc32 /dev/stdin))
 endif
 
-.PHONY: run dump-rotate test usage dot kind stack pre-commit
+.PHONY: run dump-rotate test usage dot kind stack pre-commit fmt local-docker-build e2e
 run: output/kelemetry $(DUMP_ROTATE_DEP)
 	GIN_MODE=debug \
-		./output/kelemetry \
+		$(RUN_PREFIX) ./output/kelemetry $(RUN_SUFFIX) \
 		--mq=local \
 		--audit-consumer-partition=$(PARTITIONS) \
 		--http-address=0.0.0.0 \
@@ -85,6 +87,7 @@ run: output/kelemetry $(DUMP_ROTATE_DEP)
 		--log-file=$(LOG_FILE) \
 		--aggregator-pseudo-span-global-tags=runId=$(RUN_ID) \
 		--aggregator-event-span-global-tags=run=$(RUN_ID) \
+		--linker-worker-count=$(LINKER_WORKER_COUNT) \
 		--pprof-addr=:6030 \
 		--diff-cache=$(ETCD_OR_LOCAL) \
 		--diff-cache-etcd-endpoints=127.0.0.1:2379 \
@@ -95,6 +98,7 @@ run: output/kelemetry $(DUMP_ROTATE_DEP)
 		--span-cache-etcd-endpoints=127.0.0.1:2379 \
 		--tracer-otel-endpoint=$(OTEL_EXPORTER_OTLP_ENDPOINT) \
 		--tracer-otel-insecure \
+		--object-cache-size=16777216 \
 		--jaeger-cluster-names=$(CLUSTER_NAME) \
 		--jaeger-storage-plugin-address=0.0.0.0:17271 \
 		--jaeger-backend=jaeger-storage \
@@ -117,15 +121,15 @@ test:
 	go test -v -race -coverpkg=./pkg/... -coverprofile=coverage.out $(INTEGRATION_ARG) $(BUILD_ARGS) ./pkg/...
 
 usage: output/kelemetry
-	./output/kelemetry --usage=USAGE.txt
+	$(RUN_PREFIX) ./output/kelemetry $(RUN_SUFFIX) --usage=USAGE.txt
 
 dot: output/kelemetry
-	./output/kelemetry --dot=depgraph.dot
+	$(RUN_PREFIX) ./output/kelemetry $(RUN_SUFFIX) --dot=depgraph.dot
 	dot -Tpng depgraph.dot >depgraph.png
 	dot -Tsvg depgraph.dot >depgraph.svg
 
 output/kelemetry: go.mod go.sum $(shell find -type f -name "*.go")
-	go build -v $(RACE_ARG) -ldflags=$(LDFLAGS) -o $@ $(BUILD_ARGS) .
+	go build -v $(RACE_ARG) -gcflags=$(GCFLAGS) -ldflags=$(LDFLAGS) -o $@ $(BUILD_ARGS) .
 
 kind:
 	kind delete cluster --name tracetest
@@ -158,6 +162,7 @@ endef
 
 export QUICKSTART_JQ_PATCH
 quickstart:
+	echo $(COMPOSE_COMMAND)
 	docker compose -f quickstart.docker-compose.yaml \
 		-f <(jq -n --arg KELEMETRY_IMAGE "$(KELEMETRY_IMAGE)" "$$QUICKSTART_JQ_PATCH") \
 		up --no-recreate --no-start
@@ -177,3 +182,13 @@ fmt:
 	golines -m140 --base-formatter=gofumpt -w .
 	goimports -l -w .
 	gci write -s standard -s default -s 'prefix(github.com/kubewharf/kelemetry)' .
+
+local-docker-build:
+	make output/kelemetry
+	cp hack/tfconfig.yaml output
+	docker build --build-arg BIN_FILE=kelemetry --build-arg TFCONFIG=tfconfig.yaml -f ./hack/local.Dockerfile -t kelemetry:local output
+
+e2e: local-docker-build
+	make quickstart COMPOSE_COMMAND='down --remove-orphans --volumes' KELEMETRY_IMAGE=kelemetry:local
+	make quickstart COMPOSE_COMMAND='up --build -d --remove-orphans' KELEMETRY_IMAGE=kelemetry:local
+	bash e2e/run-all.sh
