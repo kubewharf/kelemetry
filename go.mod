@@ -3,7 +3,7 @@ module github.com/kubewharf/kelemetry
 go 1.20
 
 require (
-	github.com/coocood/freecache v1.2.3
+	github.com/coocood/freecache v1.2.4
 	github.com/dlclark/regexp2 v1.10.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-logr/logr v1.2.4
