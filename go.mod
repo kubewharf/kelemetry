@@ -7,6 +7,7 @@ require (
 	github.com/dlclark/regexp2 v1.10.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-logr/logr v1.2.4
+	github.com/itchyny/gojq v0.12.13
 	github.com/jaegertracing/jaeger v1.49.0
 	github.com/pelletier/go-toml/v2 v2.1.0
 	github.com/prometheus/client_golang v1.16.0
@@ -22,10 +23,10 @@ require (
 	go.opentelemetry.io/otel/trace v1.18.0
 	go.uber.org/zap v1.26.0
 	google.golang.org/grpc v1.58.1
-	k8s.io/api v0.28.1
+	k8s.io/api v0.28.2
 	k8s.io/apimachinery v0.28.2
-	k8s.io/apiserver v0.28.1
-	k8s.io/client-go v0.28.1
+	k8s.io/apiserver v0.28.2
+	k8s.io/client-go v0.28.2
 	k8s.io/klog/v2 v2.100.1
 	k8s.io/utils v0.0.0-20230406110748-d93618cff8a2
 )
@@ -84,7 +85,6 @@ require (
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/hashicorp/yamux v0.1.1 // indirect
 	github.com/imdario/mergo v0.3.13 // indirect
-	github.com/itchyny/gojq v0.12.13 // indirect
 	github.com/itchyny/timefmt-go v0.1.5 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
 	github.com/jcmturner/dnsutils/v2 v2.0.0 // indirect
