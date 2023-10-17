@@ -68,7 +68,7 @@ else
 	TAG := $(shell git describe --always)-$(shell git diff --exit-code >/dev/null && echo clean || (echo dirty- && git ls-files | xargs cat --show-all | crc32 /dev/stdin))
 endif
 
-.PHONY: run dump-rotate test usage dot kind stack pre-commit
+.PHONY: run dump-rotate test usage dot kind stack pre-commit fmt local-docker-build e2e
 run: output/kelemetry $(DUMP_ROTATE_DEP)
 	GIN_MODE=debug \
 		$(RUN_PREFIX) ./output/kelemetry $(RUN_SUFFIX) \
@@ -162,6 +162,7 @@ endef
 
 export QUICKSTART_JQ_PATCH
 quickstart:
+	echo $(COMPOSE_COMMAND)
 	docker compose -f quickstart.docker-compose.yaml \
 		-f <(jq -n --arg KELEMETRY_IMAGE "$(KELEMETRY_IMAGE)" "$$QUICKSTART_JQ_PATCH") \
 		up --no-recreate --no-start
@@ -181,3 +182,13 @@ fmt:
 	golines -m140 --base-formatter=gofumpt -w .
 	goimports -l -w .
 	gci write -s standard -s default -s 'prefix(github.com/kubewharf/kelemetry)' .
+
+local-docker-build:
+	make output/kelemetry
+	cp hack/tfconfig.yaml output
+	docker build --build-arg BIN_FILE=kelemetry --build-arg TFCONFIG=tfconfig.yaml -f ./hack/local.Dockerfile -t kelemetry:local output
+
+e2e: local-docker-build
+	make quickstart COMPOSE_COMMAND='down --remove-orphans --volumes' KELEMETRY_IMAGE=kelemetry:local
+	make quickstart COMPOSE_COMMAND='up --build -d --remove-orphans' KELEMETRY_IMAGE=kelemetry:local
+	bash e2e/run-all.sh
