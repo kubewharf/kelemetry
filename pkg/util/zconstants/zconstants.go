@@ -57,23 +57,15 @@ const (
 	TraceSourceEvent = "event"
 )
 
-func KnownTraceSources(withPseudo bool) []string {
-	numPseudoTraceSources := 1
+func KnownPseudoTraceSources() []string {
+	return []string{TraceSourceObject}
+}
 
-	traceSources := []string{
-		// pseudo
-		TraceSourceObject,
-
-		// real
+func KnownNonPseudoTraceSources() []string {
+	return []string{
 		TraceSourceAudit,
 		TraceSourceEvent,
 	}
-
-	if !withPseudo {
-		traceSources = traceSources[numPseudoTraceSources:]
-	}
-
-	return traceSources
 }
 
 // Classifies the type of a log line.
