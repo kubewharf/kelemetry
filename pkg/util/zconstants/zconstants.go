@@ -47,7 +47,7 @@ const (
 	PseudoTypeLinkClass PseudoTypeValue = "linkClass"
 )
 
-// Identifies that the span represents an actual event (rather than as a pseudospan).
+// If value is not "object", identifies that the span represents an actual event (rather than as a pseudospan).
 const TraceSource = Prefix + "traceSource"
 
 const (
