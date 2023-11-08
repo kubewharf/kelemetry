@@ -26,7 +26,7 @@ run_test() {
 		-o ${tmpdir}/curl-output.http \
 		localhost:8080/redirect
 
-	if head -n1 ${tmpdir}/curl-output.http | grep '302 Found'; then
+	if ! (head -n1 ${tmpdir}/curl-output.http | grep '302 Found'); then
 		echo "Trace not found for the parameters"
 		cat curl-output.http
 		exit 1
