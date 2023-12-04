@@ -58,7 +58,7 @@ type Provider interface {
 	// `tags` contains the tags in the object pseudospan in the main trace.
 	FetchForObject(
 		ctx context.Context,
-		object utilobject.Rich,
+		object utilobject.VersionedKey,
 		tags model.KeyValues,
 		start, end time.Time,
 	) (*FetchResult, error)
@@ -73,7 +73,7 @@ type Provider interface {
 	// `tags` contains the tags in the object pseudospan in the main trace.
 	FetchForVersion(
 		ctx context.Context,
-		object utilobject.Rich,
+		object utilobject.VersionedKey,
 		resourceVersion string,
 		tags model.KeyValues,
 		start, end time.Time,
