@@ -26,6 +26,7 @@ import (
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"k8s.io/utils/clock"
 
 	jaegerbackend "github.com/kubewharf/kelemetry/pkg/frontend/backend"
 	"github.com/kubewharf/kelemetry/pkg/frontend/clusterlist"
@@ -35,6 +36,7 @@ import (
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/frontend/tracecache"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	"github.com/kubewharf/kelemetry/pkg/metrics"
 	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 	reflectutil "github.com/kubewharf/kelemetry/pkg/util/reflect"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
@@ -87,12 +89,41 @@ func (options *options) EnableFlag() *bool { return nil }
 type spanReader struct {
 	options          options
 	Logger           logrus.FieldLogger
+	Clock            clock.Clock
 	Backend          jaegerbackend.Backend
 	TraceCache       tracecache.Cache
 	ClusterList      clusterlist.Lister
 	Transformer      *transform.Transformer
 	TransformConfigs tfconfig.Provider
+
+	GetServicesMetric         *metrics.Metric[*GetServicesMetric]
+	GetOperationsMetric       *metrics.Metric[*GetOperationsMetric]
+	FindTracesMetric          *metrics.Metric[*FindTracesMetric]
+	FindTracesTimeRangeMetric *metrics.Metric[*FindTracesTimeRangeMetric]
+	GetTraceMetric            *metrics.Metric[*GetTraceMetric]
 }
+
+type GetServicesMetric struct{}
+
+func (*GetServicesMetric) MetricName() string { return "frontend_get_services" }
+
+type GetOperationsMetric struct {
+	Service string
+}
+
+func (*GetOperationsMetric) MetricName() string { return "frontend_get_operations" }
+
+type FindTracesMetric struct{}
+
+func (*FindTracesMetric) MetricName() string { return "frontend_find_traces" }
+
+type FindTracesTimeRangeMetric struct{}
+
+func (*FindTracesTimeRangeMetric) MetricName() string { return "frontend_find_traces_time_range" }
+
+type GetTraceMetric struct{}
+
+func (*GetTraceMetric) MetricName() string { return "frontend_get_trace" }
 
 func (reader *spanReader) Options() manager.Options        { return &reader.options }
 func (reader *spanReader) Init() error                     { return nil }
@@ -100,6 +131,8 @@ func (reader *spanReader) Start(ctx context.Context) error { return nil }
 func (reader *spanReader) Close(ctx context.Context) error { return nil }
 
 func (reader *spanReader) GetServices(ctx context.Context) ([]string, error) {
+	defer reader.GetServicesMetric.DeferCount(reader.Clock.Now(), &GetServicesMetric{})
+
 	configNames := []string{
 		reader.TransformConfigs.DefaultName(),
 	}
@@ -116,6 +149,8 @@ func (reader *spanReader) GetServices(ctx context.Context) ([]string, error) {
 }
 
 func (reader *spanReader) GetOperations(ctx context.Context, query spanstore.OperationQueryParameters) ([]spanstore.Operation, error) {
+	defer reader.GetOperationsMetric.DeferCount(reader.Clock.Now(), &GetOperationsMetric{Service: query.ServiceName})
+
 	clusterNames := reader.ClusterList.List()
 	operations := make([]spanstore.Operation, 0, len(clusterNames))
 	for _, verb := range clusterNames {
@@ -144,6 +179,10 @@ func (reader *spanReader) FindTraceIDs(ctx context.Context, query *spanstore.Tra
 }
 
 func (reader *spanReader) FindTraces(ctx context.Context, query *spanstore.TraceQueryParameters) ([]*model.Trace, error) {
+	defer reader.FindTracesMetric.DeferCount(reader.Clock.Now(), &FindTracesMetric{})
+
+	reader.FindTracesTimeRangeMetric.With(&FindTracesTimeRangeMetric{}).Summary(query.StartTimeMax.Sub(query.StartTimeMin).Seconds())
+
 	configName := strings.TrimPrefix(query.ServiceName, "* ")
 	config := reader.TransformConfigs.GetByName(configName)
 	if config == nil {
@@ -307,6 +346,8 @@ func (reader *spanReader) prepareCache(
 }
 
 func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (*model.Trace, error) {
+	defer reader.GetTraceMetric.DeferCount(reader.Clock.Now(), &GetTraceMetric{})
+
 	entry, err := reader.TraceCache.Fetch(ctx, cacheId.Low)
 	if err != nil {
 		return nil, fmt.Errorf("cannot lookup trace: %w", err)
