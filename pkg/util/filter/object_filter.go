@@ -44,7 +44,7 @@ func (regex *Regex) MatchString(s string) bool {
 	return match
 }
 
-func (f *ObjectFilters) Check(object utilobject.Rich) bool {
+func (f *ObjectFilters) Check(object utilobject.VersionedKey) bool {
 	if f.Cluster.Pattern != nil && !f.Cluster.MatchString(object.Cluster) {
 		return false
 	}

@@ -160,6 +160,24 @@ kube-target-cluster: {{ .Values.multiCluster.currentClusterName | default (.Valu
 {{- define "kelemetry.logging-options-raw"}}
 pprof-enable: {{.pprof}}
 log-level: {{.logLevel}}
+{{- if .metrics.enable }}
+metrics: prom
+{{- end }}
+{{- end }}
+
+{{- define "kelemetry.observe-ports" }}
+{{- if .pprof }}
+{
+  name: pprof,
+  containerPort: 6060,
+},
+{{- end }}
+{{- if .metrics.enable }}
+{
+  name: metrics,
+  containerPort: 9090,
+},
+{{- end }}
 {{- end }}
 
 {{- define "kelemetry.kube-options" }}

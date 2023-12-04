@@ -39,17 +39,12 @@ spec:
             {{- end }}
           ]
           ports: [
-            {{- if .Values.consumer.pprof }}
-            {
-              containerPort: 6060,
-              name: pprof,
-            },
-            {{- end }}
+            {{- include "kelemetry.observe-ports" .Values.consumer }}
             {{- if .Values.consumer.source.type | eq "webhook"}}
             {
-              containerPort: 8080,
               name: webhook,
-            }
+              containerPort: 8080,
+            },
             {{- end }}
           ]
           volumeMounts: [

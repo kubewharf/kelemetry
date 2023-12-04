@@ -41,12 +41,7 @@ spec:
             {{- end }}
           ]
           ports: [
-            {{- if .Values.informers.pprof }}
-            {
-              containerPort: 6060,
-              name: pprof,
-            },
-            {{- end }}
+            {{- include "kelemetry.observe-ports" .Values.informers }}
           ]
           volumeMounts: [
             {{ include "kelemetry.kubeconfig-volume-mounts" . }}
