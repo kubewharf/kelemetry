@@ -1,7 +1,7 @@
 # docker-compose setup for development setup.
 # Use quickstart.docker-compose.yaml if you just want to try out Kelemetry.
 # Use the helm chart if you want to deploy in production.
-version: "2.2"
+version: "3"
 services:
   # ETCD cache storage, only required if etcd cache is used
   etcd:
@@ -22,6 +22,10 @@ services:
     ports:
       - 2379:2379
     restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 1G
   # Web frontend for trace view.
   jaeger-query:
     image: jaegertracing/jaeger-query:1.42
@@ -55,6 +59,10 @@ services:
     volumes:
       - badger:/mnt/badger
     restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 1G
 
   # Web frontend for raw trace database view.
   jaeger-query-raw:
