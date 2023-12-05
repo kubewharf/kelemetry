@@ -237,6 +237,7 @@ func (ctrl *Controller) getCluster(ctx context.Context, cluster string) (kelemet
 		return nil, nil, err
 	}
 
+	//nolint:contextcheck // cannot pass context through generated code
 	informer := kelemetryv1a1informers.NewLinkRuleInformer(client.KelemetryClient(), 0, cache.Indexers{})
 
 	broadcaster := record.NewBroadcaster()
