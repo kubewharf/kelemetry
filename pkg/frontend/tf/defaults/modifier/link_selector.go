@@ -135,6 +135,7 @@ func (modifier *LinkSelectorModifier) Modify(config *tfconfig.Config) {
 	config.LinkSelector = tfconfig.UnionLinkSelector{config.LinkSelector, intersectSelector}
 }
 
+// Ensures that the path from the queried object to any other object in the tree is monotonic.
 type denySiblingsLinkSelector struct {
 	hasFirst          bool
 	firstIsFromParent bool
@@ -155,6 +156,7 @@ func (s denySiblingsLinkSelector) Admit(
 	return s
 }
 
+// The path from queried object to any other object in the tree must only contain links matching this pattern.
 type patternLinkSelector struct {
 	patterns []LinkPattern
 }
@@ -176,6 +178,7 @@ const (
 	directionDownwards direction = false
 )
 
+// The path from queried object to any other object in the tree must not exceed `distance` steps in the `direction` direction.
 type directedDistanceLinkSelector struct {
 	direction direction
 	distance  uint32

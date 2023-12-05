@@ -6,20 +6,16 @@ cd $(dirname $0)
 
 export REPO_PATH=$(realpath ..)
 
-export TEST_DISPLAY_MODE="21000000"
-
-export DISPLAY_MODES="${TEST_DISPLAY_MODE} ${DISPLAY_MODES:-}"
-
 run_test() {
 	local test_name=$1
 
 	local tmpdir=$(mktemp -d)
 
-	if [[ ! -v IS_RERUN ]]; then
-		bash -x ${test_name}/client.sh
-	fi
-
+	declare -A TRACE_SEARCH_TAGS
+	declare -a EXTRA_DISPLAY_MODES
+	set -x
 	source ${test_name}/config.sh
+	set +x
 
 	local curl_param_string=""
 	for curl_param_key in "${!TRACE_SEARCH_TAGS[@]}"; do
@@ -31,6 +27,12 @@ run_test() {
 		${curl_param_string} \
 		-o ${tmpdir}/curl-output.http \
 		localhost:8080/redirect
+
+	if ! (head -n1 ${tmpdir}/curl-output.http | grep '302 Found'); then
+		echo "Trace not found for the parameters"
+		cat curl-output.http
+		exit 1
+	fi
 
 	local full_trace_id=$(grep -P "^Location: /trace/" ${tmpdir}/curl-output.http | cut -d/ -f3 | tr -d '\r')
 	if [[ -z $full_trace_id ]]; then
@@ -46,6 +48,8 @@ run_test() {
 		echo "${TRACE_DISPLAY_NAME}" >${OUTPUT_TRACE}/trace-${test_name}/trace_display_name
 		echo ${fixed_id} >${OUTPUT_TRACE}/trace-${test_name}/trace_id
 
+		DISPLAY_MODES=($TEST_DISPLAY_MODE ${EXTRA_DISPLAY_MODES[@]})
+
 		for mode in ${DISPLAY_MODES}; do
 			local mode_trace_id=ff${mode}${fixed_id}
 			curl -o ${OUTPUT_TRACE}/api/traces/${mode_trace_id} localhost:16686/api/traces/${mode_trace_id}
@@ -59,10 +63,12 @@ run_test() {
 
 declare -A pids
 
-for client in */client.sh; do
-	test_name=$(basename $(dirname $client))
-	run_test ${test_name} &
-	pids[$test_name]=$!
+for sh in */validate.jq; do
+	test_name=$(basename $(dirname $sh))
+	if [[ ! -v FILTER_TESTS ]] || [[ $FILTER_TESTS == *$test_name* ]]; then
+		run_test ${test_name} &
+		pids[$test_name]=$!
+	fi
 done
 
 failed_tests=()

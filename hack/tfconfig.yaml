@@ -63,7 +63,10 @@ modifiers:
     modifierName: link-selector
     args:
       modifierClass: owner-ref
-      includeSiblings: true
+      includeSiblings: false
+      ifAll:
+        - linkClass: children
+          fromParent: false
       upwardDistance: 3
   "04000000":
     # the entire subtree under this object
@@ -77,7 +80,7 @@ modifiers:
       downwardDistance: 3
   "00100000":
     # include secrets under pods
-    displayName: volume secrets
+    displayName: volumes
     modifierName: link-selector
     args:
       ifAll:

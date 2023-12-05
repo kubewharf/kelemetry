@@ -471,6 +471,8 @@ type (
 		GetTrace   *model.TraceID
 		FindTraces *spanstore.TraceQueryParameters
 	}
+
+	WantPseudoSpansOnly struct{}
 )
 
 func mergeListWithBackend[M any](backend jaegerbackend.Backend, convertMetadata func(any) M, otr OriginalTraceRequest) merge.ListFunc[M] {
@@ -480,10 +482,12 @@ func mergeListWithBackend[M any](backend jaegerbackend.Backend, convertMetadata 
 		startTime time.Time, endTime time.Time,
 		limit int,
 	) ([]merge.TraceWithMetadata[M], error) {
+		ctx = context.WithValue(ctx, OriginalTraceRequestKey{}, otr)
+
 		tags := zconstants.KeyToSpanTags(key)
 
 		tts, err := backend.List(
-			context.WithValue(ctx, OriginalTraceRequestKey{}, otr),
+			ctx,
 			&spanstore.TraceQueryParameters{
 				Tags:         tags,
 				StartTimeMin: startTime,
@@ -493,6 +497,28 @@ func mergeListWithBackend[M any](backend jaegerbackend.Backend, convertMetadata 
 		)
 		if err != nil {
 			return nil, err
+		}
+
+		if len(tts) == 0 {
+			// Linked object has no events during this interval,
+			// but we still want to discover any possible links during this period.
+			pseudoStartTime := startTime.Truncate(time.Minute * 30)
+			pseudoEndTime := endTime.Truncate(time.Minute * 30)
+
+			pseudoSpans, err := backend.List(
+				context.WithValue(ctx, WantPseudoSpansOnly{}, WantPseudoSpansOnly{}),
+				&spanstore.TraceQueryParameters{
+					Tags:         tags,
+					StartTimeMin: pseudoStartTime,
+					StartTimeMax: pseudoEndTime,
+					NumTraces:    limit,
+				},
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			tts = pseudoSpans
 		}
 
 		twmList := make([]merge.TraceWithMetadata[M], len(tts))
