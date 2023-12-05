@@ -17,6 +17,7 @@ package kelemetryv1a1util
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"text/template"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -53,40 +54,47 @@ func TestObject(objectRef utilobject.Key, object metav1.Object, rule *kelemetryv
 	return selector.Matches(objectLabels), nil
 }
 
-func GenerateTarget(
+func GenerateTargets(
 	rule *kelemetryv1a1.LinkRuleTargetTemplate,
 	sourceObjectRef utilobject.Rich,
 	sourceObject *unstructured.Unstructured,
-) (_target utilobject.VersionedKey, _ error) {
+) (_targets []utilobject.VersionedKey, _ error) {
 	cluster := sourceObjectRef.Cluster
 	if rule.ClusterTemplate != "" {
 		var err error
 		cluster, err = executeTemplate("clusterTemplate", rule.ClusterTemplate, sourceObject)
 		if err != nil {
-			return _target, err
+			return _targets, err
 		}
 	}
 
 	namespace, err := executeTemplate("namespaceTemplate", rule.NamespaceTemplate, sourceObject)
 	if err != nil {
-		return _target, err
+		return _targets, err
 	}
 
-	name, err := executeTemplate("nameTemplate", rule.NameTemplate, sourceObject)
+	names, err := executeTemplate("nameTemplate", rule.NameTemplate, sourceObject)
 	if err != nil {
-		return _target, err
+		return _targets, err
 	}
 
-	return utilobject.VersionedKey{
-		Key: utilobject.Key{
-			Cluster:   cluster,
-			Group:     rule.Group,
-			Resource:  rule.Resource,
-			Namespace: namespace,
-			Name:      name,
-		},
-		Version: rule.Version,
-	}, nil
+	targets := make([]utilobject.VersionedKey, 0)
+	for _, name := range strings.Split(names, ",") {
+		if name != "" {
+			targets = append(targets, utilobject.VersionedKey{
+				Key: utilobject.Key{
+					Cluster:   cluster,
+					Group:     rule.Group,
+					Resource:  rule.Resource,
+					Namespace: namespace,
+					Name:      name,
+				},
+				Version: rule.Version,
+			})
+		}
+	}
+
+	return targets, nil
 }
 
 func executeTemplate(templateName string, templateString string, sourceObject *unstructured.Unstructured) (string, error) {

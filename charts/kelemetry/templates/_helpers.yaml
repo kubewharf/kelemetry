@@ -114,6 +114,7 @@ span-cache-etcd-prefix: {{ .Values.aggregator.spanCache.etcd.prefix | toJson }}
 linker-worker-count: {{ .Values.linkers.workerCount }}
 annotation-linker-enable: {{ .Values.linkers.annotation }}
 owner-linker-enable: {{ .Values.linkers.ownerReference }}
+rule-linker-enable: {{ .Values.linkers.rule }}
 
 {{/* TRACER */}}
 tracer-otel-endpoint: {{.Release.Name}}-collector.{{.Release.Namespace}}.svc:4317

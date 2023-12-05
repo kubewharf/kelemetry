@@ -10,8 +10,8 @@ targetTemplate:
   group: ""
   version: v1
   resource: secrets
-  namespaceTemplate: '{{.metadata.annotations["meta.helm.sh/release-namespace"]}}'
-  nameTemplate: '{{.metadata.annotations["meta.helm.sh/release-name"]}}'
+  namespaceTemplate: '{{.metadata.annotations | index "meta.helm.sh/release-namespace"}}'
+  nameTemplate: '{{.metadata.annotations | index "meta.helm.sh/release-name"}}'
 link:
   targetRole: Parent
   class: templates

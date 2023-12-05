@@ -75,6 +75,13 @@ modifiers:
         - linkClass: children
           fromChild: false
       downwardDistance: 3
+  "00100000":
+    # include secrets under pods
+    displayName: volume secrets
+    modifierName: link-selector
+    args:
+      ifAll:
+        - linkClass: volumes
 
 # Uncomment to enable extension trace from apiserver
 #   "00000001":

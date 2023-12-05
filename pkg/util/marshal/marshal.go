@@ -97,7 +97,9 @@ func (filter *ObjectFilter) Matches(key utilobject.Key) bool {
 type stringPredicate = func(string) bool
 
 type StringFilter struct {
-	fn stringPredicate
+	pattern string
+	raw     fields
+	fn      stringPredicate
 }
 
 type fields struct {
@@ -142,21 +144,23 @@ func (value fields) getBasePredicate() (stringPredicate, error) {
 func (f *StringFilter) UnmarshalJSON(buf []byte) error {
 	var pattern string
 	if err := json.Unmarshal(buf, &pattern); err == nil {
+		f.pattern = pattern
 		f.fn = func(s string) bool { return s == pattern }
 		return nil
 	}
 
-	var value fields
-	if err := json.Unmarshal(buf, &value); err != nil {
+	var raw fields
+	if err := json.Unmarshal(buf, &raw); err != nil {
 		return err
 	}
+	f.raw = raw
 
-	predicate, err := value.getBasePredicate()
+	predicate, err := raw.getBasePredicate()
 	if err != nil {
 		return err
 	}
 
-	then := value.Then.GetOr(true)
+	then := raw.Then.GetOr(true)
 	f.fn = func(s string) bool {
 		base := predicate(s)
 		if base {

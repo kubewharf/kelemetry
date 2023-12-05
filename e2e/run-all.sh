@@ -4,6 +4,8 @@ set -euo pipefail
 
 cd $(dirname $0)
 
+export REPO_PATH=$(realpath ..)
+
 export TEST_DISPLAY_MODE="21000000"
 
 export DISPLAY_MODES="${TEST_DISPLAY_MODE} ${DISPLAY_MODES:-}"
