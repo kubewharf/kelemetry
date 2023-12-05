@@ -19,9 +19,25 @@ import utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 type LinkSelector interface {
 	// Whether to follow the given link.
 	//
-	// If link should be followed, return a non-nil LinkSelector.
-	// The returned object will be used to recursively follow links in the linked object.
-	Admit(parent utilobject.Key, child utilobject.Key, parentIsSource bool, linkClass string) LinkSelector
+	// The first output indicates whether the selector admits this link.
+	// The second output is the selector state that transitive links should use for admission.
+	// The second output may still be useful even if the first output is false when it is part of a UnionLinkSelector.
+	// A nil state "fuses" the selector, i.e. always return false for further transitive links.
+	Admit(parent utilobject.Key, child utilobject.Key, parentIsSource bool, linkClass string) (_admit bool, _nextState LinkSelector)
+}
+
+func nilableLinkSelectorAdmit(
+	selector LinkSelector,
+	parent utilobject.Key,
+	child utilobject.Key,
+	parentIsSource bool,
+	linkClass string,
+) (bool, LinkSelector) {
+	if selector == nil {
+		return false, nil
+	}
+
+	return selector.Admit(parent, child, parentIsSource, linkClass)
 }
 
 type ConstantLinkSelector bool
@@ -31,12 +47,12 @@ func (selector ConstantLinkSelector) Admit(
 	child utilobject.Key,
 	parentIsSource bool,
 	linkClass string,
-) LinkSelector {
+) (_admit bool, _nextState LinkSelector) {
 	if selector {
-		return selector
+		return true, selector
 	}
 
-	return nil
+	return false, selector
 }
 
 type IntersectLinkSelector []LinkSelector
@@ -46,17 +62,17 @@ func (selector IntersectLinkSelector) Admit(
 	childKey utilobject.Key,
 	parentIsSource bool,
 	linkClass string,
-) LinkSelector {
-	newChildren := make([]LinkSelector, len(selector))
+) (_admit bool, _nextState LinkSelector) {
+	admit := true
+	nextMemberStates := make([]LinkSelector, len(selector))
 
-	for i, child := range selector {
-		newChildren[i] = child.Admit(parentKey, childKey, parentIsSource, linkClass)
-		if newChildren[i] == nil {
-			return nil
-		}
+	for i, member := range selector {
+		memberAdmit, nextMemberState := nilableLinkSelectorAdmit(member, parentKey, childKey, parentIsSource, linkClass)
+		admit = admit && memberAdmit
+		nextMemberStates[i] = nextMemberState
 	}
 
-	return IntersectLinkSelector(newChildren)
+	return admit, IntersectLinkSelector(nextMemberStates)
 }
 
 type UnionLinkSelector []LinkSelector
@@ -66,22 +82,15 @@ func (selector UnionLinkSelector) Admit(
 	childKey utilobject.Key,
 	parentIsSource bool,
 	linkClass string,
-) LinkSelector {
-	newChildren := make([]LinkSelector, len(selector))
+) (_admit bool, _nextState LinkSelector) {
+	admit := false
+	nextMemberStates := make([]LinkSelector, len(selector))
 
-	ok := false
-	for i, child := range selector {
-		if child != nil {
-			newChildren[i] = child.Admit(parentKey, childKey, parentIsSource, linkClass)
-			if newChildren[i] != nil {
-				ok = true
-			}
-		}
+	for i, member := range selector {
+		memberAdmit, nextMemberState := nilableLinkSelectorAdmit(member, parentKey, childKey, parentIsSource, linkClass)
+		admit = admit || memberAdmit
+		nextMemberStates[i] = nextMemberState
 	}
 
-	if ok {
-		return UnionLinkSelector(newChildren)
-	}
-
-	return nil
+	return admit, UnionLinkSelector(nextMemberStates)
 }
