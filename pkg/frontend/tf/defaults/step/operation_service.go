@@ -61,7 +61,8 @@ func (visitor ServiceOperationReplaceVisitor) Enter(tree *tftree.SpanTree, span 
 		return visitor
 	}
 
-	if pseudoType, hasPseudoType := tags.FindByKey(zconstants.PseudoType); hasPseudoType && pseudoType.VStr == string(zconstants.PseudoTypeLinkClass) {
+	pseudoType, hasPseudoType := tags.FindByKey(zconstants.PseudoType)
+	if hasPseudoType && pseudoType.VStr == string(zconstants.PseudoTypeLinkClass) {
 		return visitor
 	}
 
