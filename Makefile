@@ -200,7 +200,7 @@ generate:
 		paths=./pkg/crds/apis/... \
 		output:crd:dir=./crds/config
 	go run k8s.io/code-generator/cmd/deepcopy-gen \
-		-o /tmp/kelemetry-gen/github.com/kubewharf/kelemetry \
+		-o /tmp/kelemetry-gen \
 		--input-dirs=./pkg/crds/apis/v1alpha1 \
 		--output-file-base=zz_generated.deepcopy \
 		-h ./hack/boilerplate.txt

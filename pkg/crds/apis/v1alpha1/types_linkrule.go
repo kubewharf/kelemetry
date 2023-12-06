@@ -39,7 +39,7 @@ type LinkRule struct {
 	SourceFilter LinkRuleSourceFilter `json:"sourceFilter"`
 
 	// TargetTemplate indicates how to find the target object from a matched source object.
-	TargetTemplate LinkRuleTargetTemplate `json:"targetTemplate"`
+	TargetTemplates []LinkRuleTargetTemplate `json:"targetTemplates"`
 
 	// Link specifies how the two objects are linked together.
 	Link LinkRuleLink `json:"link"`
@@ -68,26 +68,46 @@ type LinkRuleSourceFilter struct {
 
 // LinkRuleTargetTemplate indicates how to find the target object from a matched source object.
 type LinkRuleTargetTemplate struct {
-	// ClusterTemplate is a Go text template string to compute the cluster name of the target object.
-	//
-	// The context of the template is the child object that matched the rule.
+	// Cluster computes the cluster name of the target object.
 	//
 	// If empty or unspecified, uses the cluster of the child object.
 	// +optional
-	ClusterTemplate string `json:"clusterTemplate,omitempty"`
+	Cluster TextTemplate `json:"cluster,omitempty"`
 
-	// The type of the target object.
-	metav1.GroupVersionResource `json:",inline"`
+	// The type of the target object, in the form `{groupName}/{version}/{resource}`.
+	Type TextTemplate `json:"type"`
 
-	// NamespaceTemplate is a Go text template string to compute the target object name.
+	// The namespace of the target object.
 	//
+	// Cluster-scoped target objects should emit an empty namespace.
 	// If the namespace is empty, the target object is expected to be cluster-scoped.
-	NamespaceTemplate string `json:"namespaceTemplate"`
-
-	// NameTemplate is a Go text template string to compute the target object name.
 	//
-	// The context of the template is the child object that matched the rule.
-	NameTemplate string `json:"nameTemplate"`
+	// Inherits the same namespace as the source object if unspecified.
+	// +optional
+	Namespace TextTemplate `json:"namespace"`
+
+	// The name of the target object.
+	//
+	// Inherits the same name as the source object if unspecified.
+	// +optional
+	Name TextTemplate `json:"name"`
+}
+
+// TextTemplate is a union struct that supports templating one or multiple values with one of the supported formats.
+//
+// Template types that accept a context receive the source object as the template with the following additional fields:
+// - .metadata.resource, the plural name of the object
+// - .metadata.clusterName, the cluster name used by Kelemetry for the cluster that owns the source object
+type TextTemplate struct {
+	// A string literal, resolved as-is.
+	// +optional
+	Literal *string `json:"literal"`
+	// Parsed as a Go `text/template`. May output multiple comma-delimited values (trailing comma allowed).
+	// +optional
+	GoTemplate string `json:"goTemplate"`
+	// Parsed as a gojq query string. May output a string or an array of strings.
+	// +optional
+	Jq string `json:"jq"`
 }
 
 // LinkRuleLink specifies how the two objects are linked together.

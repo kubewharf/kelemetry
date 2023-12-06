@@ -1,4 +1,4 @@
-kubectl create -f ${REPO_PATH}/crds/samples/pod-secret.yaml
+kubectl create -f ${REPO_PATH}/crds/samples/pod-volume.yaml
 
 kubectl create secret generic content
 

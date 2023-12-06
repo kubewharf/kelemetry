@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.12.0
+    controller-gen.kubebuilder.io/version: v0.13.0
   name: linkrules.kelemetry.kubewharf.io
 spec:
   group: kelemetry.kubewharf.io
@@ -121,43 +121,86 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
             type: object
-          targetTemplate:
+          targetTemplates:
             description: TargetTemplate indicates how to find the target object from
               a matched source object.
-            properties:
-              clusterTemplate:
-                description: "ClusterTemplate is a Go text template string to compute
-                  the cluster name of the target object. \n The context of the template
-                  is the child object that matched the rule. \n If empty or unspecified,
-                  uses the cluster of the child object."
-                type: string
-              group:
-                type: string
-              nameTemplate:
-                description: "NameTemplate is a Go text template string to compute
-                  the target object name. \n The context of the template is the child
-                  object that matched the rule."
-                type: string
-              namespaceTemplate:
-                description: "NamespaceTemplate is a Go text template string to compute
-                  the target object name. \n If the namespace is empty, the target
-                  object is expected to be cluster-scoped."
-                type: string
-              resource:
-                type: string
-              version:
-                type: string
-            required:
-            - group
-            - nameTemplate
-            - namespaceTemplate
-            - resource
-            - version
-            type: object
+            items:
+              description: LinkRuleTargetTemplate indicates how to find the target
+                object from a matched source object.
+              properties:
+                cluster:
+                  description: "Cluster computes the cluster name of the target object.
+                    \n If empty or unspecified, uses the cluster of the child object."
+                  properties:
+                    goTemplate:
+                      description: Parsed as a Go `text/template`. May output multiple
+                        comma-delimited values (trailing comma allowed).
+                      type: string
+                    jq:
+                      description: Parsed as a gojq query string. May output a string
+                        or an array of strings.
+                      type: string
+                    literal:
+                      description: A string literal, resolved as-is.
+                      type: string
+                  type: object
+                name:
+                  description: "The name of the target object. \n Inherits the same
+                    name as the source object if unspecified."
+                  properties:
+                    goTemplate:
+                      description: Parsed as a Go `text/template`. May output multiple
+                        comma-delimited values (trailing comma allowed).
+                      type: string
+                    jq:
+                      description: Parsed as a gojq query string. May output a string
+                        or an array of strings.
+                      type: string
+                    literal:
+                      description: A string literal, resolved as-is.
+                      type: string
+                  type: object
+                namespace:
+                  description: "The namespace of the target object. \n Cluster-scoped
+                    target objects should emit an empty namespace. If the namespace
+                    is empty, the target object is expected to be cluster-scoped.
+                    \n Inherits the same namespace as the source object if unspecified."
+                  properties:
+                    goTemplate:
+                      description: Parsed as a Go `text/template`. May output multiple
+                        comma-delimited values (trailing comma allowed).
+                      type: string
+                    jq:
+                      description: Parsed as a gojq query string. May output a string
+                        or an array of strings.
+                      type: string
+                    literal:
+                      description: A string literal, resolved as-is.
+                      type: string
+                  type: object
+                type:
+                  description: The type of the target object, in the form `{groupName}/{version}/{resource}`.
+                  properties:
+                    goTemplate:
+                      description: Parsed as a Go `text/template`. May output multiple
+                        comma-delimited values (trailing comma allowed).
+                      type: string
+                    jq:
+                      description: Parsed as a gojq query string. May output a string
+                        or an array of strings.
+                      type: string
+                    literal:
+                      description: A string literal, resolved as-is.
+                      type: string
+                  type: object
+              required:
+              - type
+              type: object
+            type: array
         required:
         - link
         - sourceFilter
-        - targetTemplate
+        - targetTemplates
         type: object
     served: true
     storage: true

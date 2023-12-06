@@ -140,8 +140,10 @@ func (ctrl *Controller) Lookup(ctx context.Context, object utilobject.Rich) ([]l
 		return nil, fmt.Errorf("cannot list rules")
 	}
 
+	templateContext := kelemetryv1a1util.PrepareContext(raw, object.Cluster, object.Resource)
+
 	for _, rule := range rules {
-		if ruleResults, err := ctrl.processRule(ctx, logger.WithField("rule", rule.Name), object, raw, rule); err != nil {
+		if ruleResults, err := ctrl.processRule(ctx, logger.WithField("rule", rule.Name), object, raw, rule, templateContext); err != nil {
 			logger.WithField("rule", rule.Name).WithError(err).Error()
 			eventRecorder.Eventf(
 				rule,
@@ -167,6 +169,7 @@ func (ctrl *Controller) processRule(
 	object utilobject.Rich,
 	objectRaw *unstructured.Unstructured,
 	rule *kelemetryv1a1.LinkRule,
+	templateContext map[string]any,
 ) ([]linker.LinkerResult, error) {
 	matched, err := kelemetryv1a1util.TestObject(object.Key, objectRaw, &rule.SourceFilter)
 	if err != nil {
@@ -177,7 +180,7 @@ func (ctrl *Controller) processRule(
 		return nil, nil
 	}
 
-	targetRefs, err := kelemetryv1a1util.GenerateTargets(&rule.TargetTemplate, object, objectRaw)
+	targetRefs, err := kelemetryv1a1util.GenerateTargets(ctx, rule.TargetTemplates, object, templateContext)
 	if err != nil {
 		return nil, fmt.Errorf("cannot infer target object: %w", err)
 	}

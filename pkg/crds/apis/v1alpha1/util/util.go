@@ -16,13 +16,16 @@ package kelemetryv1a1util
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
 	"text/template"
 
+	"github.com/itchyny/gojq"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	kelemetryv1a1 "github.com/kubewharf/kelemetry/pkg/crds/apis/v1alpha1"
 	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
@@ -55,58 +58,161 @@ func TestObject(objectRef utilobject.Key, object metav1.Object, rule *kelemetryv
 }
 
 func GenerateTargets(
-	rule *kelemetryv1a1.LinkRuleTargetTemplate,
+	ctx context.Context,
+	templates []kelemetryv1a1.LinkRuleTargetTemplate,
 	sourceObjectRef utilobject.Rich,
-	sourceObject *unstructured.Unstructured,
+	context map[string]any,
 ) (_targets []utilobject.VersionedKey, _ error) {
-	cluster := sourceObjectRef.Cluster
-	if rule.ClusterTemplate != "" {
-		var err error
-		cluster, err = executeTemplate("clusterTemplate", rule.ClusterTemplate, sourceObject)
+	targets := make([]utilobject.VersionedKey, 0)
+
+	for _, template := range templates {
+		clusters, err := executeTemplate(ctx, "cluster", template.Cluster, context, []string{sourceObjectRef.Cluster})
 		if err != nil {
 			return _targets, err
 		}
-	}
 
-	namespace, err := executeTemplate("namespaceTemplate", rule.NamespaceTemplate, sourceObject)
-	if err != nil {
-		return _targets, err
-	}
+		if len(clusters) == 0 {
+			clusters = []string{sourceObjectRef.Cluster}
+		}
 
-	names, err := executeTemplate("nameTemplate", rule.NameTemplate, sourceObject)
-	if err != nil {
-		return _targets, err
-	}
+		types, err := executeTemplate(ctx, "type", template.Type, context, nil)
+		if err != nil {
+			return _targets, err
+		}
 
-	targets := make([]utilobject.VersionedKey, 0)
-	for _, name := range strings.Split(names, ",") {
-		if name != "" {
-			targets = append(targets, utilobject.VersionedKey{
-				Key: utilobject.Key{
-					Cluster:   cluster,
-					Group:     rule.Group,
-					Resource:  rule.Resource,
-					Namespace: namespace,
-					Name:      name,
-				},
-				Version: rule.Version,
-			})
+		namespaces, err := executeTemplate(ctx, "namespace", template.Namespace, context, []string{sourceObjectRef.Namespace})
+		if err != nil {
+			return _targets, err
+		}
+
+		names, err := executeTemplate(ctx, "name", template.Name, context, []string{sourceObjectRef.Name})
+		if err != nil {
+			return _targets, err
+		}
+
+		for _, cluster := range clusters {
+			for _, gvrString := range types {
+				gvrSplit := strings.Split(gvrString, "/")
+				var gvr schema.GroupVersionResource
+				switch len(gvrSplit) {
+				case 2:
+					gvr.Version = gvrSplit[0]
+					gvr.Resource = gvrSplit[1]
+				case 3:
+					gvr.Group = gvrSplit[0]
+					gvr.Version = gvrSplit[1]
+					gvr.Resource = gvrSplit[2]
+				default:
+					return nil, fmt.Errorf("invalid g/v/r notation %q", gvrString)
+				}
+
+				for _, namespace := range namespaces {
+					for _, name := range names {
+						targets = append(targets, utilobject.VersionedKey{
+							Key: utilobject.Key{
+								Cluster:   cluster,
+								Group:     gvr.Group,
+								Resource:  gvr.Resource,
+								Namespace: namespace,
+								Name:      name,
+							},
+							Version: gvr.Version,
+						})
+					}
+				}
+			}
 		}
 	}
 
 	return targets, nil
 }
 
-func executeTemplate(templateName string, templateString string, sourceObject *unstructured.Unstructured) (string, error) {
+func PrepareContext(sourceObject *unstructured.Unstructured, clusterName string, resource string) map[string]any {
+	data := sourceObject.DeepCopy().Object
+	metadata := data["metadata"].(map[string]any)
+	metadata["clusterName"] = clusterName
+	metadata["resource"] = resource
+	return data
+}
+
+func executeTemplate(
+	ctx context.Context,
+	templateName string,
+	templateObject kelemetryv1a1.TextTemplate,
+	context map[string]any,
+	defaultOutput []string,
+) (output []string, err error) {
+	if templateObject.GoTemplate != "" {
+		output, err = executeGoTemplate(templateName, templateObject.Jq, context)
+	} else if templateObject.Jq != "" {
+		output, err = executeJqTemplate(ctx, templateName, templateObject.Jq, context)
+	} else if templateObject.Literal != nil {
+		output, err = []string{*templateObject.Literal}, nil
+	} else {
+		output, err = defaultOutput, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return output, nil
+}
+
+func executeGoTemplate(templateName string, templateString string, context map[string]any) ([]string, error) {
 	tmpl, err := template.New(templateName).Parse(templateString)
 	if err != nil {
-		return "", fmt.Errorf("cannot parse %s as Go text/template: %w", templateName, err)
+		return nil, fmt.Errorf("cannot parse %s as Go text/template: %w", templateName, err)
 	}
 
 	buf := new(bytes.Buffer)
-	if err := tmpl.Execute(buf, sourceObject.Object); err != nil {
-		return "", fmt.Errorf("cannot execute %s: %w", templateName, err)
+	if err := tmpl.Execute(buf, context); err != nil {
+		return nil, fmt.Errorf("cannot execute %s: %w", templateName, err)
 	}
 
-	return buf.String(), nil
+	output := make([]string, 0)
+	for _, value := range strings.Split(buf.String(), ",") {
+		if value != "" {
+			output = append(output, value)
+		}
+	}
+
+	return output, nil
+}
+
+func executeJqTemplate(ctx context.Context, templateName string, templateString string, context map[string]any) ([]string, error) {
+	query, err := gojq.Parse(templateString)
+	if err != nil {
+		return nil, fmt.Errorf("cannot parse %s as JQ query: %w", templateName, err)
+	}
+
+	iter := query.RunWithContext(ctx, context)
+
+	output := make([]string, 0)
+
+	for {
+		value, ok := iter.Next()
+		if !ok {
+			break
+		}
+
+		switch value := value.(type) {
+		case error:
+			return nil, fmt.Errorf("error executing JQ query for %s: %w", templateName, value)
+		case string:
+			output = append(output, value)
+		case []any:
+			for _, item := range value {
+				if stringItem, isString := item.(string); isString {
+					output = append(output, stringItem)
+				} else {
+					return nil, fmt.Errorf("%s query must return string or []string, got []%T", templateName, item)
+				}
+			}
+		default:
+			return nil, fmt.Errorf("%s query must return string or []string, got %T", templateName, value)
+		}
+	}
+
+	return output, nil
 }
