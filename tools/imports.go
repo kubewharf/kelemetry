@@ -18,4 +18,8 @@
 // This package should not be imported by the binary package.
 package kelemetry_tools
 
-import _ "github.com/itchyny/gojq/cli"
+import (
+	_ "github.com/itchyny/gojq/cli"
+	_ "k8s.io/code-generator/cmd/deepcopy-gen/args"
+	_ "sigs.k8s.io/controller-tools/pkg/genall"
+)

@@ -110,8 +110,8 @@ func (fl *followLinkPool[M]) scheduleFrom(obj *object[M], followLimit *atomic.In
 			parentKey, childKey, parentIsSource = link.Key, obj.key, false
 		}
 
-		subSelector := linkSelector.Admit(parentKey, childKey, parentIsSource, link.Class)
-		if subSelector != nil {
+		isAdmitted, subSelector := linkSelector.Admit(parentKey, childKey, parentIsSource, link.Class)
+		if isAdmitted {
 			admittedLinks = append(admittedLinks, link)
 			fl.knownKeys.Insert(link.Key)
 			fl.schedule(link.Key, subSelector, followLimit, int32(fl.endTime.Sub(fl.startTime)/(time.Minute*30)))
@@ -614,6 +614,11 @@ func createVirtualSpan(traceId model.TraceID, span *model.Span, opName string, s
 		StartTime:     span.StartTime,
 		Duration:      span.Duration,
 		Tags: []model.KeyValue{
+			{
+				Key:   zconstants.TraceSource,
+				VType: model.StringType,
+				VStr:  zconstants.TraceSourceObject,
+			},
 			{
 				Key:   zconstants.PseudoType,
 				VType: model.StringType,

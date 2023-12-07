@@ -2,6 +2,7 @@ run:
   timeout: 5m
   skip-dirs:
     - tools
+    - pkg/crds/client
 
 linters:
   enable:
