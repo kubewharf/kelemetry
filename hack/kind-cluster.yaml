@@ -14,6 +14,7 @@ nodes:
         apiServer:
           extraArgs:
             audit-webhook-config-file: /mnt/audit/audit-kubeconfig.local.yaml
+            audit-webhook-batch-max-wait: 5s # speed up event consumption during test
             tracing-config-file: /mnt/audit/tracing-config.local.yaml
             audit-policy-file: /mnt/audit/audit-policy.yaml
           extraVolumes:
