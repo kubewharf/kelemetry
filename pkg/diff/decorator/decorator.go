@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/clock"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator/aggregatorevent"
 	"github.com/kubewharf/kelemetry/pkg/audit"
@@ -221,7 +221,7 @@ func (decorator *decorator) tryDecorate(
 
 		var newRv *string
 		if responseRv != "" {
-			newRv = pointer.String(responseRv)
+			newRv = ptr.To(responseRv)
 		}
 
 		if newRv != nil && oldRv == *newRv {
