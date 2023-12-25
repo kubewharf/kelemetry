@@ -6,7 +6,7 @@ require (
 	github.com/coocood/freecache v1.2.4
 	github.com/dlclark/regexp2 v1.10.0
 	github.com/gin-gonic/gin v1.9.1
-	github.com/go-logr/logr v1.3.0
+	github.com/go-logr/logr v1.4.1
 	github.com/itchyny/gojq v0.12.14
 	github.com/jaegertracing/jaeger v1.52.0
 	github.com/pelletier/go-toml/v2 v2.1.0
