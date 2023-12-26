@@ -9,7 +9,7 @@ require (
 	github.com/go-logr/logr v1.4.1
 	github.com/itchyny/gojq v0.12.14
 	github.com/jaegertracing/jaeger v1.52.0
-	github.com/pelletier/go-toml/v2 v2.1.0
+	github.com/pelletier/go-toml/v2 v2.1.1
 	github.com/prometheus/client_golang v1.17.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/pflag v1.0.5
