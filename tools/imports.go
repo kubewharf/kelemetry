@@ -18,4 +18,10 @@
 // This package should not be imported by the binary package.
 package kelemetry_tools
 
-import _ "github.com/itchyny/gojq/cli"
+import (
+	_ "github.com/daixiang0/gci/cmd/gci"
+	_ "github.com/itchyny/gojq/cli"
+	_ "github.com/segmentio/golines"
+	_ "golang.org/x/tools/cmd/goimports"
+	_ "mvdan.cc/gofumpt"
+)
