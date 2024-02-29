@@ -190,10 +190,10 @@ pre-commit: dot usage test
 
 fmt:
 	git add -A
-	gofumpt -l -w .
-	golines -m140 --base-formatter=gofumpt -w .
-	goimports -l -w .
-	gci write -s standard -s default -s 'prefix(github.com/kubewharf/kelemetry)' .
+	go run mvdan.cc/gofumpt -l -w .
+	go run github.com/segmentio/golines -m140 --base-formatter=gofumpt -w .
+	go run golang.org/x/tools/cmd/goimports -l -w .
+	go run github.com/daixiang0/gci write -s standard -s default -s 'prefix(github.com/kubewharf/kelemetry)' .
 
 local-docker-build:
 	make output/kelemetry
