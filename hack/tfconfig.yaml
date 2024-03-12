@@ -138,6 +138,9 @@ batches:
     steps:
       - kind: ClusterNameVisitor
       - kind: PruneTagsVisitor
+      - kind: RemoveInheritedTagVisitor
+        spanTags: true
+        logFields: true
   - name: collapse
     steps:
       - kind: CollapseNestingVisitor
