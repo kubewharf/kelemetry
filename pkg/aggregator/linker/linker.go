@@ -27,8 +27,16 @@ type Linker interface {
 }
 
 type LinkerResult struct {
-	Object  utilobject.Rich
-	Role    zconstants.LinkRoleValue
-	Class   string
+	// The linked object.
+	Object utilobject.Rich
+	// Determines whether the linked object should be displayed as a parent or child of the object span.
+	Role zconstants.LinkRoleValue
+	// Classifies links to help with link selection in tfconfig.
+	Class string
+	// DedupId is a variable in a span cache key that distinguishes the link pseudospan
+	// from other pseudospans in the same object in the same time window.
+	//
+	// This ID shall be consistent such that the link pseudospan does not get recreated many times,
+	// and shall be unique such that each link creator maintains its own links.
 	DedupId string
 }

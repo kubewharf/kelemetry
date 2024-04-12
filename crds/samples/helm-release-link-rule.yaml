@@ -1,0 +1,17 @@
+apiVersion: kelemetry.kubewharf.io/v1alpha1
+kind: LinkRule
+metadata:
+  name: helm-release
+sourceFilter:
+  selector:
+    matchLabels:
+      app.kubernetes.io/managed-by: Helm
+targetTemplate:
+  group: ""
+  version: v1
+  resource: secrets
+  namespaceTemplate: '{{.metadata.annotations | index "meta.helm.sh/release-namespace"}}'
+  nameTemplate: '{{.metadata.annotations | index "meta.helm.sh/release-name"}}'
+link:
+  targetRole: Parent
+  class: templates

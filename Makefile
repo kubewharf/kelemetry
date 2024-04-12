@@ -36,7 +36,7 @@ endif
 
 LINKER_WORKER_COUNT ?= 1
 
-CONTROLLERS ?= audit-consumer,audit-producer,audit-webhook,event-informer,annotation-linker,owner-linker,resource-object-tag,resource-event-tag,diff-decorator,diff-controller,diff-api,pprof,jaeger-storage-plugin,jaeger-redirect-server,kelemetrix
+CONTROLLERS ?= audit-consumer,audit-producer,audit-webhook,event-informer,annotation-linker,owner-linker,rule-linker,resource-object-tag,resource-event-tag,diff-decorator,diff-controller,diff-api,pprof,jaeger-storage-plugin,jaeger-redirect-server,kelemetrix
 ifeq ($(CONTROLLERS),)
 	ENABLE_ARGS ?=
 else
@@ -146,6 +146,7 @@ kind:
 		docker network inspect kind -f '{{(index .IPAM.Config 0).Gateway}}' \
 	)/g" hack/tracing-config.yaml >hack/tracing-config.local.yaml
 	cd hack && kind create cluster --config kind-cluster.yaml
+	kubectl --context kind-tracetest create -f crds/config
 
 COMPOSE_COMMAND ?= up --build -d --remove-orphans
 
@@ -204,3 +205,36 @@ e2e: local-docker-build
 	make quickstart COMPOSE_COMMAND='down --remove-orphans --volumes' KELEMETRY_IMAGE=kelemetry:local
 	make quickstart COMPOSE_COMMAND='up --build -d --remove-orphans' KELEMETRY_IMAGE=kelemetry:local
 	bash e2e/run-all.sh
+
+generate:
+	go run sigs.k8s.io/controller-tools/cmd/controller-gen \
+		crd \
+		paths=./pkg/crds/apis/... \
+		output:crd:dir=./crds/config
+	go run k8s.io/code-generator/cmd/deepcopy-gen \
+		-o /tmp/kelemetry-gen \
+		--input-dirs=./pkg/crds/apis/v1alpha1 \
+		--output-file-base=zz_generated.deepcopy \
+		-h ./hack/boilerplate.txt
+	go run k8s.io/code-generator/cmd/client-gen \
+		-o /tmp/kelemetry-gen \
+		--input=github.com/kubewharf/kelemetry/pkg/crds/apis/v1alpha1 \
+		--input-base= \
+		--output-package=github.com/kubewharf/kelemetry/pkg/crds/client/clientset \
+		--clientset-name=versioned \
+		-h ./hack/boilerplate.txt
+	go run k8s.io/code-generator/cmd/lister-gen \
+		-o /tmp/kelemetry-gen \
+		--input-dirs=github.com/kubewharf/kelemetry/pkg/crds/apis/v1alpha1 \
+		--output-package=github.com/kubewharf/kelemetry/pkg/crds/client/listers \
+		-h ./hack/boilerplate.txt
+	go run k8s.io/code-generator/cmd/informer-gen \
+		-o /tmp/kelemetry-gen \
+		--input-dirs=github.com/kubewharf/kelemetry/pkg/crds/apis/v1alpha1 \
+		--output-package=github.com/kubewharf/kelemetry/pkg/crds/client/informers \
+		--versioned-clientset-package=github.com/kubewharf/kelemetry/pkg/crds/client/clientset/versioned \
+		--listers-package=github.com/kubewharf/kelemetry/pkg/crds/client/listers \
+		-h ./hack/boilerplate.txt
+	cp -r /tmp/kelemetry-gen/github.com/kubewharf/kelemetry/pkg/crds -T pkg/crds
+	rm -r /tmp/kelemetry-gen
+	$(MAKE) fmt

@@ -60,6 +60,7 @@ services:
       "--event-informer-enable",
       "--annotation-linker-enable",
       "--owner-linker-enable",
+      "--rule-linker-enable",
       "--diff-decorator-enable",
       "--diff-controller-enable",
       "--diff-api-enable",

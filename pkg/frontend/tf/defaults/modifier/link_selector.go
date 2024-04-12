@@ -135,6 +135,7 @@ func (modifier *LinkSelectorModifier) Modify(config *tfconfig.Config) {
 	config.LinkSelector = tfconfig.UnionLinkSelector{config.LinkSelector, intersectSelector}
 }
 
+// Ensures that the path from the queried object to any other object in the tree is monotonic.
 type denySiblingsLinkSelector struct {
 	hasFirst          bool
 	firstIsFromParent bool
@@ -145,28 +146,32 @@ func (s denySiblingsLinkSelector) Admit(
 	child utilobject.Key,
 	isFromParent bool,
 	linkClass string,
-) tfconfig.LinkSelector {
+) (_admit bool, _nextState tfconfig.LinkSelector) {
 	if !s.hasFirst {
-		return denySiblingsLinkSelector{hasFirst: true, firstIsFromParent: isFromParent}
+		return true, denySiblingsLinkSelector{hasFirst: true, firstIsFromParent: isFromParent}
 	}
-	if s.firstIsFromParent != isFromParent {
-		return nil
-	}
-	return s
+
+	return s.firstIsFromParent == isFromParent, s
 }
 
+// The path from queried object to any other object in the tree must only contain links matching this pattern.
 type patternLinkSelector struct {
 	patterns []LinkPattern
 }
 
-func (s patternLinkSelector) Admit(parent utilobject.Key, child utilobject.Key, isFromParent bool, linkClass string) tfconfig.LinkSelector {
+func (s patternLinkSelector) Admit(
+	parent utilobject.Key,
+	child utilobject.Key,
+	isFromParent bool,
+	linkClass string,
+) (_admit bool, _nextState tfconfig.LinkSelector) {
 	for _, pattern := range s.patterns {
 		if !pattern.Matches(parent, child, isFromParent, linkClass) {
-			return nil
+			return false, s
 		}
 	}
 
-	return s
+	return true, s
 }
 
 type direction bool
@@ -176,6 +181,7 @@ const (
 	directionDownwards direction = false
 )
 
+// The path from queried object to any other object in the tree must not exceed `distance` steps in the `direction` direction.
 type directedDistanceLinkSelector struct {
 	direction direction
 	distance  uint32
@@ -186,14 +192,16 @@ func (d directedDistanceLinkSelector) Admit(
 	child utilobject.Key,
 	isFromParent bool,
 	linkClass string,
-) tfconfig.LinkSelector {
+) (_admit bool, _nextState tfconfig.LinkSelector) {
 	if isFromParent != (d.direction == directionDownwards) {
-		return d
+		return true, d
 	}
+
 	if d.distance == 0 {
-		return nil
+		return false, nil
 	}
-	return directedDistanceLinkSelector{
+
+	return true, directedDistanceLinkSelector{
 		direction: d.direction,
 		distance:  d.distance - 1,
 	}
