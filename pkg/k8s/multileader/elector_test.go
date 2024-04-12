@@ -32,7 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/clock"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	"github.com/kubewharf/kelemetry/pkg/k8s"
 	"github.com/kubewharf/kelemetry/pkg/k8s/multileader"
@@ -145,8 +145,8 @@ func run(t *testing.T, numProcesses int) {
 				case 0:
 					// assert that a crashed leader triggers leader re-election
 				case 1:
-					myLease.Spec.HolderIdentity = pointer.String("someone-else")
-					myLease.Spec.LeaseDurationSeconds = pointer.Int32(
+					myLease.Spec.HolderIdentity = ptr.To("someone-else")
+					myLease.Spec.LeaseDurationSeconds = ptr.To(
 						600,
 					) // an arbitrary number much longer than all other durations in the config
 

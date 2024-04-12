@@ -69,6 +69,9 @@ linters-settings:
       - default
       - prefix(github.com/kubewharf/kelemetry)
   goheader:
+    values:
+      regexp:
+        YEAR: '20\d\d'
     template: |-
       Copyright {{ YEAR }} The Kelemetry Authors.
 

@@ -22,4 +22,9 @@ import (
 	_ "github.com/itchyny/gojq/cli"
 	_ "k8s.io/code-generator/cmd/deepcopy-gen/args"
 	_ "sigs.k8s.io/controller-tools/pkg/genall"
+	_ "github.com/daixiang0/gci/cmd/gci"
+	_ "github.com/itchyny/gojq/cli"
+	_ "github.com/segmentio/golines"
+	_ "golang.org/x/tools/cmd/goimports"
+	_ "mvdan.cc/gofumpt"
 )

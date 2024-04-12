@@ -128,7 +128,12 @@ dot: output/kelemetry
 	dot -Tpng depgraph.dot >depgraph.png
 	dot -Tsvg depgraph.dot >depgraph.svg
 
-output/kelemetry: go.mod go.sum $(shell find -type f -name "*.go")
+FIND_PATH = 
+ifeq ($(OS_NAME), Darwin)
+	FIND_PATH = .
+endif
+
+output/kelemetry: go.mod go.sum $(shell find $(FIND_PATH) -type f -name "*.go")
 	go build -v $(RACE_ARG) -gcflags=$(GCFLAGS) -ldflags=$(LDFLAGS) -o $@ $(BUILD_ARGS) .
 
 kind:
@@ -161,6 +166,11 @@ define QUICKSTART_JQ_PATCH
 			if $$KELEMETRY_IMAGE != "" then .services.kelemetry.image = $$KELEMETRY_IMAGE else . end
 endef
 
+SED_I_FLAG = 
+ifeq ($(OS_NAME), Darwin)
+  SED_I_FLAG = ''
+endif
+
 export QUICKSTART_JQ_PATCH
 quickstart:
 	echo $(COMPOSE_COMMAND)
@@ -168,8 +178,10 @@ quickstart:
 		-f <(jq -n --arg KELEMETRY_IMAGE "$(KELEMETRY_IMAGE)" "$$QUICKSTART_JQ_PATCH") \
 		up --no-recreate --no-start
 	kubectl config view --raw --minify --flatten --merge >hack/client-kubeconfig.local.yaml
-	sed -i "s/0\.0\.0\.0/$$(docker network inspect kelemetry_default -f '{{(index .IPAM.Config 0).Gateway}}')/g" hack/client-kubeconfig.local.yaml
-	sed -i 's/certificate-authority-data: .*$$/insecure-skip-tls-verify: true/' hack/client-kubeconfig.local.yaml
+
+	sed -i $(SED_I_FLAG) "s/0\.0\.0\.0/$$(docker network inspect kelemetry_default -f '{{(index .IPAM.Config 0).Gateway}}')/g" hack/client-kubeconfig.local.yaml
+	sed -i $(SED_I_FLAG) 's/certificate-authority-data: .*$$/insecure-skip-tls-verify: true/' hack/client-kubeconfig.local.yaml
+
 	docker compose -f quickstart.docker-compose.yaml \
 		-f <(jq -n --arg KELEMETRY_IMAGE "$(KELEMETRY_IMAGE)" "$$QUICKSTART_JQ_PATCH") \
 		$(COMPOSE_COMMAND)
@@ -179,10 +191,10 @@ pre-commit: dot usage test
 
 fmt:
 	git add -A
-	gofumpt -l -w .
-	golines -m140 --base-formatter=gofumpt -w .
-	goimports -l -w .
-	gci write -s standard -s default -s 'prefix(github.com/kubewharf/kelemetry)' .
+	go run mvdan.cc/gofumpt -l -w .
+	go run github.com/segmentio/golines -m140 --base-formatter=gofumpt -w .
+	go run golang.org/x/tools/cmd/goimports -l -w .
+	go run github.com/daixiang0/gci write -s standard -s default -s 'prefix(github.com/kubewharf/kelemetry)' .
 
 local-docker-build:
 	make output/kelemetry
