@@ -24,7 +24,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	reflectutil "github.com/kubewharf/kelemetry/pkg/util/reflect"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
@@ -69,7 +69,7 @@ func (*NoOptions) EnableFlag() *bool       { return nil }
 type AlwaysEnableOptions struct{}
 
 func (*AlwaysEnableOptions) Setup(fs *pflag.FlagSet) {}
-func (*AlwaysEnableOptions) EnableFlag() *bool       { return pointer.Bool(true) }
+func (*AlwaysEnableOptions) EnableFlag() *bool       { return ptr.To(true) }
 
 type UtilContext struct {
 	ComponentName string
