@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
         with:
-          go-version: '1.20'
+          go-version: '1.22.3'
       - name: Ensure coverage is reported for every package
         run: |
           find pkg -type d -print0 | while IFS= read -r -d '' dir; do
@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
         with:
-          go-version: '1.20'
+          go-version: '1.22.3'
       - run: rm -r tools
       - name: Run lint
         uses: golangci/golangci-lint-action@v3
