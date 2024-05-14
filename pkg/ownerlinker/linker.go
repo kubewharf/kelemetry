@@ -72,7 +72,6 @@ func (ctrl *Controller) Lookup(ctx context.Context, object utilobject.Rich) ([]l
 
 		var err error
 		raw, err = ctrl.ObjectCache.Get(ctx, object.VersionedKey)
-
 		if err != nil {
 			return nil, metrics.LabelError(fmt.Errorf("cannot fetch object value from cache: %w", err), "FetchCache")
 		}

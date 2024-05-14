@@ -21,7 +21,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"k8s.io/utils/clock"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	"github.com/kubewharf/kelemetry/pkg/aggregator"
 	"github.com/kubewharf/kelemetry/pkg/aggregator/linker"
@@ -43,7 +43,7 @@ type workerOptions struct {
 func (options *workerOptions) Setup(fs *pflag.FlagSet) {
 	fs.IntVar(&options.WorkerCount, "linker-worker-count", 0, "Number of workers to execute link jobs")
 }
-func (options *workerOptions) EnableFlag() *bool { return pointer.Bool(options.WorkerCount > 0) }
+func (options *workerOptions) EnableFlag() *bool { return ptr.To(options.WorkerCount > 0) }
 
 type worker struct {
 	options          workerOptions

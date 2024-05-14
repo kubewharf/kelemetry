@@ -170,8 +170,8 @@ func (x *FetchExtensionsAndStoreCache) ProcessExtensions(
 	return newSpans, nil
 }
 
-func objectRefFromTags(tags model.KeyValues) (utilobject.Rich, bool) {
-	var object utilobject.Rich
+func objectRefFromTags(tags model.KeyValues) (utilobject.VersionedKey, bool) {
+	var object utilobject.VersionedKey
 
 	assign := func(name string, field *string) bool {
 		value, ok := tags.FindByKey(name)

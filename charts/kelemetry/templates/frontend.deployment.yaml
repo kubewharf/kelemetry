@@ -56,15 +56,17 @@ spec:
             {{ include "kelemetry.logging-options" .Values.frontend.storagePlugin }}
             {{ include "kelemetry.storage-plugin-options" . }}
           ]
-          ports:
-            - name: storage-grpc
-              containerPort: 17271
-            - name: extension
-              containerPort: 8080
-            {{- if .Values.frontend.storagePlugin.pprof }}
-            - name: pprof
-              containerPort: 6060
-            {{- end }}
+          ports: [
+            {
+              name: storage-grpc,
+              containerPort: 17271,
+            },
+            {
+              name: extension,
+              containerPort: 8080,
+            },
+            {{- include "kelemetry.observe-ports" .Values.frontend.storagePlugin }}
+          ]
 
 ---
 apiVersion: v1
