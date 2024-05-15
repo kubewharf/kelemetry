@@ -41,7 +41,7 @@ type Backend interface {
 		query *spanstore.TraceQueryParameters,
 	) ([]*TraceThumbnail, error)
 
-	// Gets the full tree of a trace based on the identifier returned from a prvious call to List.
+	// Gets the full tree of a trace based on the identifier returned from a previous call to List.
 	//
 	// traceId is the fake trace ID that should be presented to the user.
 	//
