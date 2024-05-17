@@ -1,6 +1,8 @@
 module github.com/kubewharf/kelemetry
 
-go 1.20
+go 1.22
+
+toolchain go1.22.3
 
 require (
 	github.com/coocood/freecache v1.2.4

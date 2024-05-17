@@ -1,7 +1,5 @@
 run:
   timeout: 5m
-  skip-dirs:
-    - tools
 
 linters:
   enable:
@@ -56,6 +54,8 @@ linters:
     # - wrapcheck # TODO
 
 issues:
+  exclude-dirs:
+    - tools
   exclude-rules:
     - path: pkg/util/errors
       linters: [errorlint]
