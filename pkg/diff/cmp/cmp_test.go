@@ -74,19 +74,26 @@ func TestCompare(t *testing.T) {
 			name: "map slice nested differ",
 			old:  map[string]any{"a": []any{"b"}},
 			new:  map[string]any{"a": []any{true}},
-			diff: []diffcmp.Diff{{JsonPath: "a.[0]", Old: "b", New: true}},
+			diff: []diffcmp.Diff{{JsonPath: "a[0]", Old: "b", New: true}},
 		},
 		{
 			name: "slice map nested differ",
 			old:  map[string]any{"a": []any{"b"}},
 			new:  map[string]any{"a": []any{true}},
-			diff: []diffcmp.Diff{{JsonPath: "a.[0]", Old: "b", New: true}},
+			diff: []diffcmp.Diff{{JsonPath: "a[0]", Old: "b", New: true}},
 		},
 
 		{name: "slice order differ", old: []any{"a", "b"}, new: []any{"b", "a"}, diff: []diffcmp.Diff{
 			{JsonPath: "[0]", Old: "a", New: "b"},
 			{JsonPath: "[1]", Old: "b", New: "a"},
 		}},
+
+		{
+			name: "escaped json path",
+			old: map[string]any{"labels": map[string]any{"app.kubernetes.io/name": "foo"}},
+			new: map[string]any{"labels": map[string]any{"app.kubernetes.io/name": "bar"}},
+			diff: []diffcmp.Diff{{JsonPath: `labels["app.kubernetes.io/name"]`, Old: "foo", New: "bar"}},
+		},
 	}
 
 	for _, test := range tests {
