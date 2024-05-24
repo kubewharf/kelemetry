@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 type DiffList struct {
@@ -30,9 +31,55 @@ type Diff struct {
 	New      any    `json:"new,omitempty"`
 }
 
-func pushDiff(diffs *[]Diff, jsonPath []string, oldObj, newObj any) {
+type jsonPathPart struct {
+	isListOffset bool
+	objectField  string
+	listOffset   int
+}
+
+func isAlphanumeric(s string) bool {
+	for _, char := range s {
+		if !unicode.IsLetter(char) && !unicode.IsDigit(char) && char != '_' {
+			return false
+		}
+	}
+
+	return true
+}
+
+func formatJsonPath(path []jsonPathPart) string {
+	output := new(strings.Builder)
+
+	for i, part := range path {
+		if part.isListOffset {
+			output.WriteString("[")
+			output.WriteString(fmt.Sprint(part.listOffset))
+			output.WriteString("]")
+
+			continue
+		}
+
+		if isAlphanumeric(part.objectField) {
+			if i != 0 && len(part.objectField) > 0 {
+				_ = output.WriteByte(byte('.'))
+			}
+
+			output.WriteString(part.objectField)
+		} else {
+			output.WriteString(`["`)
+			output.WriteString(strings.ReplaceAll(part.objectField, `"`, `\"`))
+			output.WriteString(`"]`)
+
+			continue
+		}
+	}
+
+	return output.String()
+}
+
+func pushDiff(diffs *[]Diff, jsonPath []jsonPathPart, oldObj, newObj any) {
 	*diffs = append(*diffs, Diff{
-		JsonPath: strings.Join(jsonPath, "."),
+		JsonPath: formatJsonPath(jsonPath),
 		Old:      oldObj,
 		New:      newObj,
 	})
@@ -40,11 +87,11 @@ func pushDiff(diffs *[]Diff, jsonPath []string, oldObj, newObj any) {
 
 func Compare(oldObj, newObj any) DiffList {
 	diffs := []Diff{}
-	compare(&diffs, []string{}, oldObj, newObj)
+	compare(&diffs, []jsonPathPart{}, oldObj, newObj)
 	return DiffList{Diffs: diffs}
 }
 
-func compare(diffs *[]Diff, jsonPath []string, oldObj, newObj any) {
+func compare(diffs *[]Diff, jsonPath []jsonPathPart, oldObj, newObj any) {
 	if conclusive, equal := compareMaybePrimitive(oldObj, newObj); conclusive {
 		if !equal {
 			pushDiff(diffs, jsonPath, oldObj, newObj)
@@ -103,7 +150,7 @@ func compareMaybePrimitive(oldObj, newObj any) (conclusive, equal bool) {
 
 func compareMaps(
 	diffs *[]Diff,
-	jsonPath []string,
+	jsonPath []jsonPathPart,
 	oldObj, newObj map[string]any,
 ) {
 	keysMap := map[string]struct{}{}
@@ -113,7 +160,7 @@ func compareMaps(
 	sort.Strings(keys)
 
 	for _, key := range keys {
-		keyPath := append(jsonPath, key)
+		keyPath := append(jsonPath, jsonPathPart{objectField: key})
 
 		oldValue, oldExist := oldObj[key]
 		newValue, newExist := newObj[key]
@@ -145,20 +192,20 @@ func getMapKeys(m map[string]struct{}) []string {
 
 func compareSlices(
 	diffs *[]Diff,
-	jsonPath []string,
+	jsonPath []jsonPathPart,
 	oldSlice, newSlice []any,
 ) {
-	for i := 0; i < len(oldSlice) || i < len(newSlice); i++ {
-		keyPath := append(jsonPath, fmt.Sprintf("[%d]", i))
+	for sliceIndex := 0; sliceIndex < len(oldSlice) || sliceIndex < len(newSlice); sliceIndex++ {
+		keyPath := append(jsonPath, jsonPathPart{isListOffset: true, listOffset: sliceIndex})
 
 		oldValue := any(nil)
-		if i < len(oldSlice) {
-			oldValue = oldSlice[i]
+		if sliceIndex < len(oldSlice) {
+			oldValue = oldSlice[sliceIndex]
 		}
 
 		newValue := any(nil)
-		if i < len(newSlice) {
-			newValue = newSlice[i]
+		if sliceIndex < len(newSlice) {
+			newValue = newSlice[sliceIndex]
 		}
 
 		compare(diffs, keyPath, oldValue, newValue)
