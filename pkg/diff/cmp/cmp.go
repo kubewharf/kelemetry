@@ -122,11 +122,6 @@ func compareMaps(
 			pushDiff(diffs, keyPath, oldValue, nil)
 		} else if newExist && !oldExist {
 			pushDiff(diffs, keyPath, nil, newValue)
-			*diffs = append(*diffs, Diff{
-				JsonPath: strings.Join(keyPath, "."),
-				Old:      nil,
-				New:      newValue,
-			})
 		} else {
 			// both exist
 			compare(diffs, keyPath, oldValue, newValue)
