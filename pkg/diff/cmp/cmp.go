@@ -33,8 +33,8 @@ type Diff struct {
 
 type jsonPathPart struct {
 	isListOffset bool
-	objectField string
-	listOffset int
+	objectField  string
+	listOffset   int
 }
 
 func isAlphanumeric(s string) bool {

@@ -90,8 +90,8 @@ func TestCompare(t *testing.T) {
 
 		{
 			name: "escaped json path",
-			old: map[string]any{"labels": map[string]any{"app.kubernetes.io/name": "foo"}},
-			new: map[string]any{"labels": map[string]any{"app.kubernetes.io/name": "bar"}},
+			old:  map[string]any{"labels": map[string]any{"app.kubernetes.io/name": "foo"}},
+			new:  map[string]any{"labels": map[string]any{"app.kubernetes.io/name": "bar"}},
 			diff: []diffcmp.Diff{{JsonPath: `labels["app.kubernetes.io/name"]`, Old: "foo", New: "bar"}},
 		},
 	}
