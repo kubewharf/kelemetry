@@ -34,6 +34,11 @@ include "graph";
       map(select(.fields.diff))
         | any(.fields.diff | contains("status.observedGeneration 1 -> 2"))
     )
+    | assert(
+      "diff never contains managedFields";
+      map(select(.fields.diff))
+        | any(.fields.diff | contains("metadata.managedFields")) | not
+    )
 ) | ._ = (
   .spans
     | children(root.spanID)
