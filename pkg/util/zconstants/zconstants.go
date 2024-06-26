@@ -47,7 +47,7 @@ const (
 	PseudoTypeLinkClass PseudoTypeValue = "linkClass"
 )
 
-// Identifies that the span represents an actual event (rather than as a pseudospan).
+// If value is not "object", identifies that the span represents an actual event (rather than as a pseudospan).
 const TraceSource = Prefix + "traceSource"
 
 const (
@@ -57,23 +57,15 @@ const (
 	TraceSourceEvent = "event"
 )
 
-func KnownTraceSources(withPseudo bool) []string {
-	numPseudoTraceSources := 1
+func KnownPseudoTraceSources() []string {
+	return []string{TraceSourceObject}
+}
 
-	traceSources := []string{
-		// pseudo
-		TraceSourceObject,
-
-		// real
+func KnownNonPseudoTraceSources() []string {
+	return []string{
 		TraceSourceAudit,
 		TraceSourceEvent,
 	}
-
-	if !withPseudo {
-		traceSources = traceSources[numPseudoTraceSources:]
-	}
-
-	return traceSources
 }
 
 // Classifies the type of a log line.

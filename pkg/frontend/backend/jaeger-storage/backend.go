@@ -33,6 +33,7 @@ import (
 	"go.uber.org/zap"
 
 	jaegerbackend "github.com/kubewharf/kelemetry/pkg/frontend/backend"
+	jaegerreader "github.com/kubewharf/kelemetry/pkg/frontend/reader"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	utiljaeger "github.com/kubewharf/kelemetry/pkg/util/jaeger"
@@ -152,7 +153,15 @@ func (backend *Backend) List(
 	params *spanstore.TraceQueryParameters,
 ) ([]*jaegerbackend.TraceThumbnail, error) {
 	traceThumbnails := []*jaegerbackend.TraceThumbnail{}
-	for _, traceSource := range zconstants.KnownTraceSources(false) {
+
+	var traceSources []string
+	if ctx.Value(jaegerreader.WantPseudoSpansOnly{}) != nil {
+		traceSources = zconstants.KnownPseudoTraceSources()
+	} else {
+		traceSources = zconstants.KnownNonPseudoTraceSources()
+	}
+
+	for _, traceSource := range traceSources {
 		if params.NumTraces != 0 && len(traceThumbnails) >= params.NumTraces {
 			break
 		}
