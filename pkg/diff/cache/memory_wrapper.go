@@ -136,6 +136,9 @@ func (wrapper *CacheWrapper) FetchSnapshot(
 	penetrateMetric.Penetrate = true
 
 	patch, err := wrapper.delegate.FetchSnapshot(ctx, object, snapshotName)
+	if patch != nil && err == nil {
+		wrapper.patchCache.Add(cacheWrapperKey(object, snapshotName), patch)
+	}
 	return patch, err
 }
 
