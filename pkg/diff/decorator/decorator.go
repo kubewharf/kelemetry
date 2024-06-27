@@ -327,7 +327,19 @@ func (decorator *decorator) tryUpdateOnce(
 
 	diffInfo := ""
 	for _, diff := range patch.DiffList.Diffs {
-		diffInfo += fmt.Sprintf("%s %#v -> %#v\n", diff.JsonPath, diff.Old, diff.New)
+		diffJson := [2][]byte{}
+
+		for i, obj := range []any{diff.Old, diff.New} {
+			buf, err := json.Marshal(obj)
+			if err != nil {
+				// this case is typically impossible since it is a result of unmarshalling json from cache
+				buf = []byte(fmt.Sprintf("%#v", obj))
+			}
+
+			diffJson[i] = buf
+		}
+
+		diffInfo += fmt.Sprintf("%s %s -> %s\n", diff.JsonPath, diffJson[0], diffJson[1])
 	}
 	event.Log(zconstants.LogTypeObjectDiff, diffInfo)
 

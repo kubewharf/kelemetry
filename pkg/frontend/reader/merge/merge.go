@@ -615,6 +615,11 @@ func createVirtualSpan(traceId model.TraceID, span *model.Span, opName string, s
 		Duration:      span.Duration,
 		Tags: []model.KeyValue{
 			{
+				Key:   zconstants.TraceSource,
+				VType: model.StringType,
+				VStr:  zconstants.TraceSourceObject,
+			},
+			{
 				Key:   zconstants.PseudoType,
 				VType: model.StringType,
 				VStr:  string(zconstants.PseudoTypeLinkClass),

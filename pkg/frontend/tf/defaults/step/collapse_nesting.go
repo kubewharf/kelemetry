@@ -25,6 +25,7 @@ import (
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 	utilmarshal "github.com/kubewharf/kelemetry/pkg/util/marshal"
+	reflectutil "github.com/kubewharf/kelemetry/pkg/util/reflect"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
@@ -94,11 +95,39 @@ type AuditDiffClass struct {
 	Priority      int    `json:"priority"`
 }
 
-func (classes *AuditDiffClassification) Get(prefix string) *AuditDiffClass {
-	for ptr := len(prefix); ptr > 0; ptr = strings.LastIndex(prefix[:ptr], ".") { // remove the last `.`-delimited substring if not found
-		if class, hasSpecific := classes.SpecificFields.fieldMap[prefix[:ptr]]; hasSpecific {
-			return class
+func iterStringPrefix[T any](str string, yield func(string) (T, bool)) (T, bool) {
+	result, hasResult := yield(str)
+
+	for ; !hasResult; result, hasResult = yield(str) {
+		if str[len(str)-1] == ']' {
+			paired := strings.LastIndex(str, "[")
+			if paired != -1 {
+				str = str[:paired]
+				continue
+			}
 		}
+
+		delim := strings.LastIndex(str, ".")
+		if delim != -1 {
+			str = str[:delim]
+			continue
+		}
+
+		return reflectutil.ZeroOf[T](), false
+	}
+
+	return result, true
+}
+
+func (classes *AuditDiffClassification) Get(path string) *AuditDiffClass {
+	if class, found := iterStringPrefix(path, func(prefix string) (*AuditDiffClass, bool) {
+		if class, hasSpecific := classes.SpecificFields.fieldMap[prefix]; hasSpecific {
+			return class, true
+		}
+
+		return nil, false
+	}); found {
+		return class
 	}
 
 	return &classes.DefaultClass
