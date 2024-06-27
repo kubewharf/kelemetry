@@ -16,6 +16,9 @@
 {{- define "kelemetry.storage-labels" }}
 {{- dict "main" . "comp" "storage" | include "kelemetry.default-labels" }}
 {{- end }}
+{{- define "kelemetry.scan-labels" }}
+{{- dict "main" . "comp" "scan" | include "kelemetry.default-labels" }}
+{{- end }}
 
 {{- define "kelemetry.default-labels" }}
 {{- include "kelemetry.default-labels-raw" (get . "main") | fromYaml | merge (dict "app.kubernetes.io/component" (get . "comp")) | toJson }}

@@ -6,6 +6,25 @@ on:
     branches: ["main"]
 
 jobs:
+  publish-scan:
+    name: Build scan image
+    runs-on: [ubuntu-20.04]
+    if: ${{ github.ref_type == 'tag' }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Docker login for ghcr
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{github.actor}}
+          password: ${{secrets.GITHUB_TOKEN}}
+
+      - name: Set image tag for release
+        id: tag-name
+        run: echo "IMAGE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - run: docker build -t ghcr.io/kubewharf/kelemetry-scan:${{steps.tag-name.outputs.IMAGE_TAG}} scan
+      - run: docker push ghcr.io/kubewharf/kelemetry-scan:${{steps.tag-name.outputs.IMAGE_TAG}}
   publish-chart:
     name: Build helm chart
     runs-on: [ubuntu-20.04]

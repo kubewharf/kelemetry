@@ -1,0 +1,36 @@
+{{- if .Values.scan}}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{.Release.Name}}-scan
+  labels: {{ include "kelemetry.scan-labels" . }}
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{ include "kelemetry.scan-labels" . }}
+  template:
+    metadata:
+      labels: {{ include "kelemetry.scan-labels" . }}
+    spec:
+      imagePullSecrets: [
+        {{- range .Values.scanImage.pullSecrets }}
+        {{ . | toJson }},
+        {{- end }}
+      ]
+      serviceAccountName: {{.Release.Name}}-scan
+      {{ include "kelemetry.pod-boilerplate" .Values.informers | nindent 6 }}
+      containers:
+        - name: main
+          {{ include "kelemetry.container-boilerplate" .Values.informers | nindent 10 }}
+          image: {{ printf "%s:%s" .Values.scanImage.repository (.Values.scanImage.tag | default .Chart.AppVersion) | toJson }}
+          imagePullPolicy: {{ toJson .Values.scanImage.pullPolicy }}
+          # TODO: add readiness probe
+          command: [sleep, infinity]
+          env:
+            - name: RELEASE_NAMESPACE
+              value: {{toJson .Release.Namespace}}
+            - name: RELEASE_NAME
+              value: {{toJson .Release.Name}}
+{{- end }}
