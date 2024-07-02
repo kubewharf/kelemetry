@@ -55,7 +55,7 @@ type CommonOptions struct {
 }
 
 func (options *CommonOptions) Setup(fs *pflag.FlagSet) {
-	fs.DurationVar(&options.PatchTtl, "diff-cache-patch-ttl", time.Minute*10, "duration for which patch cache remains (0 to disable TTL)")
+	fs.DurationVar(&options.PatchTtl, "diff-cache-patch-ttl", 0, "duration for which patch cache remains (0 to disable TTL)")
 	fs.DurationVar(
 		&options.SnapshotTtl,
 		"diff-cache-snapshot-ttl",
@@ -150,7 +150,12 @@ func (mux *mux) Init() error {
 
 func (mux *mux) Start(ctx context.Context) error {
 	if wrapped, ok := mux.impl.(*CacheWrapper); ok {
-		go wrapped.patchCache.RunCleanupLoop(ctx, mux.Logger)
+		if wrapped.patchCache != nil {
+			go wrapped.patchCache.RunCleanupLoop(ctx, mux.Logger)
+		}
+		if wrapped.snapshotCache != nil {
+			go wrapped.snapshotCache.RunCleanupLoop(ctx, mux.Logger)
+		}
 	}
 
 	return nil

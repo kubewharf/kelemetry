@@ -43,15 +43,21 @@ func newCacheWrapper(
 	clusterConfigs k8sconfig.Config,
 	penetrateMetric *metrics.Metric[*penetrateMetric],
 ) *CacheWrapper {
-	return &CacheWrapper{
+	cacheWrapper := &CacheWrapper{
 		delegate:        delegate,
-		patchCache:      cache.NewTtlOnce(options.PatchTtl, clock),
 		penetrateMetric: penetrateMetric,
 		clusterConfigs:  clusterConfigs,
-		snapshotCache:   cache.NewTtlOnce(options.SnapshotTtl, clock),
 		options:         options,
 		clock:           clock,
 	}
+	if options.PatchTtl > 0 {
+		cacheWrapper.patchCache = cache.NewTtlOnce(options.PatchTtl, clock)
+	}
+	if options.SnapshotTtl > 0 {
+		cacheWrapper.snapshotCache = cache.NewTtlOnce(options.SnapshotTtl, clock)
+	}
+
+	return cacheWrapper
 }
 
 type penetrateMetric struct {
@@ -61,15 +67,33 @@ type penetrateMetric struct {
 
 func (*penetrateMetric) MetricName() string { return "diff_cache_memory_wrapper_penetrate" }
 
-type wrapperSizeMetric struct{}
+type wrapperSizeMetric struct {
+	Type string
+}
 
 func (*wrapperSizeMetric) MetricName() string { return "diff_cache_memory_wrapper_cardinality" }
 
 func (wrapper *CacheWrapper) initMetricsLoop(metricsClient metrics.Client) {
 	metrics.NewMonitor(
 		metricsClient,
-		&wrapperSizeMetric{},
-		func() float64 { return float64(wrapper.patchCache.Size()) },
+		&wrapperSizeMetric{Type: "diff"},
+		func() float64 {
+			if wrapper.patchCache == nil {
+				return 0
+			}
+			return float64(wrapper.patchCache.Size())
+		},
+	)
+
+	metrics.NewMonitor(
+		metricsClient,
+		&wrapperSizeMetric{Type: "snapshot"},
+		func() float64 {
+			if wrapper.snapshotCache == nil {
+				return 0
+			}
+			return float64(wrapper.snapshotCache.Size())
+		},
 	)
 }
 
@@ -80,7 +104,9 @@ func (wrapper *CacheWrapper) GetCommonOptions() *CommonOptions {
 func (wrapper *CacheWrapper) Store(ctx context.Context, object utilobject.Key, patch *Patch) {
 	wrapper.delegate.Store(ctx, object, patch)
 
-	wrapper.patchCache.Add(cacheWrapperKey(object, patch.NewResourceVersion), patch)
+	if wrapper.patchCache != nil {
+		wrapper.patchCache.Add(cacheWrapperKey(object, patch.NewResourceVersion), patch)
+	}
 }
 
 func (wrapper *CacheWrapper) Fetch(
@@ -97,14 +123,15 @@ func (wrapper *CacheWrapper) Fetch(
 		return nil, err
 	}
 
-	if patch, ok := wrapper.patchCache.Get(cacheWrapperKey(object, keyRv)); ok {
-		return patch.(*Patch), nil
+	if wrapper.patchCache != nil {
+		if patch, ok := wrapper.patchCache.Get(cacheWrapperKey(object, keyRv)); ok {
+			return patch.(*Patch), nil
+		}
 	}
-
 	penetrateMetric.Penetrate = true
 
 	patch, err := wrapper.delegate.Fetch(ctx, object, oldResourceVersion, newResourceVersion)
-	if patch != nil && err == nil {
+	if wrapper.patchCache != nil && patch != nil && err == nil {
 		wrapper.patchCache.Add(cacheWrapperKey(object, keyRv), patch)
 	}
 
@@ -118,7 +145,9 @@ func (wrapper *CacheWrapper) StoreSnapshot(
 	snapshot *Snapshot,
 ) {
 	wrapper.delegate.StoreSnapshot(ctx, object, snapshotName, snapshot)
-	wrapper.snapshotCache.Add(cacheWrapperKey(object, snapshotName), snapshot)
+	if wrapper.snapshotCache != nil {
+		wrapper.snapshotCache.Add(cacheWrapperKey(object, snapshotName), snapshot)
+	}
 }
 
 func (wrapper *CacheWrapper) FetchSnapshot(
@@ -129,15 +158,17 @@ func (wrapper *CacheWrapper) FetchSnapshot(
 	penetrateMetric := &penetrateMetric{Type: fmt.Sprintf("snapshot/%s", snapshotName)}
 	defer wrapper.penetrateMetric.DeferCount(wrapper.clock.Now(), penetrateMetric)
 
-	if value, ok := wrapper.patchCache.Get(cacheWrapperKey(object, snapshotName)); ok {
-		return value.(*Snapshot), nil
+	if wrapper.snapshotCache != nil {
+		if value, ok := wrapper.snapshotCache.Get(cacheWrapperKey(object, snapshotName)); ok {
+			return value.(*Snapshot), nil
+		}
 	}
 
 	penetrateMetric.Penetrate = true
 
 	patch, err := wrapper.delegate.FetchSnapshot(ctx, object, snapshotName)
-	if patch != nil && err == nil {
-		wrapper.patchCache.Add(cacheWrapperKey(object, snapshotName), patch)
+	if wrapper.snapshotCache != nil && patch != nil && err == nil {
+		wrapper.snapshotCache.Add(cacheWrapperKey(object, snapshotName), patch)
 	}
 	return patch, err
 }
