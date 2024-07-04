@@ -60,6 +60,10 @@ func (cache *TtlOnce) Add(key string, value any) {
 		cache.data[key] = value
 		expiry := cache.clock.Now().Add(cache.ttl)
 		cache.cleanupQueue.LockedPushBack(cleanupEntry{key: key, expiry: expiry})
+		select {
+		case cache.wakeupCh <- struct{}{}:
+		default:
+		}
 	}
 }
 
