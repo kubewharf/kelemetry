@@ -55,7 +55,7 @@ type CommonOptions struct {
 }
 
 func (options *CommonOptions) Setup(fs *pflag.FlagSet) {
-	fs.DurationVar(&options.PatchTtl, "diff-cache-patch-ttl", 0, "duration for which patch cache remains (0 to disable TTL)")
+	fs.DurationVar(&options.PatchTtl, "diff-cache-patch-ttl", time.Minute*10, "duration for which patch cache remains (0 to disable TTL)")
 	fs.DurationVar(
 		&options.SnapshotTtl,
 		"diff-cache-snapshot-ttl",

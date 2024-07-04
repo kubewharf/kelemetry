@@ -50,9 +50,7 @@ func newCacheWrapper(
 		options:         options,
 		clock:           clock,
 	}
-	if options.PatchTtl > 0 {
-		cacheWrapper.patchCache = cache.NewTtlOnce(options.PatchTtl, clock)
-	}
+
 	if options.SnapshotTtl > 0 {
 		cacheWrapper.snapshotCache = cache.NewTtlOnce(options.SnapshotTtl, clock)
 	}
