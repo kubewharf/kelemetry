@@ -432,9 +432,6 @@ func (ctrl *controller) drainMonitors(gvrs []schema.GroupVersionResource) []*mon
 }
 
 func (ctrl *controller) drainAllMonitors() []*monitor {
-	ctrl.monitorsLock.Lock()
-	defer ctrl.monitorsLock.Unlock()
-
 	monitors := make([]*monitor, 0, len(ctrl.monitors))
 	for gvr := range ctrl.monitors {
 		monitors = append(monitors, ctrl.monitors[gvr])

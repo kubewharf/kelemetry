@@ -18,6 +18,7 @@ import (
 	"context"
 	"math"
 	"sync"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -280,3 +281,17 @@ func (q *Deque[T]) Compact(ratio float64) {
 }
 
 func zero[T any]() (zero T) { return }
+
+func NoisyWaitChannelClose(ctx context.Context, ch <-chan struct{}, period time.Duration, doLog func(string)) {
+	for {
+		select {
+		case <-ch:
+			return
+		case <-time.After(period):
+			doLog("waiting for channel close...")
+		case <-ctx.Done():
+			doLog("base context closed")
+			return
+		}
+	}
+}
