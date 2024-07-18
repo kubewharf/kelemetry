@@ -32,6 +32,7 @@ import (
 
 	"github.com/kubewharf/kelemetry/pkg/k8s"
 	"github.com/kubewharf/kelemetry/pkg/metrics"
+	"github.com/kubewharf/kelemetry/pkg/util/channel"
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
 )
 
@@ -235,11 +236,14 @@ func (elector *Elector) spinOnce(ctx context.Context, run func(ctx context.Conte
 		return false
 	}
 
+	spinCompleted := make(chan struct{})
+
 	go func() {
 		defer shutdown.RecoverPanic(elector.logger)
 		atomic.StoreUint32(&elector.isLeaderFlag[leaderId], 1)
 		defer atomic.StoreUint32(&elector.isLeaderFlag[leaderId], 0)
 		defer cancelFunc() // if leader panics, release the lease
+		defer close(spinCompleted)
 
 		run(termCtx)
 	}()
@@ -247,6 +251,11 @@ func (elector *Elector) spinOnce(ctx context.Context, run func(ctx context.Conte
 	select {
 	case <-termCtx.Done():
 		elector.logger.Warn("lost leader lease")
+
+		channel.NoisyWaitChannelClose(baseCtx, spinCompleted, time.Second*5, func(msg string) {
+			elector.logger.WithField("channel", "spinComplete").Info(msg)
+		})
+
 		return true
 	case <-baseCtx.Done():
 		return false
