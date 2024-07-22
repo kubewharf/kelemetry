@@ -19,7 +19,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.9.0
-	go.etcd.io/etcd/client/v3 v3.5.14
+	go.etcd.io/etcd/client/v3 v3.5.15
 	go.opentelemetry.io/otel v1.28.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.28.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.28.0
@@ -148,8 +148,8 @@ require (
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.1.2 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
-	go.etcd.io/etcd/api/v3 v3.5.14 // indirect
-	go.etcd.io/etcd/client/pkg/v3 v3.5.14 // indirect
+	go.etcd.io/etcd/api/v3 v3.5.15 // indirect
+	go.etcd.io/etcd/client/pkg/v3 v3.5.15 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.51.0 // indirect
 	go.opentelemetry.io/otel/metric v1.28.0 // indirect
