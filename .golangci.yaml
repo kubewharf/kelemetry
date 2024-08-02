@@ -1,8 +1,5 @@
 run:
   timeout: 5m
-  skip-dirs:
-    - tools
-    - pkg/crds/client
 
 linters:
   enable:
@@ -57,6 +54,9 @@ linters:
     # - wrapcheck # TODO
 
 issues:
+  exclude-dirs:
+    - tools
+    - pkg/crds/client
   exclude-rules:
     - path: pkg/util/errors
       linters: [errorlint]

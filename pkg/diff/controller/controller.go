@@ -319,7 +319,7 @@ func (ctrl *controller) resyncMonitorsLoop(ctx context.Context) {
 		}
 
 		err := retry.OnError(retry.DefaultBackoff, func(_ error) bool { return true }, func() error {
-			err := ctrl.resyncMonitors()
+			err := ctrl.resyncMonitors(ctx)
 			if err != nil {
 				logger.WithError(err).Warn("resync monitors")
 			}
@@ -361,7 +361,7 @@ func (ctrl *controller) shouldMonitorObject(gvr schema.GroupVersionResource, nam
 	return true
 }
 
-func (ctrl *controller) resyncMonitors() error {
+func (ctrl *controller) resyncMonitors(ctx context.Context) error {
 	cdc, err := ctrl.Discovery.ForCluster(ctrl.Clients.TargetCluster().ClusterName())
 	if err != nil {
 		return fmt.Errorf("cannot get discovery cache for target cluster: %w", err)
@@ -373,7 +373,7 @@ func (ctrl *controller) resyncMonitors() error {
 
 	newMonitors := make([]*monitor, 0, len(toStart))
 	for _, gvr := range toStart {
-		monitor := ctrl.startMonitor(gvr, expected[gvr])
+		monitor := ctrl.startMonitor(ctx, gvr, expected[gvr])
 		newMonitors = append(newMonitors, monitor)
 	}
 	ctrl.addMonitors(newMonitors)
@@ -432,9 +432,6 @@ func (ctrl *controller) drainMonitors(gvrs []schema.GroupVersionResource) []*mon
 }
 
 func (ctrl *controller) drainAllMonitors() []*monitor {
-	ctrl.monitorsLock.Lock()
-	defer ctrl.monitorsLock.Unlock()
-
 	monitors := make([]*monitor, 0, len(ctrl.monitors))
 	for gvr := range ctrl.monitors {
 		monitors = append(monitors, ctrl.monitors[gvr])
@@ -444,11 +441,11 @@ func (ctrl *controller) drainAllMonitors() []*monitor {
 	return monitors
 }
 
-func (ctrl *controller) startMonitor(gvr schema.GroupVersionResource, apiResource *metav1.APIResource) *monitor {
+func (ctrl *controller) startMonitor(ctx context.Context, gvr schema.GroupVersionResource, apiResource *metav1.APIResource) *monitor {
 	logger := ctrl.Logger.WithField("submod", "monitor").WithField("gvr", gvr)
 	logger.Debug("Starting")
 
-	ctx, cancelFunc := context.WithCancel(context.Background())
+	ctx, cancelFunc := context.WithCancel(ctx)
 
 	monitor := &monitor{
 		ctrl:        ctrl,

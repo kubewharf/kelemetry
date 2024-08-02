@@ -211,30 +211,29 @@ generate:
 		crd \
 		paths=./pkg/crds/apis/... \
 		output:crd:dir=./crds/config
+
+
 	go run k8s.io/code-generator/cmd/deepcopy-gen \
-		-o /tmp/kelemetry-gen \
-		--input-dirs=./pkg/crds/apis/v1alpha1 \
-		--output-file-base=zz_generated.deepcopy \
-		-h ./hack/boilerplate.txt
+		--bounding-dirs=./pkg/crds/apis/v1alpha1 \
+		--output-file=zz_generated.deepcopy \
+		--go-header-file ./hack/boilerplate.txt
 	go run k8s.io/code-generator/cmd/client-gen \
-		-o /tmp/kelemetry-gen \
-		--input=github.com/kubewharf/kelemetry/pkg/crds/apis/v1alpha1 \
-		--input-base= \
-		--output-package=github.com/kubewharf/kelemetry/pkg/crds/client/clientset \
+		--input=pkg/crds/apis/v1alpha1 \
+		--input-base=$$(realpath .) \
+		--output-pkg=github.com/kubewharf/kelemetry/pkg/crds/client/clientset \
+		--output-dir=pkg/crds/client/clientset \
 		--clientset-name=versioned \
-		-h ./hack/boilerplate.txt
+		--go-header-file ./hack/boilerplate.txt
 	go run k8s.io/code-generator/cmd/lister-gen \
-		-o /tmp/kelemetry-gen \
-		--input-dirs=github.com/kubewharf/kelemetry/pkg/crds/apis/v1alpha1 \
-		--output-package=github.com/kubewharf/kelemetry/pkg/crds/client/listers \
-		-h ./hack/boilerplate.txt
+		--output-pkg=github.com/kubewharf/kelemetry/pkg/crds/client/listers \
+		--output-dir=./pkg/crds/client/listers \
+		--go-header-file ./hack/boilerplate.txt \
+		github.com/kubewharf/kelemetry/pkg/crds/apis/v1alpha1
 	go run k8s.io/code-generator/cmd/informer-gen \
-		-o /tmp/kelemetry-gen \
-		--input-dirs=github.com/kubewharf/kelemetry/pkg/crds/apis/v1alpha1 \
-		--output-package=github.com/kubewharf/kelemetry/pkg/crds/client/informers \
+		--output-pkg=github.com/kubewharf/kelemetry/pkg/crds/client/informers \
+		--output-dir=./pkg/crds/client/informers \
 		--versioned-clientset-package=github.com/kubewharf/kelemetry/pkg/crds/client/clientset/versioned \
 		--listers-package=github.com/kubewharf/kelemetry/pkg/crds/client/listers \
-		-h ./hack/boilerplate.txt
-	cp -r /tmp/kelemetry-gen/github.com/kubewharf/kelemetry/pkg/crds -T pkg/crds
-	rm -r /tmp/kelemetry-gen
+		--go-header-file ./hack/boilerplate.txt \
+		github.com/kubewharf/kelemetry/pkg/crds/apis/v1alpha1
 	$(MAKE) fmt

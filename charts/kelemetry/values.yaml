@@ -458,3 +458,12 @@ ingress:
   # Equivalent to Ingress.spec.tls in the K8S API
   tls: []
   host: ~
+
+# Run a basic script to check the status of Kelemetry deployment.
+scan: true
+scanImage:
+  repository: ghcr.io/kubewharf/kelemetry-scan
+  pullPolicy: Always
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+  pullSecrets: []

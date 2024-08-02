@@ -4,7 +4,7 @@
 version: "3"
 services:
   etcd:
-    image: quay.io/coreos/etcd:v3.2
+    image: quay.io/coreos/etcd:v3.4.33
     entrypoint: [etcd]
     command:
       - -name=main

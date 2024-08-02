@@ -75,3 +75,11 @@ This setup is bundled into a Helm chart.
 
 The default configuration is designed for single-cluster deployment.
 For multi-cluster deployment, configure the `sharedEtcd` and `storageBackend` to use a common database.
+
+### Troubleshooting
+Run `kubectl exec kelemetry-scan-0 -- scan`.
+It should report a few key metrics and provide suggestions if the metrics look wrong.
+
+All containers running the Kelemetry image export Prometheus metrics on the `metrics` (9090) port.
+Jaeger containers export Prometheus metrics on the [`admin` port](https://www.jaegertracing.io/docs/latest/deployment/).
+You may set up your own monitoring based on the available metrics.
