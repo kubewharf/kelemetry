@@ -4,6 +4,8 @@ set -euo pipefail
 
 cd $(dirname $0)
 
+export REPO_PATH=$(realpath ..)
+
 run_test() {
 	local test_name=$1
 

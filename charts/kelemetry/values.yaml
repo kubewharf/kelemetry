@@ -339,6 +339,8 @@ linkers:
   ownerReference: true
   # Enable the annotation linker, which links objects based on the `kelemetry.kubewharf.io/parent-link` annotation.
   annotation: true
+    # Enable the rule linker, which links objects using rules in the `LinkRule` CRD in the corresponding cluster.
+  rule: true
 
 # Object cache is an LRU cache for reusing lazily-fetched objects.
 objectCache:

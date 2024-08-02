@@ -35,6 +35,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 
+	kelemetryversioned "github.com/kubewharf/kelemetry/pkg/crds/client/clientset/versioned"
 	k8sconfig "github.com/kubewharf/kelemetry/pkg/k8s/config"
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
@@ -77,6 +78,7 @@ type Client interface {
 	ClusterName() string
 	DynamicClient() dynamic.Interface
 	KubernetesClient() kubernetes.Interface
+	KelemetryClient() kelemetryversioned.Interface
 	InformerFactory() informers.SharedInformerFactory
 	NewInformerFactory(options ...informers.SharedInformerOption) informers.SharedInformerFactory
 	EventRecorder(name string) record.EventRecorder
@@ -99,6 +101,7 @@ type client struct {
 	restConfig       *rest.Config
 	dynamicClient    dynamic.Interface
 	kubernetesClient *kubernetes.Clientset
+	kelemetryClient  kelemetryversioned.Interface
 	informerFactory  informers.SharedInformerFactory
 	eventBroadcaster record.EventBroadcaster
 }
@@ -191,6 +194,11 @@ func (clients *clusterClients) newClient(name string) (*client, error) {
 		return nil, fmt.Errorf("kubernetes client creation failed: %w", err)
 	}
 
+	kelemetryClient, err := kelemetryversioned.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("kelemetry client creation failed: %w", err)
+	}
+
 	var informerFactory informers.SharedInformerFactory
 	if atomic.LoadInt32(&clients.started) == 0 {
 		// we do not support using informers on clusters created after start
@@ -205,6 +213,7 @@ func (clients *clusterClients) newClient(name string) (*client, error) {
 		restConfig:       config,
 		dynamicClient:    dynamicClient,
 		kubernetesClient: kubernetesClient,
+		kelemetryClient:  kelemetryClient,
 		informerFactory:  informerFactory,
 		eventBroadcaster: broadcaster,
 	}, nil
@@ -224,6 +233,10 @@ func (client *client) DynamicClient() dynamic.Interface {
 
 func (client *client) KubernetesClient() kubernetes.Interface {
 	return client.kubernetesClient
+}
+
+func (client *client) KelemetryClient() kelemetryversioned.Interface {
+	return client.kelemetryClient
 }
 
 func (client *client) InformerFactory() informers.SharedInformerFactory {

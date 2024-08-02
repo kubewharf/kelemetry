@@ -1,5 +1,5 @@
 [files]
-extend-exclude = ["go.mod", "go.sum"]
+extend-exclude = ["go.mod", "go.sum", "crds/config/*.yaml"]
 
 [default.extend-identifiers]
-O_WRONLY = "O_WRONLY"
+ANDed = "ANDed"
