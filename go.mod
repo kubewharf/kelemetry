@@ -7,7 +7,7 @@ toolchain go1.22.3
 require (
 	github.com/coocood/freecache v1.2.4
 	github.com/daixiang0/gci v0.13.4
-	github.com/dlclark/regexp2 v1.11.2
+	github.com/dlclark/regexp2 v1.11.4
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-logr/logr v1.4.2
 	github.com/itchyny/gojq v0.12.16
