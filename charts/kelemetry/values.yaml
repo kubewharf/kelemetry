@@ -429,7 +429,7 @@ sharedEtcd:
   image:
     repository: quay.io/coreos/etcd
     pullPolicy: IfNotPresent
-    tag: v3.3 # note: etcd v3.4 onwards use distroless base image, which is not supported by this chart
+    tag: v3.5.15
     pullSecrets: []
   resources: {}
     # limits:

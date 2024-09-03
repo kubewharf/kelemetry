@@ -34,24 +34,21 @@ spec:
               valueFrom:
                 fieldRef: {fieldPath: metadata.name}
           command:
-            - ash
-            - -c
-            - |
-              etcd \
-                -name ${POD_NAME} \
-                -advertise-client-urls=http://${POD_NAME}:2379 \
-                -listen-client-urls=http://0.0.0.0:2379 \
-                -initial-advertise-peer-urls=http://${POD_NAME}:2380 \
-                -listen-peer-urls=http://0.0.0.0:2380 \
-                -initial-cluster-token=etcd-cluster-1 \
-                -initial-cluster={{.Release.Name}}-etcd-0=http://{{.Release.Name}}-etcd-0.{{.Release.Name}}-etcd.{{.Release.Namespace}}.svc:2380
+            - etcd
+            - --name=$(POD_NAME)
+            - --advertise-client-urls=http://$(POD_NAME):2379
+            - --listen-client-urls=http://0.0.0.0:2379
+            - --initial-advertise-peer-urls=http://$(POD_NAME):2380
+            - --listen-peer-urls=http://0.0.0.0:2380
+            - --initial-cluster-token=etcd-cluster-1
+            - --initial-cluster={{.Release.Name}}-etcd-0=http://{{.Release.Name}}-etcd-0.{{.Release.Name}}-etcd.{{.Release.Namespace}}.svc:2380
                   {{- if gt (int .Values.sharedEtcd.replicaCount) 1 }}
                   {{- range untilStep 1 (int .Values.sharedEtcd.replicaCount) 1 }}
                   {{- printf ",%s-etcd-%d=http://%s-etcd-%d.%s-etcd.%s.svc:2380" $.Release.Name . $.Release.Name . $.Release.Name $.Release.Namespace }}
                   {{- end }}
-                  {{- end }} \
-                -initial-cluster-state=new \
-                -data-dir=/var/run/etcd/default.etcd
+                  {{- end }}
+            - --initial-cluster-state=new
+            - --data-dir=/var/run/etcd/default.etcd
           ports:
             - containerPort: 2379
               name: client
