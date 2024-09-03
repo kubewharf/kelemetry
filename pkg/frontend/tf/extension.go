@@ -93,13 +93,9 @@ func (x *FetchExtensionsAndStoreCache) ProcessExtensions(
 	}
 
 	for _, span := range spans {
-		span := span
-
 		tags := model.KeyValues(span.Tags)
 		if tag, isPseudo := tags.FindByKey(zconstants.PseudoType); isPseudo && tag.VStr == string(zconstants.PseudoTypeObject) {
 			for extId, ext := range extensions {
-				ext := ext
-
 				objectRef, ok := objectRefFromTags(tags)
 				if !ok {
 					return nil, fmt.Errorf("expected object tags in nestingLevel=object spans")
@@ -116,8 +112,6 @@ func (x *FetchExtensionsAndStoreCache) ProcessExtensions(
 			}
 		} else if tag, exists := tags.FindByKey(zconstants.TraceSource); exists && tag.VStr == zconstants.TraceSourceAudit {
 			for extId, ext := range extensions {
-				ext := ext
-
 				objectRef, ok := objectRefFromTags(tags)
 				if !ok {
 					return nil, fmt.Errorf("expected object tags in traceSource=audit spans")
@@ -142,8 +136,6 @@ func (x *FetchExtensionsAndStoreCache) ProcessExtensions(
 
 	fullSem := semaphore.NewUnbounded()
 	for extId := range extensionSemaphores {
-		extId := extId
-
 		fullSem.Schedule(func(ctx context.Context) (semaphore.Publish, error) {
 			semRunCtx, cancelFunc := context.WithTimeout(ctx, extensions[extId].TotalTimeout())
 			defer cancelFunc()

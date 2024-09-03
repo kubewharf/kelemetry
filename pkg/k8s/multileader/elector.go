@@ -152,8 +152,6 @@ func configureCallbacks(configs []*leaderelection.LeaderElectionConfig) <-chan e
 	ch := make(chan event, 1)
 
 	for i := range configs {
-		i := i
-
 		configs[i].Callbacks.OnStartedLeading = func(ctx context.Context) {
 			// only the first event needs to get sent
 			// other goroutines should exit immediately to avoid leak
