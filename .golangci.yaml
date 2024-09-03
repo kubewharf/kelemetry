@@ -55,6 +55,7 @@ linters:
 issues:
   exclude-dirs:
     - tools
+    - pkg/crds/client
   exclude-rules:
     - path: pkg/util/errors
       linters: [errorlint]

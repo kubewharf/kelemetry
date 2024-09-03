@@ -110,8 +110,8 @@ func (fl *followLinkPool[M]) scheduleFrom(obj *object[M], followLimit *atomic.In
 			parentKey, childKey, parentIsSource = link.Key, obj.key, false
 		}
 
-		subSelector := linkSelector.Admit(parentKey, childKey, parentIsSource, link.Class)
-		if subSelector != nil {
+		isAdmitted, subSelector := linkSelector.Admit(parentKey, childKey, parentIsSource, link.Class)
+		if isAdmitted {
 			admittedLinks = append(admittedLinks, link)
 			fl.knownKeys.Insert(link.Key)
 			// #nosec G115 -- Trace period cannot practically exceed int32.

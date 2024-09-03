@@ -1,0 +1,24 @@
+apiVersion: kelemetry.kubewharf.io/v1alpha1
+kind: LinkRule
+metadata:
+  name: pod-volume
+sourceFilter:
+  resources:
+    - group: ""
+      resource: pods
+targetTemplates:
+  - type:
+      literal: v1/secrets
+    name:
+      jq: |
+        (.spec.volumes[] | select(has("secret")).secret.secretName)
+        + (.spec.volumes[] | select(has("projected")).projected.sources[] | select("secret").secret.name)
+  - type:
+      literal: v1/configmaps
+    name:
+      jq: |
+        (.spec.volumes[] | select(has("configMap")).configMap.name)
+        + (.spec.volumes[] | select(has("projected")).projected.sources[] | select("configMap").configMap.name)
+link:
+  targetRole: Child
+  class: volumes

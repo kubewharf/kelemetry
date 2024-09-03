@@ -15,8 +15,12 @@
 package zconstants
 
 import (
+	"fmt"
+
 	"github.com/jaegertracing/jaeger/model"
 
+	kelemetryv1a1 "github.com/kubewharf/kelemetry/pkg/crds/apis/v1alpha1"
+	"github.com/kubewharf/kelemetry/pkg/metrics"
 	utilobject "github.com/kubewharf/kelemetry/pkg/util/object"
 )
 
@@ -116,6 +120,19 @@ const (
 	// The linked trace is a child trace under the current trace.
 	LinkRoleChild LinkRoleValue = "child"
 )
+
+var ErrUnknownTargetRole = metrics.LabelError(fmt.Errorf("unknown target role"), "UnknownTargetRole")
+
+func LinkRoleValueFromTargetRole(targetRole kelemetryv1a1.TargetRole) (LinkRoleValue, error) {
+	switch targetRole {
+	case kelemetryv1a1.TargetRoleChild:
+		return LinkRoleChild, nil
+	case kelemetryv1a1.TargetRoleParent:
+		return LinkRoleParent, nil
+	}
+
+	return "", fmt.Errorf("%w %q", ErrUnknownTargetRole, targetRole)
+}
 
 // Determines the role of the reverse link.
 func ReverseLinkRole(role LinkRoleValue) LinkRoleValue {

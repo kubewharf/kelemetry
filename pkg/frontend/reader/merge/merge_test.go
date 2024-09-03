@@ -310,10 +310,10 @@ func TestFilteredTree(t *testing.T) {
 
 type rsPodLinksOnly struct{}
 
-func (rsPodLinksOnly) Admit(parent, child utilobject.Key, parentIsSource bool, class string) tfconfig.LinkSelector {
-	if parent.Resource == "replicasets" && child.Resource == "pods" {
-		return rsPodLinksOnly{}
-	} else {
-		return nil
-	}
+func (rsPodLinksOnly) Admit(
+	parent, child utilobject.Key,
+	parentIsSource bool,
+	class string,
+) (_admit bool, _nextState tfconfig.LinkSelector) {
+	return parent.Resource == "replicasets" && child.Resource == "pods", rsPodLinksOnly{}
 }
