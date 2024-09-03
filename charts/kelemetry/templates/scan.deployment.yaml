@@ -7,6 +7,7 @@ metadata:
   labels: {{ include "kelemetry.scan-labels" . }}
 
 spec:
+  serviceName: {{.Release.Name}}-scan
   replicas: 1
   selector:
     matchLabels: {{ include "kelemetry.scan-labels" . }}

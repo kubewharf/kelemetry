@@ -306,9 +306,6 @@ aggregator:
   # The duration of each object trace.
   # A new trace is generated if activities in the same object intersect with multiples of this duration.
   spanTtl: 30m
-  # If activity is detected within this duration after the previous span,
-  # the two spans get merged into the same trace.
-  spanFollowTtl: "0"
   # The duration for which a span remains in span cache after its follow period has expired.
   spanExtraTtl: "1m"
 
@@ -429,7 +426,7 @@ sharedEtcd:
   image:
     repository: quay.io/coreos/etcd
     pullPolicy: IfNotPresent
-    tag: v3.3 # note: etcd v3.4 onwards use distroless base image, which is not supported by this chart
+    tag: v3.5.15
     pullSecrets: []
   resources: {}
     # limits:
