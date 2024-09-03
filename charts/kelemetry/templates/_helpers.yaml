@@ -94,7 +94,6 @@ aggregator-event-span-global-tags: {{ .Values.aggregator.globalTags.eventSpan | 
 aggregator-pseudo-span-global-tags: {{ .Values.aggregator.globalTags.pseudoSpan | toJson }}
 aggregator-reserve-ttl: {{ .Values.aggregator.spanCache.reserveTtl | toJson }}
 aggregator-span-extra-ttl: {{ .Values.aggregator.spanExtraTtl | toJson }}
-aggregator-span-follow-ttl: {{ .Values.aggregator.spanFollowTtl | toJson }}
 aggregator-span-ttl: {{ .Values.aggregator.spanTtl | toJson }}
 
 {{/* SPAN CACHE */}}
