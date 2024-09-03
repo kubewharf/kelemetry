@@ -9,6 +9,7 @@ linters:
     - bodyclose
     - containedctx
     - contextcheck
+    - copyloopvar
     - decorder
     - dogsled
     - dupl
@@ -17,9 +18,7 @@ linters:
     - errchkjson
     - errname
     - errorlint
-    - execinquery
     - exhaustive
-    - exportloopref
     - forbidigo
     - gci
     - gocheckcompilerdirectives

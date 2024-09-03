@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
+	"math"
 	"math/rand"
 	"sync/atomic"
 	"time"
@@ -93,6 +94,11 @@ func (q *LocalQueue) Start(ctx context.Context) error {
 		}
 		numPartitions = len(consumers)
 	}
+
+	if numPartitions > math.MaxInt32 {
+		return fmt.Errorf("too many partitions")
+	}
+	// #nosec G115 -- checked
 	q.numPartitions = int32(numPartitions)
 
 	for _, consumers := range q.consumers {
@@ -135,6 +141,7 @@ func (producer *localProducer) Send(partitionKey []byte, value []byte) error {
 		keyHasher := fnv.New32()
 		_, _ = keyHasher.Write(partitionKey) // fnv.Write is infallible
 		hash := keyHasher.Sum32()
+		// #nosec G115 -- hash % numPartitions < numPartitions <= MaxInt32
 		partition = int32(hash % uint32(producer.queue.numPartitions))
 	} else {
 		partition = rand.Int31n(producer.queue.numPartitions)

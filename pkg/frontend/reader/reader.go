@@ -441,6 +441,7 @@ func generateCacheId(mode tfconfig.Id) model.TraceID {
 
 func extractDisplayMode(cacheId model.TraceID) tfconfig.Id {
 	displayMode := cacheId.High >> CacheIdHighBitShift
+	// #nosec G115 -- intentional truncation.
 	return tfconfig.Id(uint32(displayMode))
 }
 

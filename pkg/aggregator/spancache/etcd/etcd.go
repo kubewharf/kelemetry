@@ -252,6 +252,7 @@ func EncodeInt64(i int64) [8]byte {
 }
 
 func DecodeInt64(b [8]byte) int64 {
+	// #nosec G115 -- Wrapping is intentional and acceptable
 	return int64(binary.LittleEndian.Uint64(b[:]))
 }
 

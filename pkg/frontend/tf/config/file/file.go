@@ -136,9 +136,6 @@ func (p *FileProvider) loadJsonBytes(jsonBytes []byte) error {
 	modifiers := make([]knownModifier, 0, len(file.Modifiers))
 
 	for bitmask, modifierConfig := range file.Modifiers {
-		bitmask := bitmask
-		modifierConfig := modifierConfig
-
 		displayName := modifierConfig.DisplayName
 
 		factory, hasFactory := p.RegisteredModifiers.Indexed[modifierConfig.ModifierName]

@@ -267,6 +267,7 @@ func do(
 			return out, nil
 		},
 		len(traces),
+		// #nosec G115 -- test cases have reasonably small sizes.
 		int32(len(traces)),
 		false,
 	))

@@ -246,6 +246,7 @@ type logrusSink struct{ delegate logrus.FieldLogger }
 
 func (s logrusSink) Init(info logr.RuntimeInfo) {}
 
+// #nosec G115 -- log levels are all small values.
 func (s logrusSink) Enabled(level int) bool { return klog.V(klog.Level(level)).Enabled() }
 
 func kvToLogr(keysAndValues []any) logrus.Fields {

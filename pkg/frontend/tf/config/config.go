@@ -47,6 +47,8 @@ func (id *Id) UnmarshalText(text []byte) error {
 	if err != nil {
 		return err
 	}
+
+	// #nosec G115 -- ParseUint bitSize is 32
 	*id = Id(uint32(i))
 	return nil
 }

@@ -203,8 +203,6 @@ func Ptr[CompTy any](obj CompTy) ComponentFactory {
 	var populate func(structTy reflect.Type, structValue reflect.Value)
 	populate = func(structTy reflect.Type, structValue reflect.Value) {
 		for i := 0; i < structTy.NumField(); i++ {
-			i := i
-
 			field := structTy.Field(i)
 			if field.IsExported() && !field.Anonymous && structValue.Field(i).IsZero() {
 				if _, recurse := field.Tag.Lookup("managerRecurse"); recurse {
