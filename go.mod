@@ -34,7 +34,7 @@ require (
 	k8s.io/client-go v0.30.3
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
-	mvdan.cc/gofumpt v0.6.0
+	mvdan.cc/gofumpt v0.7.0
 )
 
 require (
