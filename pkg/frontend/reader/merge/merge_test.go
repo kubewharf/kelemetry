@@ -54,7 +54,8 @@ func newTrace(id uint64, key utilobject.Key, startTime int64, endTime int64, lin
 		})
 
 		spans = append(spans, &model.Span{
-			TraceID:   traceId,
+			TraceID: traceId,
+			// #nosec G115 -- i is a small integer.
 			SpanID:    model.SpanID(id | (3 << 16) | (uint64(i) << 20)),
 			StartTime: objectSpan.StartTime,
 			Duration:  objectSpan.Duration,
@@ -100,6 +101,7 @@ type traceList []merge.TraceWithMetadata[uint64]
 
 func (list traceList) append(idLow uint32, key utilobject.Key, links []merge.TargetLink) traceList {
 	for time := 0; time < 4; time++ {
+		// #nosec G115 -- time is a small integer.
 		id := uint64(idLow) | (uint64(time) << 8)
 		list = append(list, newTrace(
 			id, key,
