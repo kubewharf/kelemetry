@@ -12,7 +12,7 @@ require (
 	github.com/go-logr/logr v1.4.2
 	github.com/itchyny/gojq v0.12.16
 	github.com/jaegertracing/jaeger v1.57.0
-	github.com/pelletier/go-toml/v2 v2.2.2
+	github.com/pelletier/go-toml/v2 v2.2.3
 	github.com/prometheus/client_golang v1.20.2
 	github.com/segmentio/golines v0.12.2
 	github.com/sirupsen/logrus v1.9.3
