@@ -153,8 +153,10 @@ func (server *server) handleGet(ctx *gin.Context, metric *requestMetric) (code i
 		emptyTrace := json.Trace{
 			Spans: []json.Span{
 				{
+					// #nosec G115 -- arbitrary behavior for out-of-bound timestamps.
 					StartTime: uint64(timestamp.UnixNano() / 1000),
-					Duration:  uint64((time.Minute * 30).Microseconds()),
+					// #nosec G115 -- the literal expression is positive.
+					Duration: uint64((time.Minute * 30).Microseconds()),
 					Tags: []json.KeyValue{
 						{Key: "cluster", Value: cluster},
 						{Key: "resource", Value: resource},

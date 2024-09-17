@@ -247,6 +247,7 @@ func (cache *Etcd) Client() *etcdv3.Client { return cache.client }
 
 func EncodeInt64(i int64) [8]byte {
 	ret := [8]byte{}
+	// #nosec G115 -- expected transmute, LittleEndian does not support PutInt64
 	binary.LittleEndian.PutUint64(ret[:], uint64(i))
 	return ret
 }
