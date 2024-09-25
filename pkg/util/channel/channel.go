@@ -26,12 +26,52 @@ import (
 	"github.com/kubewharf/kelemetry/pkg/util/shutdown"
 )
 
+type Queue[T any] interface {
+	Send(obj T)
+	Receiver() <-chan T
+
+	Length() int
+	GetAndResetLength() int
+
+	Close()
+}
+
+type BoundedQueue[T any] chan T
+
+func (ch BoundedQueue[T]) Length() int {
+	return len(ch)
+}
+
+func (ch BoundedQueue[T]) GetAndResetLength() int {
+	return len(ch) // for simplicity we just return the channel length
+}
+
+func (ch BoundedQueue[T]) Receiver() <-chan T{
+	return ch
+}
+
+func (ch BoundedQueue[T]) Send(obj T) {
+	ch <- obj
+}
+
+func (ch BoundedQueue[T]) Close() {
+	close(ch)
+}
+
+func _[T any](uq BoundedQueue[T]) Queue[T] {
+	return uq
+}
+
 // UnboundedQueue is an unbounded channel.
 type UnboundedQueue[T any] struct {
 	deque    *Deque[T]
 	notifier chan<- struct{}
 	receiver <-chan T
-	Close    context.CancelFunc
+	closeFn  context.CancelFunc
+}
+
+func _[T any](uq *UnboundedQueue[T]) Queue[T] {
+	return uq
 }
 
 // Creates a new UnboundedQueue with the specified initial capacity.
@@ -48,7 +88,7 @@ func NewUnboundedQueue[T any](initialCapacity int) *UnboundedQueue[T] {
 		deque:    deque,
 		notifier: notifier,
 		receiver: receiver,
-		Close:    cancelFunc,
+		closeFn:  cancelFunc,
 	}
 }
 
@@ -61,8 +101,16 @@ func (uq *UnboundedQueue[T]) Length() int {
 	return uq.deque.Len()
 }
 
-func InitMetricLoop[T any, TagsT metrics.Tags](uq *UnboundedQueue[T], metricsClient metrics.Client, tags TagsT) {
-	metrics.NewMonitor(metricsClient, tags, func() float64 { return float64(uq.deque.GetAndResetLength()) })
+func (uq *UnboundedQueue[T]) Close() {
+	uq.closeFn()
+}
+
+func (uq *UnboundedQueue[T]) GetAndResetLength() int {
+	return uq.deque.GetAndResetLength()
+}
+
+func InitMetricLoop[T any, TagsT metrics.Tags](uq Queue[T], metricsClient metrics.Client, tags TagsT) {
+	metrics.NewMonitor(metricsClient, tags, func() float64 { return float64(uq.Length()) })
 }
 
 // Sends an item to the queue.

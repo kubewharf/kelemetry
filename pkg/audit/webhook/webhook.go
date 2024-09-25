@@ -40,10 +40,13 @@ func init() {
 
 type options struct {
 	enable bool
+
+	subscriberQueueCapacity int
 }
 
 func (options *options) Setup(fs *pflag.FlagSet) {
 	fs.BoolVar(&options.enable, "audit-webhook-enable", false, "enable audit webhook")
+	fs.BoolVar(&options.enable, "audit-webhook-subscriber-queue-capacity", false, "maximum number of events buffered in the webhook, set to 0 for an unbounded buffer (may cause OOM)")
 }
 
 func (options *options) EnableFlag() *bool { return &options.enable }
@@ -76,7 +79,7 @@ type webhook struct {
 
 type namedQueue[T any] struct {
 	name  string
-	queue *channel.UnboundedQueue[T]
+	queue channel.Queue[T]
 }
 
 type requestMetric struct {
@@ -184,7 +187,13 @@ func (webhook *webhook) Close(ctx context.Context) error {
 }
 
 func (webhook *webhook) AddSubscriber(name string) <-chan *audit.Message {
-	queue := channel.NewUnboundedQueue[*audit.Message](1)
+	var queue channel.Queue[*audit.Message]
+	if capacity := webhook.options.subscriberQueueCapacity; capacity != 0 {
+		queue = make(channel.BoundedQueue[*audit.Message], capacity)
+	} else {
+		queue = channel.NewUnboundedQueue[*audit.Message](1)
+	}
+
 	channel.InitMetricLoop(queue, webhook.Metrics, &queueMetricTags{Name: name})
 
 	webhook.subscribers = append(webhook.subscribers, namedQueue[*audit.Message]{name: name, queue: queue})
@@ -192,7 +201,13 @@ func (webhook *webhook) AddSubscriber(name string) <-chan *audit.Message {
 }
 
 func (webhook *webhook) AddRawSubscriber(name string) <-chan *audit.RawMessage {
-	queue := channel.NewUnboundedQueue[*audit.RawMessage](1)
+	var queue channel.Queue[*audit.RawMessage]
+	if capacity := webhook.options.subscriberQueueCapacity; capacity != 0 {
+		queue = make(channel.BoundedQueue[*audit.RawMessage], capacity)
+	} else {
+		queue = channel.NewUnboundedQueue[*audit.RawMessage](1)
+	}
+
 	channel.InitMetricLoop(queue, webhook.Metrics, &queueMetricTags{Name: name})
 
 	webhook.rawSubscribers = append(webhook.rawSubscribers, namedQueue[*audit.RawMessage]{name: name, queue: queue})
