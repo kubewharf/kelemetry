@@ -46,7 +46,12 @@ type options struct {
 
 func (options *options) Setup(fs *pflag.FlagSet) {
 	fs.BoolVar(&options.enable, "audit-webhook-enable", false, "enable audit webhook")
-	fs.BoolVar(&options.enable, "audit-webhook-subscriber-queue-capacity", false, "maximum number of events buffered in the webhook, set to 0 for an unbounded buffer (may cause OOM)")
+	fs.BoolVar(
+		&options.enable,
+		"audit-webhook-subscriber-queue-capacity",
+		false,
+		"maximum number of events buffered in the webhook, set to 0 for an unbounded buffer (may cause OOM)",
+	)
 }
 
 func (options *options) EnableFlag() *bool { return &options.enable }

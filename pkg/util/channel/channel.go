@@ -46,7 +46,7 @@ func (ch BoundedQueue[T]) GetAndResetLength() int {
 	return len(ch) // for simplicity we just return the channel length
 }
 
-func (ch BoundedQueue[T]) Receiver() <-chan T{
+func (ch BoundedQueue[T]) Receiver() <-chan T {
 	return ch
 }
 
