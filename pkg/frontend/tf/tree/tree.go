@@ -83,6 +83,20 @@ func (tree *SpanTree) Clone() (*SpanTree, error) {
 	return NewSpanTree(copiedSpans), nil
 }
 
+func CopySpans(spans []*model.Span) ([]*model.Span, error) {
+	copiedSpans := make([]*model.Span, 0, len(spans))
+	for _, span := range spans {
+		spanCopy, err := CopySpan(span)
+		if err != nil {
+			return nil, err
+		}
+
+		copiedSpans = append(copiedSpans, spanCopy)
+	}
+
+	return copiedSpans, nil
+}
+
 func CopySpan(span *model.Span) (*model.Span, error) {
 	spanJson, err := json.Marshal(span)
 	if err != nil {

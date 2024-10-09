@@ -48,6 +48,7 @@ type EntryValue struct {
 	RootObject  *utilobject.Key   `json:"rootObject"`
 
 	Extensions []ExtensionCache `json:"extensions"`
+	Spans      []*model.Span    `json:"spans"`
 }
 
 type ExtensionCache struct {
