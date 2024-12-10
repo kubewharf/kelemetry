@@ -28,8 +28,8 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/tools v0.27.0
 	google.golang.org/grpc v1.65.0
-	k8s.io/api v0.31.1
-	k8s.io/apimachinery v0.31.1
+	k8s.io/api v0.31.3
+	k8s.io/apimachinery v0.31.3
 	k8s.io/apiserver v0.31.0
 	k8s.io/client-go v0.31.1
 	k8s.io/klog/v2 v2.130.1
