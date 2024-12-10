@@ -10,7 +10,7 @@ require (
 	github.com/dlclark/regexp2 v1.11.4
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-logr/logr v1.4.2
-	github.com/itchyny/gojq v0.12.16
+	github.com/itchyny/gojq v0.12.17
 	github.com/jaegertracing/jaeger v1.57.0
 	github.com/pelletier/go-toml/v2 v2.2.3
 	github.com/prometheus/client_golang v1.20.4
