@@ -128,7 +128,7 @@ dot: output/kelemetry
 	dot -Tpng depgraph.dot >depgraph.png
 	dot -Tsvg depgraph.dot >depgraph.svg
 
-FIND_PATH = 
+FIND_PATH =
 ifeq ($(OS_NAME), Darwin)
 	FIND_PATH = .
 endif
@@ -140,10 +140,10 @@ kind:
 	kind delete cluster --name tracetest
 	docker network create kind || true # create if not exist; if fail, next step will fail anyway
 	sed "s/host.docker.internal/$$( \
-		docker network inspect kind -f '{{(index .IPAM.Config 0).Gateway}}' \
+		docker inspect tracetest-control-plane -f '{{.NetworkSettings.Networks.kind.IPAddress}}' \
 	)/g" hack/audit-kubeconfig.yaml >hack/audit-kubeconfig.local.yaml
 	sed "s/host.docker.internal/$$( \
-		docker network inspect kind -f '{{(index .IPAM.Config 0).Gateway}}' \
+		docker inspect tracetest-control-plane -f '{{.NetworkSettings.Networks.kind.IPAddress}}' \
 	)/g" hack/tracing-config.yaml >hack/tracing-config.local.yaml
 	cd hack && kind create cluster --config kind-cluster.yaml
 
@@ -165,7 +165,7 @@ define QUICKSTART_JQ_PATCH
 			if $$KELEMETRY_IMAGE != "" then .services.kelemetry.image = $$KELEMETRY_IMAGE else . end
 endef
 
-SED_I_FLAG = 
+SED_I_FLAG =
 ifeq ($(OS_NAME), Darwin)
   SED_I_FLAG = ''
 endif
@@ -178,7 +178,7 @@ quickstart:
 		up --no-recreate --no-start
 	kubectl config view --raw --minify --flatten --merge >hack/client-kubeconfig.local.yaml
 
-	sed -i $(SED_I_FLAG) "s/0\.0\.0\.0/$$(docker network inspect kelemetry_default -f '{{(index .IPAM.Config 0).Gateway}}')/g" hack/client-kubeconfig.local.yaml
+	sed -i $(SED_I_FLAG) "s/0\.0\.0\.0/$$(docker inspect tracetest-control-plane -f '{{.NetworkSettings.Networks.kind.IPAddress}}')/g" hack/client-kubeconfig.local.yaml
 	sed -i $(SED_I_FLAG) 's/certificate-authority-data: .*$$/insecure-skip-tls-verify: true/' hack/client-kubeconfig.local.yaml
 
 	docker compose -f quickstart.docker-compose.yaml \
