@@ -1,7 +1,6 @@
 # docker-compose setup for development setup.
 # Use quickstart.docker-compose.yaml if you just want to try out Kelemetry.
 # Use the helm chart if you want to deploy in production.
-version: "3"
 services:
   # ETCD cache storage, only required if etcd cache is used
   etcd:

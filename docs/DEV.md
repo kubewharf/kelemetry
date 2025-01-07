@@ -5,13 +5,13 @@
 The development setup is streamlined into three steps:
 
 1. Ensure the prerequisites are available:
-  - [kind](https://kind.sigs.k8s.io)
+  - [kwok](https://kwok.sigs.k8s.io)
   - [docker-compose](https://docs.docker.com/compose/install/)
 
-2. Create the kind cluster and dependency services:
+2. Create the kwok cluster and dependency services:
 
 ```console
-$ make kind stack
+$ make kwok stack
 ```
 
 3. Compile and run the kelemetry all-in-one executable:
@@ -336,7 +336,7 @@ with the following structure:
 End-to-end tests can be executed locally with the commands:
 
 ```console
-$ make kind
+$ make kwok
 $ make e2e
 ```
 

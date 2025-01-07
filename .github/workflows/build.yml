@@ -76,16 +76,22 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install kind
-        run: wget --no-verbose -O kind https://kind.sigs.k8s.io/dl/v0.17.0/kind-linux-amd64 && chmod +x kind && sudo mv kind /usr/local/bin/kind
+      - name: Install kwok
+        run: |
+          KWOK_REPO=kubernetes-sigs/kwok
+          KWOK_LATEST_RELEASE=$(curl "https://api.github.com/repos/${KWOK_REPO}/releases/latest" | jq -r '.tag_name')
+          wget -O kwokctl -c "https://github.com/${KWOK_REPO}/releases/download/${KWOK_LATEST_RELEASE}/kwokctl-linux-amd64" && \
+            sudo install kwokctl /usr/local/bin/kwokctl && \
+            wget -O kwok -c "https://github.com/${KWOK_REPO}/releases/download/${KWOK_LATEST_RELEASE}/kwok-linux-amd64" && \
+            sudo install kwok /usr/local/bin/kwok
       - name: Start test cluster
-        run: make kind
+        run: make kwok
 
       - name: Install kubectl
         run: |
-          wget --no-verbose -O kubectl https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl && \
-            chmod +x kubectl && \
-            sudo mv kubectl /usr/local/bin/kubectl
+          KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+          wget --no-verbose -O kubectl https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl && \
+            sudo install kubectl /usr/local/bin/kubectl
 
       - name: Download docker image
         uses: actions/download-artifact@v4
