@@ -27,7 +27,7 @@ include "graph";
     )
     | assert(
       "status update was logged";
-      any(.fields.audit == "system:serviceaccount:kube-system:deployment-controller update status")
+      any(.fields.audit == "kwok-admin update status")
     )
     | assert(
       "status update contains diff (" + (map(.fields.audit) | @json) + ")";
