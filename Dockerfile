@@ -1,5 +1,10 @@
 FROM golang:1.22.3-alpine AS build
 
+ARG GOPROXY
+ARG GOPRIVATE
+ARG GONOPROXY
+ARG GONOSUMDB
+
 RUN mkdir /src
 WORKDIR /src
 ADD go.mod go.mod
