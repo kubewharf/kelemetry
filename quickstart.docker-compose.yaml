@@ -1,7 +1,6 @@
 # docker-compose setup for quick preview.
 # Use dev.docker-compose.yaml if you want to debug a local build.
 # Use the helm chart if you want to deploy in production.
-version: "3"
 services:
   etcd:
     image: quay.io/coreos/etcd:v3.4.33
@@ -52,6 +51,12 @@ services:
         limits:
           memory: 1G
   kelemetry:
+    build:
+      args:
+        - GOPROXY
+        - GOPRIVATE
+        - GONOPROXY
+        - GONOSUMDB
     command: [
       "kelemetry",
       "--audit-consumer-enable",

@@ -1,0 +1,24 @@
+---
+apiVersion: config.kwok.x-k8s.io/v1alpha1
+kind: KwokConfiguration
+options:
+---
+apiVersion: config.kwok.x-k8s.io/v1alpha1
+kind: KwokctlConfiguration
+componentsPatches:
+  - name: kube-apiserver
+    extraArgs:
+      - key: audit-webhook-config-file
+        value: /etc/kelemetry/audit-kubeconfig.local.yaml
+      - key: audit-webhook-batch-max-wait
+        value: 2s # speed up event consumption during test
+      - key: tracing-config-file
+        value: /etc/kelemetry/tracing-config.local.yaml
+      - key: audit-policy-file
+        value: /etc/kelemetry/audit-policy.yaml
+    extraVolumes:
+      - name: kelemetry-assets
+        readOnly: true
+        hostPath: .
+        mountPath: /etc/kelemetry
+        pathType: Directory
