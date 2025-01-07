@@ -95,6 +95,7 @@ run: output/kelemetry $(DUMP_ROTATE_DEP)
 		--diff-cache-etcd-endpoints=127.0.0.1:2379 \
 		--diff-cache-wrapper-enable \
 		--diff-controller-leader-election-enable=false \
+		--diff-writer-leader-election-enable=false \
 		--event-informer-leader-election-enable=false \
 		--span-cache=$(ETCD_OR_LOCAL) \
 		--span-cache-etcd-endpoints=127.0.0.1:2379 \
@@ -198,11 +199,11 @@ quickstart:
 	docker compose -f quickstart.docker-compose.yaml \
 		-f <(jq -n --arg KELEMETRY_IMAGE "$(KELEMETRY_IMAGE)" "$$QUICKSTART_JQ_PATCH") \
 		up --no-recreate --no-start $(BUILD_ARGS)
-	docker network connect kelemetry_default kwok-tracetest-kube-apiserver
+	docker inspect kwok-tracetest-kube-apiserver -f '{{.NetworkSettings.Networks.kelemetry_default}}' | grep kwok-tracetest-kube-apiserver >/dev/null || \
+		docker network connect kelemetry_default kwok-tracetest-kube-apiserver || true
 	kubectl --context=kwok-tracetest config view --raw --minify --flatten --merge >hack/client-kubeconfig.local.yaml
 
-	sed -i $(SED_I_FLAG) "s/127\.0\.0\.1:[0-9]*/kwok-tracetest-kube-apiserver/g" hack/client-kubeconfig.local.yaml
-	docker ps
+	sed -i $(SED_I_FLAG) "s/127\.0\.0\.1:[0-9]*/kwok-tracetest-kube-apiserver:6443/g" hack/client-kubeconfig.local.yaml
 	sed -i $(SED_I_FLAG) 's/certificate-authority-data: .*$$/insecure-skip-tls-verify: true/' hack/client-kubeconfig.local.yaml
 
 	docker compose -f quickstart.docker-compose.yaml \
