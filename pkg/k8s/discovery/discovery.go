@@ -177,7 +177,7 @@ func (cdc *clusterDiscoveryCache) run(ctx context.Context) {
 
 func (cdc *clusterDiscoveryCache) doResync() {
 	cdc.resyncCv.L.Lock()
-	defer cdc.resyncCv.L.Lock()
+	defer cdc.resyncCv.L.Unlock()
 
 	if cdc.isDoingResync {
 		// wait for isDoingResync to be set to false by other goroutines
