@@ -1,4 +1,4 @@
-FROM golang:1.22.3-alpine AS build
+FROM golang:1.23.4-alpine AS build
 
 ARG GOPROXY
 ARG GOPRIVATE

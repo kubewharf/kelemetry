@@ -18,6 +18,6 @@ var SpanStorageTypesToAddFlag = []string{
 	"cassandra",
 	"elasticsearch",
 	"kafka",
-	"grpc-plugin",
+	"grpc",
 	"badger",
 }

@@ -28,6 +28,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
 
 	jaegerreader "github.com/kubewharf/kelemetry/pkg/frontend/reader"
 	"github.com/kubewharf/kelemetry/pkg/manager"
@@ -80,13 +81,11 @@ func (plugin *Plugin) Init() error {
 }
 
 func (plugin *Plugin) Start(ctx context.Context) error {
-	sharedPlugin := shared.StorageGRPCPlugin{
-		Impl: plugin,
-	}
+	handler := shared.NewGRPCHandlerWithPlugins(plugin, nil, nil)
+
 	grpcServer := grpc.NewServer()
-	if err := sharedPlugin.GRPCServer(nil, grpcServer); err != nil {
-		return fmt.Errorf("cannot create grpc query server: %w", err)
-	}
+
+	handler.Register(grpcServer, health.NewServer())
 
 	listener, err := net.Listen("tcp", plugin.options.address)
 	if err != nil {

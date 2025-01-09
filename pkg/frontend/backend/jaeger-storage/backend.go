@@ -86,7 +86,7 @@ func (backend *Backend) Setup(fs *pflag.FlagSet) {
 		"span-storage.type",
 		"",
 		"The type of backend used for service dependencies storage. "+
-			"Possible values are [elasticsearch, cassandra, opensearch, kafka, badger, grpc-plugin]",
+			"Possible values are [elasticsearch, cassandra, opensearch, kafka, badger, grpc]",
 	)
 
 	if err := backend.viper.BindPFlags(rawPfs); err != nil {
@@ -216,7 +216,11 @@ func (backend *Backend) Get(
 		return nil, fmt.Errorf("persisted invalid trace identifier: %w", err)
 	}
 
-	trace, err := backend.reader.GetTrace(ctx, ident.TraceId)
+	trace, err := backend.reader.GetTrace(ctx, spanstore.GetTraceParameters{
+		TraceID:   ident.TraceId,
+		StartTime: startTime,
+		EndTime:   endTime,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get trace from backend: %w", err)
 	}

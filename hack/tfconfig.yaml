@@ -86,7 +86,7 @@ modifiers:
 #     args:
 #       kind: JaegerStorage
 #       storageArgs:
-#         span-storage.type: grpc-plugin
+#         span-storage.type: grpc
 #         grpc-storage.server: 127.0.0.1:17272
 #       service: apiserver
 #       operation: Update

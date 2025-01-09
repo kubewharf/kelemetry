@@ -45,7 +45,7 @@ spec:
             - name: GRPC_STORAGE_SERVER
               value: localhost:17271
             - name: SPAN_STORAGE_TYPE
-              value: grpc-plugin
+              value: grpc
         - name: storage-plugin
           {{ include "kelemetry.container-boilerplate" .Values.frontend.storagePlugin | nindent 10 }}
           image: {{ printf "%s:%s" .Values.kelemetryImage.repository (.Values.kelemetryImage.tag | default .Chart.AppVersion) | toJson }}
