@@ -183,8 +183,7 @@ stack:
 		$(COMPOSE_COMMAND)
 
 define QUICKSTART_JQ_PATCH
-		if $$KELEMETRY_IMAGE == "" then .services.kelemetry.build |= (.dockerfile = "./Dockerfile" | .context = ".") else . end |
-		if $$KELEMETRY_IMAGE != "" then .services.kelemetry.image = $$KELEMETRY_IMAGE else . end
+		if $$KELEMETRY_IMAGE != "" then .services.kelemetry |= (.image = $$KELEMETRY_IMAGE | del(.build)) else . end
 endef
 
 SED_I_FLAG =
