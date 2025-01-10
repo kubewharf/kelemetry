@@ -85,7 +85,9 @@ func (plugin *Plugin) Start(ctx context.Context) error {
 
 	grpcServer := grpc.NewServer()
 
-	handler.Register(grpcServer, health.NewServer())
+	if err := handler.Register(grpcServer, health.NewServer()); err != nil {
+		return fmt.Errorf("register jaeger storage plugin on grpc server: %w", err)
+	}
 
 	listener, err := net.Listen("tcp", plugin.options.address)
 	if err != nil {
