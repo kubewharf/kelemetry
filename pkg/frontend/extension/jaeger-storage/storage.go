@@ -335,7 +335,9 @@ func (provider *Provider) LoadCache(ctx context.Context, jsonBuf []byte) ([]*mod
 	spans := []*model.Span{}
 
 	for _, traceId := range ident.TraceIds {
-		trace, err := provider.reader.GetTrace(ctx, traceId)
+		trace, err := provider.reader.GetTrace(ctx, spanstore.GetTraceParameters{
+			TraceID: traceId,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("cannot get trace from extension storage: %w", err)
 		}

@@ -23,22 +23,22 @@ services:
         limits:
           memory: 1G
   jaeger-query:
-    image: jaegertracing/jaeger-query:1.42
+    image: jaegertracing/jaeger-query:1.65.0
     environment:
       GRPC_STORAGE_SERVER: kelemetry:17271
-      SPAN_STORAGE_TYPE: grpc-plugin
+      SPAN_STORAGE_TYPE: grpc
     ports:
       - 0.0.0.0:16686:16686
     restart: always
   jaeger-collector:
-    image: jaegertracing/jaeger-collector:1.42
+    image: jaegertracing/jaeger-collector:1.65.0
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
-      SPAN_STORAGE_TYPE: grpc-plugin
+      SPAN_STORAGE_TYPE: grpc
       GRPC_STORAGE_SERVER: remote-badger:17271
     restart: always
   remote-badger:
-    image: jaegertracing/jaeger-remote-storage:1.42
+    image: jaegertracing/jaeger-remote-storage:1.65.0
     environment:
       SPAN_STORAGE_TYPE: badger
       BADGER_EPHEMERAL: "false"
@@ -50,8 +50,22 @@ services:
       resources:
         limits:
           memory: 1G
+
+  # Hack service to chown badger volume for 10001 (user of jaeger-remote-storage)
+  chown-badger-volume:
+    profiles:
+      - chown-badger-volume
+    image: jaegertracing/jaeger-remote-storage:1.65.0
+    user: root
+    entrypoint: /bin/ash
+    command: ["-c", "chown 10001:10001 /mnt/badger && sleep infinity"]
+    volumes:
+      - badger:/mnt/badger
+
   kelemetry:
     build:
+      dockerfile: "./Dockerfile"
+      context: "."
       args:
         - GOPROXY
         - GOPRIVATE
@@ -91,7 +105,7 @@ services:
       "--jaeger-cluster-names=tracetest",
       "--jaeger-storage-plugin-address=0.0.0.0:17271",
       "--jaeger-backend=jaeger-storage",
-      "--jaeger-storage.span-storage.type=grpc-plugin",
+      "--jaeger-storage.span-storage.type=grpc",
       "--jaeger-storage.grpc-storage.server=remote-badger:17271",
     ]
     ports:

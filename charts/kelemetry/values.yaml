@@ -410,13 +410,13 @@ jaegerImages:
   pullSecrets: []
   query:
     repository: jaegertracing/jaeger-query
-    tag: "1.42"
+    tag: "1.65.0"
   collector:
     repository: jaegertracing/jaeger-collector
-    tag: "1.42"
+    tag: "1.65.0"
   remoteStorage:
     repository: jaegertracing/jaeger-remote-storage
-    tag: "1.42"
+    tag: "1.65.0"
 
 # The shared etcd database.
 # It is only deployed if at least one of diffCache/spanCache/traceCache uses etcd with externalEndpoint=false.

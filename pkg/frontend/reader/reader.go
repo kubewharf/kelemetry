@@ -371,8 +371,10 @@ func (reader *spanReader) prepareCache(
 	return cacheEntry, nil
 }
 
-func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (*model.Trace, error) {
+func (reader *spanReader) GetTrace(ctx context.Context, params spanstore.GetTraceParameters) (*model.Trace, error) {
 	defer reader.GetTraceMetric.DeferCount(reader.Clock.Now(), &GetTraceMetric{})
+
+	cacheId := params.TraceID
 
 	entry, err := reader.TraceCache.Fetch(ctx, cacheId.Low)
 	if err != nil {
@@ -382,6 +384,16 @@ func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (
 		return nil, fmt.Errorf("trace %v not found", cacheId)
 	}
 
+	startTime := params.StartTime
+	if startTime.IsZero() {
+		startTime = entry.StartTime
+	}
+
+	endTime := params.EndTime
+	if endTime.IsZero() {
+		endTime = entry.EndTime
+	}
+
 	displayMode := extractDisplayMode(cacheId)
 
 	traces := make([]merge.TraceWithMetadata[struct{}], 0, len(entry.Identifiers))
@@ -389,12 +401,12 @@ func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (
 		if identifier == nil || string(identifier) == "null" {
 			continue
 		}
-		trace, err := reader.Backend.Get(ctx, identifier, cacheId, entry.StartTime, entry.EndTime)
+		trace, err := reader.Backend.Get(ctx, identifier, cacheId, startTime, endTime)
 		if err != nil {
 			return nil, fmt.Errorf("cannot fetch trace pointed by the cache: %w", err)
 		}
 
-		clipped := filterTimeRange(trace.Spans, entry.StartTime, entry.EndTime)
+		clipped := filterTimeRange(trace.Spans, startTime, endTime)
 		traces = append(traces, merge.TraceWithMetadata[struct{}]{Tree: tftree.NewSpanTree(clipped)})
 	}
 
@@ -411,7 +423,7 @@ func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (
 	if err := merger.FollowLinks(
 		ctx,
 		displayConfig.LinkSelector,
-		entry.StartTime, entry.EndTime,
+		startTime, endTime,
 		mergeListWithBackend[struct{}](reader.Backend, func(any) struct{} { return struct{}{} }, OriginalTraceRequest{GetTrace: &cacheId}),
 		reader.options.followLinkConcurrency, reader.options.followLinkLimit, true,
 	); err != nil {
@@ -448,7 +460,7 @@ func (reader *spanReader) GetTrace(ctx context.Context, cacheId model.TraceID) (
 	if err := reader.Transformer.Transform(
 		ctx, aggTrace, entry.RootObject, displayMode,
 		extensions,
-		entry.StartTime, entry.EndTime,
+		startTime, endTime,
 	); err != nil {
 		return nil, fmt.Errorf("trace transformation failed: %w", err)
 	}

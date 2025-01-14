@@ -331,7 +331,7 @@ jaeger-trace-cache-etcd-prefix: {{ .Values.frontend.traceCache.etcd.prefix | toJ
 {{- end }}
 {{- end }}
 {{- define "kelemetry.storage-options-stateful-grpc" }}
-span-storage.type: grpc-plugin
+span-storage.type: grpc
 grpc-storage.server: {{.Release.Name}}-storage.{{.Release.Namespace}}.svc:17271
 {{- end }}
 {{- define "kelemetry.storage-options-stateless-raw" }}

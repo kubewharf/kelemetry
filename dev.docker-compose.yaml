@@ -27,19 +27,19 @@ services:
           memory: 1G
   # Web frontend for trace view.
   jaeger-query:
-    image: jaegertracing/jaeger-query:1.42
+    image: jaegertracing/jaeger-query:1.65.0
     environment:
-      SPAN_STORAGE_TYPE: grpc-plugin
+      SPAN_STORAGE_TYPE: grpc
       GRPC_STORAGE_SERVER: host.docker.internal:17271 # run on host directly
     ports:
       - 0.0.0.0:16686:16686
     restart: always
   # OTLP collector that writes to Badger
   jaeger-collector:
-    image: jaegertracing/jaeger-collector:1.42
+    image: jaegertracing/jaeger-collector:1.65.0
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
-      SPAN_STORAGE_TYPE: grpc-plugin
+      SPAN_STORAGE_TYPE: grpc
       GRPC_STORAGE_SERVER: remote-badger:17271
     ports:
       - 0.0.0.0:4317:4317
@@ -47,7 +47,7 @@ services:
   # Backend badger storage
   # Feel free to override environment.SPAN_STORAGE_TYPE to other storages given the proper configuration.
   remote-badger:
-    image: jaegertracing/jaeger-remote-storage:1.42
+    image: jaegertracing/jaeger-remote-storage:1.65.0
     environment:
       SPAN_STORAGE_TYPE: badger
       BADGER_EPHEMERAL: "false"
@@ -62,16 +62,26 @@ services:
       resources:
         limits:
           memory: 1G
-
   # Web frontend for raw trace database view.
   jaeger-query-raw:
-    image: jaegertracing/jaeger-query:1.42
+    image: jaegertracing/jaeger-query:1.65.0
     environment:
-      SPAN_STORAGE_TYPE: grpc-plugin
+      SPAN_STORAGE_TYPE: grpc
       GRPC_STORAGE_SERVER: remote-badger:17271
     ports:
       - 0.0.0.0:26686:16686
     restart: always
+
+  # Hack service to chown badger volume for 10001 (user of jaeger-remote-storage)
+  chown-badger-volume:
+    profiles:
+      - chown-badger-volume
+    image: jaegertracing/jaeger-remote-storage:1.65.0
+    user: root
+    entrypoint: /bin/ash
+    command: ["-c", "chown 10001:10001 /mnt/badger && sleep infinity"]
+    volumes:
+      - badger:/mnt/badger
 
 volumes:
   etcd: {}

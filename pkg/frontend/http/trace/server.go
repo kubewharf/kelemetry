@@ -109,7 +109,7 @@ func (server *server) handleTrace(ctx *gin.Context, metric *requestMetric) (code
 		query.DisplayMode = "tracing"
 	}
 
-	trace, code, err := server.findTrace(metric, query.DisplayMode, query)
+	trace, listParams, code, err := server.findTrace(metric, query.DisplayMode, query)
 	if err != nil {
 		return code, err
 	}
@@ -121,7 +121,11 @@ func (server *server) handleTrace(ctx *gin.Context, metric *requestMetric) (code
 		}
 	}
 	if !hasLogs && len(trace.Spans) > 0 {
-		trace, err = server.SpanReader.GetTrace(context.Background(), trace.Spans[0].TraceID)
+		trace, err = server.SpanReader.GetTrace(context.Background(), spanstore.GetTraceParameters{
+			TraceID:   trace.Spans[0].TraceID,
+			StartTime: listParams.StartTimeMin,
+			EndTime:   listParams.StartTimeMax,
+		})
 		if err != nil {
 			metric.Error = metrics.MakeLabeledError("TraceError")
 			return 500, fmt.Errorf("failed to find trace ids %w", err)
@@ -163,7 +167,11 @@ type traceQuery struct {
 	DisplayMode string `form:"displayMode"`
 }
 
-func (server *server) findTrace(metric *requestMetric, serviceName string, query traceQuery) (trace *model.Trace, code int, err error) {
+func (server *server) findTrace(
+	metric *requestMetric,
+	serviceName string,
+	query traceQuery,
+) (trace *model.Trace, _listParams *spanstore.TraceQueryParameters, code int, err error) {
 	cluster := query.Cluster
 	resource := query.Resource
 	namespace := query.Namespace
@@ -171,7 +179,7 @@ func (server *server) findTrace(metric *requestMetric, serviceName string, query
 
 	if len(cluster) == 0 || len(resource) == 0 || len(name) == 0 {
 		metric.Error = metrics.MakeLabeledError("EmptyParam")
-		return nil, 400, fmt.Errorf("cluster or resource or name is empty")
+		return nil, nil, 400, fmt.Errorf("cluster or resource or name is empty")
 	}
 
 	var hasCluster bool
@@ -182,19 +190,19 @@ func (server *server) findTrace(metric *requestMetric, serviceName string, query
 	}
 	if !hasCluster {
 		metric.Error = metrics.MakeLabeledError("UnknownCluster")
-		return nil, 404, fmt.Errorf("cluster %s not supported now", cluster)
+		return nil, nil, 404, fmt.Errorf("cluster %s not supported now", cluster)
 	}
 
 	startTimestamp, err := time.Parse(time.RFC3339, query.Start)
 	if err != nil {
 		metric.Error = metrics.MakeLabeledError("InvalidTimestamp")
-		return nil, 400, fmt.Errorf("invalid timestamp for start param %w", err)
+		return nil, nil, 400, fmt.Errorf("invalid timestamp for start param %w", err)
 	}
 
 	endTimestamp, err := time.Parse(time.RFC3339, query.End)
 	if err != nil {
 		metric.Error = metrics.MakeLabeledError("InvalidTimestamp")
-		return nil, 400, fmt.Errorf("invalid timestamp for end param %w", err)
+		return nil, nil, 400, fmt.Errorf("invalid timestamp for end param %w", err)
 	}
 
 	tags := map[string]string{
@@ -216,16 +224,17 @@ func (server *server) findTrace(metric *requestMetric, serviceName string, query
 	traces, err := server.SpanReader.FindTraces(context.Background(), parameters)
 	if err != nil {
 		metric.Error = metrics.MakeLabeledError("TraceError")
-		return nil, 500, fmt.Errorf("failed to find trace ids %w", err)
+		return nil, nil, 500, fmt.Errorf("failed to find trace ids %w", err)
 	}
 
 	if len(traces) > 1 {
 		metric.Error = metrics.MakeLabeledError("MultiTraceMatch")
-		return nil, 500, fmt.Errorf("trace ids match query length is %d, not 1", len(traces))
+		return nil, nil, 500, fmt.Errorf("trace ids match query length is %d, not 1", len(traces))
 	}
 	if len(traces) == 0 {
 		metric.Error = metrics.MakeLabeledError("NoTraceMatch")
-		return nil, 404, fmt.Errorf("could not find trace ids that match query")
+		return nil, nil, 404, fmt.Errorf("could not find trace ids that match query")
 	}
-	return traces[0], 200, nil
+
+	return traces[0], parameters, 200, nil
 }

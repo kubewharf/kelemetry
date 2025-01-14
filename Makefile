@@ -107,7 +107,7 @@ run: output/kelemetry $(DUMP_ROTATE_DEP)
 		--jaeger-backend=jaeger-storage \
 		--jaeger-trace-cache=$(ETCD_OR_LOCAL) \
 		--jaeger-trace-cache-etcd-endpoints=127.0.0.1:2379 \
-		--jaeger-storage.span-storage.type=grpc-plugin \
+		--jaeger-storage.span-storage.type=grpc \
 		--jaeger-storage.grpc-storage.server=127.0.0.1:17272 \
 		$(ENABLE_ARGS) \
 		$(REST_ARGS)
@@ -165,7 +165,12 @@ kwok-apiserver-host:
 	# Restart apiserver to reload config changes
 	docker restart kwok-tracetest-kube-apiserver
 
-COMPOSE_COMMAND ?= up --build -d --remove-orphans
+CHOWN_BADGER ?= yes
+ifeq ($(CHOWN_BADGER), yes)
+	PROFILE_PREFIX := --profile chown-badger-volume
+endif
+
+COMPOSE_COMMAND ?= $(PROFILE_PREFIX) up --build -d --remove-orphans
 
 stack:
 	docker compose -f dev.docker-compose.yaml up --no-recreate --no-start # create network only
@@ -173,13 +178,12 @@ stack:
 		-f dev.docker-compose.yaml \
 		-f <(jq -n \
 			--arg GATEWAY_ADDR $$(docker network inspect kelemetry_default -f '{{(index .IPAM.Config 0).Gateway}}') \
-			'.version = "2.2" | .services["jaeger-query"].environment.GRPC_STORAGE_SERVER = $$GATEWAY_ADDR + ":17271"' \
+			'.services["jaeger-query"].environment.GRPC_STORAGE_SERVER = $$GATEWAY_ADDR + ":17271"' \
 		) \
 		$(COMPOSE_COMMAND)
 
 define QUICKSTART_JQ_PATCH
-		if $$KELEMETRY_IMAGE == "" then .services.kelemetry.build |= (.dockerfile = "./Dockerfile" | .context = ".") else . end |
-		if $$KELEMETRY_IMAGE != "" then .services.kelemetry.image = $$KELEMETRY_IMAGE else . end
+		if $$KELEMETRY_IMAGE != "" then .services.kelemetry |= (.image = $$KELEMETRY_IMAGE | del(.build)) else . end
 endef
 
 SED_I_FLAG =
@@ -227,5 +231,5 @@ local-docker-build:
 
 e2e: local-docker-build
 	make quickstart COMPOSE_COMMAND='down --remove-orphans --volumes' KELEMETRY_IMAGE=kelemetry:local
-	make quickstart COMPOSE_COMMAND='up --build -d --remove-orphans' KELEMETRY_IMAGE=kelemetry:local
+	make quickstart COMPOSE_COMMAND='--profile chown-badger-volume up --build -d --remove-orphans' KELEMETRY_IMAGE=kelemetry:local
 	bash e2e/run-all.sh
