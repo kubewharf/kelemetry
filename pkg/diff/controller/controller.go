@@ -306,6 +306,17 @@ func (ctrl *controller) resyncMonitorsLoop(ctx context.Context) {
 	go writeElector.RunLeaderMetricLoop(ctx)
 
 	for {
+		err := retry.OnError(retry.DefaultBackoff, func(_ error) bool { return true }, func() error {
+			err := ctrl.resyncMonitors(ctx)
+			if err != nil {
+				logger.WithError(err).Warn("resync monitors")
+			}
+			return err
+		})
+		if err != nil {
+			logger.WithError(err).Error("resync monitors failed")
+		}
+
 		stopped := false
 
 		select {
@@ -316,17 +327,6 @@ func (ctrl *controller) resyncMonitorsLoop(ctx context.Context) {
 
 		if stopped {
 			break
-		}
-
-		err := retry.OnError(retry.DefaultBackoff, func(_ error) bool { return true }, func() error {
-			err := ctrl.resyncMonitors(ctx)
-			if err != nil {
-				logger.WithError(err).Warn("resync monitors")
-			}
-			return err
-		})
-		if err != nil {
-			logger.WithError(err).Error("resync monitors failed")
 		}
 	}
 
