@@ -206,7 +206,7 @@ jobs:
           </html>
           EOF
       - name: Upload pages artifact
-        uses: actions/upload-pages-artifact@v1
+        uses: actions/upload-pages-artifact@v3
         with:
           path: output
 
@@ -218,7 +218,7 @@ jobs:
     concurrency:
       group: gh-pages
     steps:
-      - uses: actions/deploy-pages@v2
+      - uses: actions/deploy-pages@v4
         id: deployment
 
   publish-image:
