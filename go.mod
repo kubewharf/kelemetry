@@ -2,11 +2,11 @@ module github.com/kubewharf/kelemetry
 
 go 1.23.0
 
-toolchain go1.23.4
+toolchain go1.24.1
 
 require (
 	github.com/coocood/freecache v1.2.4
-	github.com/daixiang0/gci v0.13.5
+	github.com/daixiang0/gci v0.13.6
 	github.com/dlclark/regexp2 v1.11.5
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-logr/logr v1.4.2
