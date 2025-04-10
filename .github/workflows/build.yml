@@ -106,7 +106,7 @@ jobs:
       - name: Run e2e tests
         run: |
           mkdir output
-          OUTPUT_TRACE=$(realpath output) bash e2e/run-all.sh
+          OUTPUT_TRACE=$(realpath output) DUMP_LOGS=1 bash e2e/run-all.sh
 
       - name: Upload trace output
         uses: actions/upload-artifact@v4
