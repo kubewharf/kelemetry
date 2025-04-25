@@ -8,7 +8,7 @@ on:
 jobs:
   test:
     name: Run unit tests
-    runs-on: [ubuntu-20.04]
+    runs-on: [ubuntu-24.04]
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
@@ -32,7 +32,7 @@ jobs:
 
   lint:
     name: golangci-lint
-    runs-on: [ubuntu-20.04]
+    runs-on: [ubuntu-24.04]
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
@@ -47,9 +47,9 @@ jobs:
 
   typos:
     name: Check typos
-    runs-on: [ubuntu-20.04]
+    runs-on: [ubuntu-24.04]
     steps:
       - uses: actions/checkout@v3
-      - uses: crate-ci/typos@v1.29.5
+      - uses: crate-ci/typos@v1
         with:
           config: hack/typos.toml
