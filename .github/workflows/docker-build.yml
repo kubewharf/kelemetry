@@ -8,7 +8,7 @@ on:
 jobs:
   publish-scan:
     name: Build scan image
-    runs-on: [ubuntu-20.04]
+    runs-on: [ubuntu-24.04]
     if: ${{ github.ref_type == 'tag' }}
     steps:
       - uses: actions/checkout@v3
@@ -27,7 +27,7 @@ jobs:
       - run: docker push ghcr.io/kubewharf/kelemetry-scan:${{steps.tag-name.outputs.IMAGE_TAG}}
   publish-chart:
     name: Build helm chart
-    runs-on: [ubuntu-20.04]
+    runs-on: [ubuntu-24.04]
     if: ${{ github.ref_type == 'tag' }}
     steps:
       - uses: actions/checkout@v3
