@@ -28,7 +28,14 @@ run_test() {
 
 	if ! (head -n1 ${tmpdir}/curl-output.http | grep '302 Found'); then
 		echo "Trace not found for the parameters"
-		cat curl-output.http
+
+		set +eu
+		cat ${tmpdir}/curl-output.http
+
+		if [[ x"$DUMP_LOGS" == "x1" ]]; then
+			docker logs kelemetry-kelemetry-1
+		fi
+
 		exit 1
 	fi
 
