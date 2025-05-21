@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -54,6 +55,7 @@ type options struct {
 	consumerGroup     string
 	partitions        []int32
 	clusterFilter     string
+	excludeClusters   []string
 	ignoreImpersonate bool
 	enableSubObject   bool
 }
@@ -67,6 +69,12 @@ func (options *options) Setup(fs *pflag.FlagSet) {
 		"audit-consumer-filter-cluster-name",
 		"",
 		"if nonempty, only audit events with this cluster name are processed",
+	)
+	fs.StringSliceVar(
+		&options.excludeClusters,
+		"audit-consumer-exclude-cluster-names",
+		nil,
+		"only audit events with cluster names NOT IN this list are processed",
 	)
 	fs.BoolVar(
 		&options.ignoreImpersonate,
@@ -163,6 +171,9 @@ func (recv *receiver) handleMessage(
 	metric.Cluster = cluster
 
 	if recv.options.clusterFilter != "" && recv.options.clusterFilter != cluster {
+		return
+	}
+	if slices.Contains(recv.options.excludeClusters, cluster) {
 		return
 	}
 
