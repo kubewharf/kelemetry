@@ -15,6 +15,7 @@
 package tfstep
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -23,6 +24,7 @@ import (
 	tfconfig "github.com/kubewharf/kelemetry/pkg/frontend/tf/config"
 	tftree "github.com/kubewharf/kelemetry/pkg/frontend/tf/tree"
 	"github.com/kubewharf/kelemetry/pkg/manager"
+	utilmarshal "github.com/kubewharf/kelemetry/pkg/util/marshal"
 	"github.com/kubewharf/kelemetry/pkg/util/zconstants"
 )
 
@@ -35,6 +37,11 @@ func init() {
 	manager.Global.ProvideListImpl(
 		"tf-step/prune-tags-visitor",
 		manager.Ptr(&tfconfig.VisitorStep[PruneTagsVisitor]{}),
+		&manager.List[tfconfig.RegisteredStep]{},
+	)
+	manager.Global.ProvideListImpl(
+		"tf-step/remove-inherited-tag-visitor",
+		manager.Ptr(&tfconfig.VisitorStep[RemoveInheritedTagVisitor]{}),
 		&manager.List[tfconfig.RegisteredStep]{},
 	)
 }
@@ -92,3 +99,74 @@ func removeZconstantKeys(tags model.KeyValues) model.KeyValues {
 	}
 	return newTags
 }
+
+// An inherited tag is a tag in a span/log that also appears in its parent/owning span with the same key and value.
+// These tags are often useless and may be removed for brevity.
+//
+// This visitor assumes that each tag only appears once.
+type RemoveInheritedTagVisitor struct {
+	// Spans with a matching traceSource tag (empty string for extension spans) will have inherited tags removed.
+	TraceSources utilmarshal.StringFilter `json:"traceSources"`
+
+	// Whether to remove inherited span tags for matched spans.
+	Spans bool `json:"spanTags"`
+	// Whether to remove inherited log fields for matched spans.
+	Logs bool `json:"logFields"`
+
+	parentTags map[string]any
+}
+
+func (visitor RemoveInheritedTagVisitor) Kind() string { return "RemoveInheritedTagVisitor" }
+
+func removeInherited(parentTags map[string]any, tags []model.KeyValue) []model.KeyValue {
+	outTags := []model.KeyValue{}
+
+	for _, tag := range tags {
+		if parentValue, parentHasKey := parentTags[tag.Key]; parentHasKey {
+			var equal bool
+			if binary, isBinary := parentValue.([]byte); isBinary && tag.VType == model.BinaryType {
+				equal = bytes.Equal(binary, tag.VBinary)
+			} else {
+				equal = parentValue == tag.Value()
+			}
+
+			if !equal {
+				outTags = append(outTags, tag)
+			}
+		}
+	}
+
+	return outTags
+}
+
+func (visitor RemoveInheritedTagVisitor) Enter(tree *tftree.SpanTree, span *model.Span) tftree.TreeVisitor {
+	spanTags := make(map[string]any, len(span.Tags))
+	var traceSource string
+	for _, tag := range span.Tags {
+		spanTags[tag.Key] = tag.Value()
+		if tag.Key == zconstants.TraceSource {
+			traceSource = tag.VStr
+		}
+	}
+
+	if visitor.TraceSources.Matches(traceSource) {
+		if visitor.Spans {
+			span.Tags = removeInherited(visitor.parentTags, span.Tags)
+		}
+
+		if visitor.Logs {
+			for i := range span.Logs {
+				log := &span.Logs[i]
+				log.Fields = removeInherited(spanTags, log.Fields)
+			}
+		}
+	}
+
+	return RemoveInheritedTagVisitor{
+		TraceSources: visitor.TraceSources,
+		Logs:         visitor.Logs,
+		parentTags:   spanTags,
+	}
+}
+
+func (visitor RemoveInheritedTagVisitor) Exit(tree *tftree.SpanTree, span *model.Span) {}
