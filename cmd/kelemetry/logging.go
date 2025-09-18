@@ -22,6 +22,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/kubewharf/kelemetry/pkg/manager"
 )
@@ -29,15 +30,28 @@ import (
 type loggingOptions struct {
 	level     string
 	formatter string
-	file      string
-	dot       string
-	usage     string
+
+	file       string
+	maxSizeMb  int
+	maxBackups int
+	maxAgeDays int
+	localTime  bool
+	compress   bool
+
+	dot   string
+	usage string
 }
 
 func (options *loggingOptions) setup(fs *pflag.FlagSet) {
 	fs.StringVar(&options.level, "log-level", "debug", "logrus log level")
 	fs.StringVar(&options.formatter, "log-format", "text", "logrus log format")
+
 	fs.StringVar(&options.file, "log-file", "", "logrus log output file (leave empty for stdout)")
+	fs.IntVar(&options.maxSizeMb, "log-max-size-mb", 1024, "max log file size in megabytes, 0 to disable size-based rotation")
+	fs.IntVar(&options.maxBackups, "log-max-backups", 10, "max log file backups, 0 to disable count-based cleanup")
+	fs.IntVar(&options.maxAgeDays, "log-max-age-days", 30, "max log file age in days, 0 to disable time-based cleanup")
+	fs.BoolVar(&options.localTime, "log-local-time", true, "use local time for log file names")
+	fs.BoolVar(&options.compress, "log-compress", true, "compress rotated log files")
 
 	fs.StringVar(&options.dot, "dot", "", "write dependencies as graphviz output")
 	fs.StringVar(&options.usage, "usage", "", "write command usage to file")
@@ -60,12 +74,14 @@ func (options *loggingOptions) execute(logger *logrus.Logger, fs *pflag.FlagSet)
 	}
 
 	if options.file != "" {
-		writer, err := os.OpenFile(options.file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-		if err != nil {
-			return fmt.Errorf("cannot open log file: %w", err)
-		}
-
-		logger.SetOutput(writer)
+		logger.SetOutput(&lumberjack.Logger{
+			Filename:   options.file,
+			MaxSize:    options.maxSizeMb,
+			MaxBackups: options.maxBackups,
+			MaxAge:     options.maxAgeDays,
+			LocalTime:  options.localTime,
+			Compress:   options.compress,
+		})
 	}
 
 	if options.dot != "" {
