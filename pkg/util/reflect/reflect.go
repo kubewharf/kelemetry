@@ -14,7 +14,10 @@
 
 package reflectutil
 
-import "reflect"
+import (
+	"reflect"
+	"unique"
+)
 
 func TypeOf[T any]() reflect.Type {
 	array := [0]T{}
@@ -25,3 +28,7 @@ func TypeOf[T any]() reflect.Type {
 func ZeroOf[T any]() (_ T) { return }
 
 func Identity[T any](t T) T { return t }
+
+func InternString(s string) string {
+	return unique.Make(s).Value()
+}
