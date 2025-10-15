@@ -20,6 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/kubewharf/kelemetry/pkg/util/channel"
+	reflectutil "github.com/kubewharf/kelemetry/pkg/util/reflect"
 )
 
 // DecayingInformer is an informer that only supports delta handling.
@@ -153,8 +154,8 @@ type Decayed struct {
 
 func DecayedOf[V metav1.Object](obj V) *Decayed {
 	return &Decayed{
-		namespace:       strings.Clone(obj.GetNamespace()),
-		name:            strings.Clone(obj.GetName()),
+		namespace:       reflectutil.InternString(obj.GetNamespace()),
+		name:            reflectutil.InternString(obj.GetName()),
 		resourceVersion: strings.Clone(obj.GetResourceVersion()),
 	}
 }

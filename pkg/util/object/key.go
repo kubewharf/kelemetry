@@ -21,6 +21,8 @@ import (
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	reflectutil "github.com/kubewharf/kelemetry/pkg/util/reflect"
 )
 
 type Key struct {
@@ -33,10 +35,10 @@ type Key struct {
 
 func (key Key) Clone() Key {
 	return Key{
-		Cluster:   strings.Clone(key.Cluster),
-		Group:     strings.Clone(key.Group),
-		Resource:  strings.Clone(key.Resource),
-		Namespace: strings.Clone(key.Namespace),
+		Cluster:   reflectutil.InternString(key.Cluster),
+		Group:     reflectutil.InternString(key.Group),
+		Resource:  reflectutil.InternString(key.Resource),
+		Namespace: reflectutil.InternString(key.Namespace),
 		Name:      strings.Clone(key.Name),
 	}
 }
@@ -84,7 +86,7 @@ type VersionedKey struct {
 func (key VersionedKey) Clone() VersionedKey {
 	return VersionedKey{
 		Key:     key.Key.Clone(),
-		Version: strings.Clone(key.Version),
+		Version: reflectutil.InternString(key.Version),
 	}
 }
 
